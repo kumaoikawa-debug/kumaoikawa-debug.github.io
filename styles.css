@@ -4812,3 +4812,6 @@ body{
 .gzh-ir-mid .gzh-split-img, .gzh-ir-mid .gzh-wide-img, .gzh-ir-mid .gzh-sec-imgbox, .gzh-ir-mid .gzh-youth-card-img, .gzh-ir-mid .gzh-family-step-img, .gzh-ir-mid .gzh-challenge-img, .gzh-ir-mid .gzh-longform-img, .gzh-ir-mid .gzh-mag-img { min-height: 220px; }
 .gzh-ir-high .gzh-split-img, .gzh-ir-high .gzh-wide-img, .gzh-ir-high .gzh-sec-imgbox, .gzh-ir-high .gzh-youth-card-img, .gzh-ir-high .gzh-family-step-img, .gzh-ir-high .gzh-challenge-img, .gzh-ir-high .gzh-longform-img, .gzh-ir-high .gzh-mag-img { min-height: 320px; }
 .gzh-ir-high .gzh-hero, .gzh-ir-high .gzh-cover, .gzh-ir-high .gzh-youth-cover, .gzh-ir-high .gzh-family-cover, .gzh-ir-high .gzh-challenge-cover, .gzh-ir-high .gzh-longform-cover { min-height: 420px; }
+
+/* 版本角标：一眼确认是否加载最新版（根治“AI宣发打不开”类缓存问题） */
+#verTag{position:fixed;right:10px;bottom:10px;z-index:9999;font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#9a958a;background:rgba(255,255,255,.85);border:1px solid var(--line);border-radius:8px;padding:3px 8px;pointer-events:none;letter-spacing:.3px;box-shadow:0 1px 4px rgba(0,0,0,.05)}
