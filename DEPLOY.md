@@ -8,7 +8,7 @@
 ## 重要：本项目必须用「根路径」托管
 
 `admin.html` / `index.html` / `front.html` 以及 `src/*.js` 里大量使用**绝对路径**
-（`/src/boot.js`、`/platform/index.html`、`/version.json`、`/styles.css?v=132` 等）。
+（`/src/boot.js`、`/platform/index.html`、`/version.json`、`/styles.css?v=133` 等）。
 GitHub Pages 的「项目站点」默认挂在子路径 `https://<用户>.github.io/<仓库>/` 下，
 绝对路径会解析错（变成 `/src/...` 而非 `/<仓库>/src/...`），导致整站 404。
 

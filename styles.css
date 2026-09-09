@@ -4712,3 +4712,18 @@ body{
 .gzh-article.gzh-challenge{--brand:#2b4a7a}
 .gzh-article.gzh-longform{--brand:#7a5a2b}
 .gzh-article.gzh-magazine{--brand:#3f6b4f}
+
+/* ============ 版式变体 · 舒展版（variant 1，引文大图） ============ */
+.gzh-sec-spread{margin:30px 0;border-top:3px solid var(--brand);padding-top:16px}
+.gzh-sec-spread-h{font-size:25px;line-height:1.3;margin:0 0 14px;letter-spacing:.01em}
+.gzh-sec-spread-img{height:340px;border-radius:6px;background-size:cover;background-position:center;margin:0 0 16px;position:relative}
+.gzh-sec-spread-img .gzh-img-cap{position:absolute;left:10px;bottom:10px;background:rgba(0,0,0,.5);color:#fff;font-size:11px;padding:3px 8px;border-radius:4px}
+.gzh-sec-spread-body{font-size:16px;line-height:1.95;max-width:680px;margin:0 auto}
+/* ============ 版式变体 · 紧致版（variant 2，2 列网格） ============ */
+.gzh-sec-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:20px 0}
+.gzh-sec-cell{background:var(--surface-2);border:1px solid var(--line);border-radius:8px;overflow:hidden;display:flex;flex-direction:column}
+.gzh-sec-cell-img{height:120px;background-size:cover;background-position:center}
+.gzh-sec-cell-body{padding:10px 12px}
+.gzh-sec-cell-body h3{font-size:15px;margin:0 0 6px;color:var(--brand-700)}
+.gzh-sec-cell-body p{font-size:13px;line-height:1.6;margin:0;color:var(--ink-2)}
+@media (max-width:560px){ .gzh-sec-grid{grid-template-columns:1fr} }
