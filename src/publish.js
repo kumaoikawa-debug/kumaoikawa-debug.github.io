@@ -11,23 +11,85 @@
    两最高原则：① 允许创造表达，禁止创造事件（不虚构天气/领队行为/用户感受/具体人数/未提供价格）；
               ② 换版式只改视觉、换风格才重生成方向+文案。 */
 
-/* Editorial 家族：3 招募 + 3 回顾，每族 ≥3 变体 = 18 版式 */
+/* Editorial 家族：3 招募 + 3 回顾，每族 ≥3 变体 = 18 版式（V2.0 §15/16/45） */
 var XF_FAMILIES = {
-  diary:       { label: "沉浸叙事", scenario: ["recruit", "recap"], variants: ["山野日记", "晨昏手札", "长线随记"] },
-  magazine:    { label: "户外杂志", scenario: ["recruit", "recap"], variants: ["杂志专题", "大片跨页", "极简刊例"] },
-  social:      { label: "社交种草", scenario: ["recruit"],           variants: ["潮流卡片", "清单体", "对话体"] },
-  family:      { label: "亲子自然", scenario: ["recruit", "recap"], variants: ["手账步骤", "问答体", "绘本体"] },
-  achievement: { label: "成就展示", scenario: ["recap"],             variants: ["数据战报", "登顶纪实", "勋章墙"] },
-  gallery:     { label: "图文画廊", scenario: ["recap"],             variants: ["长图长廊", "九宫格", "胶片墙"] },
+  route_editorial:    { label: "路线叙事", scenario: ["recruit"], variants: ["杂志专题", "大片跨页", "极简刊例"] },
+  visual_campaign:    { label: "视觉种草", scenario: ["recruit"], variants: ["潮流卡片", "清单体", "对话体"] },
+  challenge_editorial:{ label: "挑战叙事", scenario: ["recruit"], variants: ["数据战报", "登顶纪实", "勋章墙"] },
+  brand_journal:      { label: "品牌手记", scenario: ["recap"],  variants: ["山野日记", "晨昏手札", "长线随记"] },
+  photo_documentary:  { label: "影像纪实", scenario: ["recap"],  variants: ["手账步骤", "问答体", "绘本体"] },
+  outdoor_lookbook:   { label: "户外型录", scenario: ["recap"],  variants: ["长图长廊", "九宫格", "胶片墙"] },
 };
 /* 家族 → 基础版式渲染器（变体在渲染器内做差异化） */
-var XF_FAMILY_LAYOUT = { diary: "diary", magazine: "magazine", social: "youth", family: "family", achievement: "challenge", gallery: "longform" };
+var XF_FAMILY_LAYOUT = { route_editorial: "magazine", visual_campaign: "youth", challenge_editorial: "challenge", brand_journal: "diary", photo_documentary: "family", outdoor_lookbook: "longform" };
+
+/* ---------- 编辑组件库注册表（§25，具名组件 ×21） ----------
+ * 所有版式由这些具名组件组合而成；Layout Engine 只选组件、不写文案。
+ * type: media(图) / text(文) / meta(信息) / block(整块)；full: 是否整宽。 */
+var XF_COMPONENTS = {
+  EditorialHero:  { label: "全幅封面", type: "media", full: true,  desc: "封面大图 + 主标题 + 副标题/眉标" },
+  ChapterHeader:  { label: "章节标题", type: "text",  full: true,  desc: "章节小标题（h2/h3）" },
+  LeadParagraph:  { label: "导语",     type: "text",  full: true,  desc: "开篇导语段" },
+  PullQuote:      { label: "引文",     type: "text",  full: true,  desc: "金句引文块" },
+  FullBleedImage: { label: "全宽大图", type: "media", full: true,  desc: "整幅图片（带图注）" },
+  ImagePair:      { label: "图文左右", type: "media", full: true,  desc: "左文右图 / 左图右文" },
+  ImageTriptych:  { label: "三图并置", type: "media", full: true,  desc: "三张图并排" },
+  MetricStrip:    { label: "数据条",   type: "meta",  full: true,  desc: "距离/爬升/强度等 KV 条" },
+  SectionDivider: { label: "分隔",     type: "text",  full: true,  desc: "章节分隔" },
+  EditorialCTA:   { label: "行动号召", type: "meta",  full: true,  desc: "报名 / 下一期预告 CTA" },
+  InfoGrid:       { label: "信息网格", type: "meta",  full: true,  desc: "活动信息网格" },
+  InfoTable:      { label: "信息表",   type: "meta",  full: true,  desc: "活动信息表" },
+  FeeBlock:       { label: "费用说明", type: "meta",  full: true,  desc: "费用 + 服务说明" },
+  ServiceBlock:   { label: "服务保障", type: "meta",  full: false, desc: "服务说明块" },
+  GalleryGrid:    { label: "照片墙",   type: "media", full: true,  desc: "九宫格 / 网格照片" },
+  YouthCard:      { label: "潮流卡片", type: "text",  full: false, desc: "社交种草卡片" },
+  FamilyStep:     { label: "手账步骤", type: "text",  full: false, desc: "亲子手账步骤" },
+  ChallengeSec:   { label: "挑战章节", type: "text",  full: false, desc: "挑战叙事章节" },
+  LongformSec:    { label: "型录章节", type: "text",  full: false, desc: "户外型录章节" },
+  UploadHint:     { label: "上传提示", type: "text",  full: true,  desc: "缺图引导" },
+  TagRow:         { label: "标签行",   type: "meta",  full: true,  desc: "话题标签行" },
+};
+function xfRenderComponent(name, opts) {
+  opts = opts || {};
+  const paras = opts.paras || [];
+  const ph = opts.ph || null;
+  switch (name) {
+    case "EditorialHero":   return opts.html || "";
+    case "ChapterHeader":   return `<h2>${esc(opts.h || "")}</h2>`;
+    case "LeadParagraph":   return opts.html || "";
+    case "PullQuote":       return `<section class="gzh-sec gzh-sec-quote"><div class="gzh-quote-mark">”</div>${opts.h ? `<h2>${esc(opts.h)}</h2>` : ""}<div class="gzh-quote-body">${paras.join("")}</div></section>`;
+    case "FullBleedImage":  return ph && ph.src ? `<div class="gzh-wide-img" style="background-image:url('${ph.src}')"><span class="gzh-img-cap">${esc(xfCap(ph, ""))}</span></div>` : "";
+    case "ImagePair":       return (ph && ph.src) ? `<section class="gzh-sec gzh-sec-split"><div class="gzh-split-text">${opts.h ? `<h2>${esc(opts.h)}</h2>` : ""}${paras.join("")}</div><div class="gzh-split-img" style="background-image:url('${ph.src}')"><span class="gzh-img-cap">${esc(xfCap(ph, ""))}</span></div></section>` : `<section class="gzh-sec gzh-sec-full">${opts.h ? `<h2>${esc(opts.h)}</h2>` : ""}${paras.join("")}</section>`;
+    case "MetricStrip":     return (opts.kvs || []).map((r) => `<div class="gzh-challenge-kv"><b>${esc(r.v)}</b><span>${esc(r.k)}</span></div>`).join("");
+    case "SectionDivider":  return `<div class="gzh-divider"></div>`;
+    case "EditorialCTA":    return opts.text ? `<div class="${opts.cls || "gzh-diary-cta"}">${esc(opts.text)}</div>` : "";
+    case "InfoGrid":        return (opts.rows || []).map((r) => `<div class="gzh-info-cell"><span class="gzh-info-k">${esc(r.k)}</span><span class="gzh-info-v">${esc(r.v)}</span></div>`).join("");
+    case "InfoTable":       return `<table>${(opts.rows || []).map((r) => `<tr><td>${esc(r.k)}</td><td>${esc(r.v)}</td></tr>`).join("")}</table>`;
+    case "FeeBlock":        return `${opts.fee ? `<p>${esc(opts.fee)}</p>` : ""}${opts.service ? `<p class="gzh-service">${esc(opts.service)}</p>` : ""}`;
+    case "GalleryGrid":     return `<div class="gzh-gallery-grid">${(opts.photos || []).map((p) => `<div class="gzh-gallery-item" style="background-image:url('${p.src}')"><span class="gzh-img-cap">${esc(xfCap(p, ""))}</span></div>`).join("")}</div>`;
+    case "YouthCard":       return `<div class="gzh-youth-card">${ph && ph.src ? `<div class="gzh-youth-card-img" style="background-image:url('${ph.src}')"><span class="gzh-img-cap">${esc(xfCap(ph, ""))}</span></div>` : ""}<div class="gzh-youth-card-body"><div class="gzh-youth-card-num">0${((opts.i || 0) % 9) + 1}</div>${opts.h ? `<h3>${esc(opts.h)}</h3>` : ""}${paras.join("")}</div></div>`;
+    case "FamilyStep":      return `<div class="gzh-family-step"><div class="gzh-family-step-num">${(opts.i || 0) + 1}</div><div class="gzh-family-step-body">${opts.h ? `<h3>${esc(opts.h)}</h3>` : ""}${paras.join("")}</div>${ph && ph.src ? `<div class="gzh-family-step-img" style="background-image:url('${ph.src}')"><span class="gzh-img-cap">${esc(xfCap(ph, ""))}</span></div>` : ""}</div>`;
+    case "ChallengeSec":    return `<section class="gzh-sec gzh-challenge-sec"><div class="gzh-challenge-sec-head"><div class="gzh-challenge-sec-num">0${((opts.i || 0) % 9) + 1}</div>${opts.h ? `<h2>${esc(opts.h)}</h2>` : ""}</div><div class="gzh-challenge-sec-body">${paras.join("")}${ph && ph.src ? `<div class="gzh-challenge-img" style="background-image:url('${ph.src}')"><span class="gzh-img-cap">${esc(xfCap(ph, ""))}</span></div>` : ""}</div></section>`;
+    case "LongformSec":     return `<section class="gzh-sec gzh-longform-sec gzh-longform-sec-${opts.align || "left"}">${ph && ph.src ? `<div class="gzh-longform-img" style="background-image:url('${ph.src}')"><span class="gzh-img-cap">${esc(xfCap(ph, ""))}</span></div>` : ""}<div class="gzh-longform-text"><div class="gzh-longform-sec-num">0${((opts.i || 0) % 9) + 1}</div>${opts.h ? `<h2>${esc(opts.h)}</h2>` : ""}${paras.join("")}</div></section>`;
+    case "UploadHint":      return opts.html || "";
+    case "TagRow":          return (opts.tags || []).map((t) => `<span class="gzh-youth-tag">#${esc(t)}</span>`).join("");
+    default:                return opts.html || "";
+  }
+}
+function xfWsIr(xf, isRecap) {
+  const dir = (xf && xf.strategy && xf.strategy.editorialDirection) || {};
+  const ws = dir.whitespace || "generous";
+  let irBand = "mid";
+  if (dir.imageRatio != null) irBand = dir.imageRatio >= 0.6 ? "high" : "mid";
+  else irBand = isRecap ? "high" : "mid";
+  return ` class="gzh-ws-${ws} gzh-ir-${irBand}"`;
+}
 
 function xfState() {
   state.xf = state.xf || {
     scenario: null, aid: null, step: null,
     master: null, out: null, recap: null,
-    layout: "diary", family: "diary", variant: 0, styleSeed: null,
+    layout: "route_editorial", family: "route_editorial", variant: 0, styleSeed: null,
     photos: [], notes: "", recapNotes: "",
     genState: "idle", platTab: "gzh", recapType: "",
     strategy: null, quality: null,
@@ -193,6 +255,58 @@ async function xfLLM(system, user, json) {
   } catch (e) { return null; }
 }
 
+/* ---------- §34 图注 AI 化：基于可见分类 + 已确认事实生成描述性图注（非分类标签） ---------- */
+function xfCap(ph, def) {
+  if (!ph) return def || "";
+  return ph.cap || ph.cat || def || "";
+}
+/* 无 Key 兜底：分类标签 + 已确认事实，产出描述性短句（不虚构照片内容） */
+function xfPhotoCaptionFallback(ph, facts, dir) {
+  const cat = (ph && ph.cat) || "";
+  const place = (facts && facts.place) ? facts.place : "";
+  const season = (facts && facts.season) ? facts.season : "";
+  const labelMap = {
+    cover: "封面大图", scenic: "山野风景", people: "同行伙伴", action: "行进瞬间",
+    team: "团队合影", gear: "装备细节", meal: "餐食补给", camp: "营地一隅",
+    route: "路线地貌", water: "亲水时刻", detail: "现场细节",
+  };
+  let cap = labelMap[cat] || "现场记录";
+  if (place) cap += " · " + place;
+  if (season) cap += " " + season;
+  return cap;
+}
+/* 挂载 AI 描述性图注到 keyImages（保 src/cat，补充 cap）；无 Key 走兜底 */
+async function xfAttachPhotoCaptions(photos, facts, dir) {
+  if (!photos || !photos.length) return photos || [];
+  if (!aiAuthMode()) {
+    return photos.map((p) => Object.assign({}, p, { cap: xfPhotoCaptionFallback(p, facts, dir) }));
+  }
+  try {
+    const cats = photos.map((p, i) => ({ i: i, cat: p.cat || "" }));
+    const sys = `你是户外照片图注写作助手。为每张照片写一句描述性图注（≤16字），基于"照片分类 + 已确认活动事实"，描述照片可见内容；禁止虚构照片里看不到的东西（如天气、未出现的情绪）。返回 JSON 数组，每项 {i:序号, cap:图注}。`;
+    const user = `照片分类：${JSON.stringify(cats)}\n活动事实：${JSON.stringify({ place: (facts || {}).place, season: (facts || {}).season, activity: (facts || {}).activityName, type: (facts || {}).type })}\n编辑方向：${JSON.stringify(dir ? { angle: dir.angle, mood: dir.readingMood } : {})}`;
+    let res = await xfLLM(sys, user, true);
+    let arr = null;
+    if (Array.isArray(res)) arr = res;
+    else if (res && Array.isArray(res.caps)) arr = res.caps;
+    if (arr && arr.length) {
+      const map = {};
+      arr.forEach((r) => { if (r && r.i != null) map[r.i] = r.cap || ""; });
+      return photos.map((p, i) => Object.assign({}, p, { cap: (map[i] && ("" + map[i]).trim()) ? ("" + map[i]).trim() : xfPhotoCaptionFallback(p, facts, dir) }));
+    }
+  } catch (e) { /* 回退兜底 */ }
+  return photos.map((p) => Object.assign({}, p, { cap: xfPhotoCaptionFallback(p, facts, dir) }));
+}
+
+/* §31 小红书 schema 归一：兼容旧字段 cover/tags/imgOrder → 新字段 coverText/hashtags/imageOrder */
+function xfNormalizeXhs(x) {
+  if (!x) return x;
+  const coverText = (x.coverText != null && x.coverText !== "") ? x.coverText : (x.cover || "");
+  const hashtags = (Array.isArray(x.hashtags) && x.hashtags.length) ? x.hashtags : (Array.isArray(x.tags) ? x.tags : []);
+  const imageOrder = (Array.isArray(x.imageOrder) && x.imageOrder.length) ? x.imageOrder : (Array.isArray(x.imgOrder) ? x.imgOrder : []);
+  return { titles: x.titles || [], body: x.body || "", coverText: coverText, hashtags: hashtags, imageOrder: imageOrder };
+}
+
 /* ---------- styleSeed + 加权随机（Rule-based Weighted Randomization） ---------- */
 function xfStyleSeed() {
   const xf = xfState();
@@ -216,11 +330,18 @@ function xfPickFamily(a, photos, scenario) {
   const allowed = Object.keys(XF_FAMILIES).filter((f) => XF_FAMILIES[f].scenario.includes(scenario));
   const t = (a.type || "") + (a.title || "");
   const weight = {}; allowed.forEach((f) => { weight[f] = 1; });
-  if (/亲子|研学|自然|儿童/.test(t)) { weight.family += 3; weight.diary += 1; }
-  if (/摄影|风光|秋色|红叶|花海/.test(t)) { weight.magazine += 2; weight.gallery += 2; }
-  if (/漂流|溯溪|水上|派对|音乐|露营/.test(t)) { weight.social += 2; weight.diary += 1; }
-  if (/登山|雪山|越野|高海拔|攀岩/.test(t)) { weight.achievement += 3; weight.magazine += 1; }
-  if (scenario === "recap") { weight.achievement += 2; weight.gallery += 2; weight.diary += 1; }
+  if (scenario === "recruit") {
+    if (/亲子|研学|自然|儿童/.test(t)) { weight.visual_campaign += 3; weight.route_editorial += 1; }
+    if (/摄影|风光|秋色|红叶|花海/.test(t)) { weight.route_editorial += 2; weight.visual_campaign += 1; }
+    if (/漂流|溯溪|水上|派对|音乐|露营/.test(t)) { weight.visual_campaign += 2; weight.route_editorial += 1; }
+    if (/登山|雪山|越野|高海拔|攀岩/.test(t)) { weight.challenge_editorial += 3; weight.route_editorial += 1; }
+  } else {
+    if (/亲子|研学|自然|儿童/.test(t)) { weight.photo_documentary += 3; weight.brand_journal += 1; }
+    if (/摄影|风光|秋色|红叶|花海/.test(t)) { weight.outdoor_lookbook += 2; weight.photo_documentary += 1; }
+    if (/漂流|溯溪|水上|派对|音乐|露营/.test(t)) { weight.brand_journal += 2; weight.photo_documentary += 1; }
+    if (/登山|雪山|越野|高海拔|攀岩/.test(t)) { weight.outdoor_lookbook += 2; weight.brand_journal += 1; }
+    weight.brand_journal += 1; // 回顾默认偏品牌手记
+  }
   return xfWeightedPick(allowed, weight, xfStyleSeed() * 1.7 + 3);
 }
 function xfPickVariant(family, scenario, seed) {
@@ -236,16 +357,17 @@ function xfPickVariant(family, scenario, seed) {
 /* ---------- 阶段一：Content Strategy + Photo Analysis + Editorial Direction ---------- */
 function xfHeuristicDirection(a, p, family, scenario, photoProfile) {
   const angleMap = {
-    family: "把自然变成孩子的第一间教室", social: "这周末，去山里当个本地人",
-    diary: "走得慢一点，才看得见山", magazine: "这一程，值得被认真记录",
-    achievement: "我们真的把这座山走完了", gallery: "把这一程，存进相册里",
+    route_editorial: "这一程，值得被认真记录", visual_campaign: "这周末，去山里当个本地人",
+    challenge_editorial: "我们真的把这座山走完了", brand_journal: "走得慢一点，才看得见山",
+    photo_documentary: "这一程的画面，比文字更诚实", outdoor_lookbook: "把这一程，存进相册里",
   };
   const hookMap = {
-    family: "原来陪玩也能这么省心", social: "谁懂啊这地方", diary: "山一直在，刚好今天有空",
-    magazine: "这一程，值得被认真记录", achievement: "登顶那刻，值了", gallery: "九张图，装下整个周末",
+    route_editorial: "这一程，值得被认真记录", visual_campaign: "谁懂啊这地方",
+    challenge_editorial: "登顶那刻，值了", brand_journal: "山一直在，刚好今天有空",
+    photo_documentary: "九张图，装下整个周末", outdoor_lookbook: "九张图，装下整个周末",
   };
-  const compMap = { diary: "大图主导", magazine: "左右交替", social: "卡片流", family: "手账步骤", achievement: "数据条+区块", gallery: "网格画廊" };
-  const colorMap = { diary: "山系橙", magazine: "墨绿", social: "暖米", family: "松石", achievement: "夜空蓝", gallery: "暖米" };
+  const compMap = { route_editorial: "左右交替", visual_campaign: "卡片流", challenge_editorial: "数据条+区块", brand_journal: "大图主导", photo_documentary: "手账步骤", outdoor_lookbook: "网格画廊" };
+  const colorMap = { route_editorial: "墨绿", visual_campaign: "暖米", challenge_editorial: "夜空蓝", brand_journal: "山系橙", photo_documentary: "松石", outdoor_lookbook: "暖米" };
   const structRecruit = ["为什么值得去", "来了会体验什么", "参加完你能得到什么", "适不适合我", "真实信息", "怎么报名"];
   const structRecap = ["开场", "本次活动核心记忆", "本次参与体验", "值得记住的瞬间", "参与者收获", "照片回顾", "下一期预告"];
   return {
@@ -256,7 +378,20 @@ function xfHeuristicDirection(a, p, family, scenario, photoProfile) {
     voice: scenario === "recap" ? "第一人称、认真回看" : "第一人称、像朋友安利",
     hook: hookMap[family] || "周末就该这么过",
     structure: scenario === "recap" ? structRecap : structRecruit,
-    visual: { mood: photoProfile.mood, emotion: photoProfile.emotion, scene: photoProfile.dominantScene || (photoProfile.sceneTypes || []).join(""), color: colorMap[family], composition: compMap[family], coverHint: photoProfile.cover ? "用已上传封面" : "建议补充 1 张大图", typographic: family === "magazine" ? "衬线大标题" : "无衬线粗体" },
+    editorialConcept: angleMap[family] || p.themeA,
+    visualFocus: compMap[family],
+    readingMood: photoProfile.mood || (scenario === "recap" ? "温暖回看" : "松弛向往"),
+    imagePriority: scenario === "recap" ? "high" : "medium",
+    storyStyle: family === "challenge_editorial" ? "纪实推进" : (family === "visual_campaign" ? "种草叙事" : "沉浸叙述"),
+    informationStyle: family === "challenge_editorial" ? "数据化" : "场景化",
+    titleTone: family === "route_editorial" ? "克制" : "亲和",
+    ctaStrength: scenario === "recruit" ? "strong" : "soft",
+    layoutFamily: family,
+    layoutRhythm: { maxSamePatternRepeat: 2, cadence: "alternating" },
+    textDensity: "medium",
+    whitespace: (family === "brand_journal" || family === "photo_documentary") ? "generous" : (family === "route_editorial" ? "medium" : "generous"),
+    imageRatio: scenario === "recap" ? 0.68 : 0.55,
+    visual: { mood: photoProfile.mood, emotion: photoProfile.emotion, scene: photoProfile.dominantScene || (photoProfile.sceneTypes || []).join(""), color: colorMap[family], composition: compMap[family], coverHint: photoProfile.cover ? "用已上传封面" : "建议补充 1 张大图", typographic: family === "route_editorial" ? "衬线大标题" : "无衬线粗体" },
     copyDirectives: { avoid: ["硬销", "名额仅剩", "最后机会"], must: ["地点真实感", "基于已确认事实"] },
   };
 }
@@ -278,7 +413,10 @@ async function genStrategy(a, photos, notes, scenario) {
   hook: 一个情绪/反差钩子（≤14字）,
   structure: [4-6个章节标题，按消费者决策或回顾逻辑排序],
   visual: { mood, color:"山系橙/墨绿/夜空蓝/暖米/松石", composition:"大图主导/网格/左右交替/卡片流", coverHint, typographic:"衬线大标题/无衬线粗体/手写感" },
-  copyDirectives: { avoid:[], must:[] }
+  copyDirectives: { avoid:[], must:[] },
+  editorialConcept, visualFocus, readingMood, imagePriority: "medium/high", storyStyle, informationStyle, titleTone, ctaStrength: "strong/soft", layoutFamily,
+  layoutRhythm: { maxSamePatternRepeat: 2, cadence: "alternating" },
+  textDensity: "low/medium/high", whitespace: "low/medium/generous", imageRatio: 数字(招募0.5-0.65 / 回顾0.6-0.75)
 }`;
     const user = `场景：${scenario === "recruit" ? "活动招募" : "活动回顾"}
 事实：${JSON.stringify(facts)}
@@ -332,9 +470,9 @@ function xfFallbackRecruit(a, m, dir) {
     xhs: {
       titles: [xfXhsTitle(a, m, 1, dir), xfXhsTitle(a, m, 2, dir), xfXhsTitle(a, m, 3, dir)],
       body: `谁懂啊😭 ${angle}这么玩也太舒服了\n\n📍 ${f.place ? "在" + f.place + "的" : ""}${f.season || ""}这一程，不是手机壁纸能替代的——得自己走一趟才装得下。\n\n✅ 为什么值得去\n${m.scenicValue}。呼吸、流汗、和朋友边走边聊，比刷一天手机耐放多了。\n\n🎒 怎么玩\n${m.experienceValue}。${f.days > 1 ? "两天一夜" : "一天"}的节奏，不用赶景点，时间全是自己的。\n\n💡 真心话\n${m.participationValue}。真实去一次，比收藏一百篇攻略都管用。\n\n📌 实用信息\n· 时间：${f.date || "近期"}\n· ${f.price != null ? "费用：¥" + f.price + "/" + (f.limitUnit || "人") : "费用详询"}\n· ${f.difficulty ? "强度：" + f.difficulty : "强度友好"}\n· 装备：${(f.gear && f.gear.length) ? f.gear.slice(0, 4).join("、") : "轻装即可"}\n\n码住这篇，周末约起来👀 评论区扣 1 我拉你进群～`,
-      cover: `${f.place || "山里"}·${xfSeason(a) || ""}封神`,
-      tags: xfTags(a),
-      imgOrder: [],
+      coverText: `${f.place || "山里"}·${xfSeason(a) || ""}封神`,
+      hashtags: xfTags(a),
+      imageOrder: ["cover", "scenic", "people", "action", "detail"],
     },
     moments: {
       warm: `${dir.hook ? dir.hook + " " : ""}周末想透口气的不妨看过来🌿 ${f.place ? "在" + f.place + "的" : ""}${f.season || ""}局又开了，${f.date || ""} 出发。不用做攻略，跟着走就行，想一起的私我占位～`,
@@ -368,7 +506,7 @@ async function genRecruit(a, m, strategy) {
   const sys = `你是 ClubOS 户外俱乐部的多平台内容写手。严格遵循下面的 Editorial Direction 写作，所有事实只来自 confirmedFacts，禁止虚构天气/领队行为/用户感受/具体人数/未给的价格。
 按各平台输出：
 - gzh：公众号图文 JSON {title,subtitle,summary,sections:[{h,html}],info:[{k,v}],fee,service,cta}
-- xhs：小红书 JSON {titles:[3-5],body,cover,tags:[]}
+- xhs：小红书 JSON {titles:[3-5],body,coverText:封面短句,hashtags:[],imageOrder:[]}
 - moments：朋友圈三版 {warm,formal,last}
 - wechat：微信群 {recruit,brief}
 - voice：口播 {s30,s60}
@@ -385,17 +523,26 @@ confirmedFacts：${JSON.stringify(f)}
       out = await xfLLM(sys + "\n（上一次返回不完整，请严格返回全部 6 个平台的完整 JSON，gzh.sections 至少 4 段）", user, true);
     }
     out = xfQualityCheck(out, dir, "recruit") || out;
-    // 质量检查不达标（含虚构表述）→ 自动重生成一次（更强事实约束）
-    if (aiAuthMode() && state.xf && state.xf.quality && state.xf.quality.flag === "fiction_risk") {
-      const retry = await xfLLM(sys + "\n⚠️ 上一版被质量检查判定含虚构表述。请严格只使用 confirmedFacts 中的事实，绝对禁止出现任何天气描写、领队具体行为、用户感受代词（我们/大家纷纷表示）、或任何未提供的数据。", user + "\n请基于已确认事实重新生成，确保零虚构。", true);
-      if (retry && retry.gzh && retry.gzh.sections && retry.gzh.sections.length >= 3) {
-        const rechk = xfQualityCheck(retry, dir, "recruit");
-        if (!(state.xf.quality && state.xf.quality.flag === "fiction_risk")) out = rechk || retry;
+    // 质量检查不达标 → 自动重生成一次（§41）
+    if (aiAuthMode() && state.xf && state.xf.quality) {
+      if (state.xf.quality.fictionRisk) {
+        const retry = await xfLLM(sys + "\n⚠️ 上一版被质量检查判定含虚构表述。请严格只使用 confirmedFacts 中的事实，绝对禁止出现任何天气描写、领队具体行为、用户感受代词（我们/大家纷纷表示）、或任何未提供的数据。", user + "\n请基于已确认事实重新生成，确保零虚构。", true);
+        if (retry && retry.gzh && retry.gzh.sections && retry.gzh.sections.length >= 3) {
+          const rechk = xfQualityCheck(retry, dir, "recruit");
+          if (state.xf.quality && !state.xf.quality.fictionRisk) out = rechk || retry;
+        }
+      } else if (state.xf.quality.contentRisk) {
+        const retry = await xfLLM(sys + "\n⚠️ 上一版文案质量分偏低（模板感/空洞词/段落重复/缺报名指引）。请去掉套路化开头与空洞词，确保每段有具体事实，结尾给出清晰报名方式。", user, true);
+        if (retry && retry.gzh && retry.gzh.sections && retry.gzh.sections.length >= 3) {
+          const rechk = xfQualityCheck(retry, dir, "recruit");
+          if (state.xf.quality && !state.xf.quality.contentRisk && !state.xf.quality.fictionRisk) out = rechk || retry;
+        }
       }
     }
   }
   if (!out || !out.gzh || !out.gzh.sections) out = xfFallbackRecruit(a, m, dir);
   out = xfQualityCheck(out, dir, "recruit") || out;
+  if (out && out.xhs) out.xhs = xfNormalizeXhs(out.xhs);
   return out;
 }
 
@@ -416,8 +563,9 @@ function xfFallbackRecap(a, m, dir, photos, notes, type) {
     xhs: {
       titles: [`回顾｜${f.activityName || "这场活动"}，值了🔥`, `周末去${f.place || "山里"}的人，后来都怎样了`, `${type}的一天，比想象中更难忘`],
       body: `刚结束的${f.activityName || "这场活动"}，我宣布：值了📷\n\n🌟 最难忘的瞬间\n${sections[1] ? sections[1].html : ""}\n\n🤝 一起走过的人\n${sections[3] ? sections[3].html : ""}\n\n💬 真心话\n真实去一次，比任何攻略都具体。下一期${xfNextText(a)}，我已经先占位了。\n\n评论区蹲下次活动的小伙伴扣 1 👇`,
-      cover: `圆满收官·${f.place || "山里"}`,
-      tags: xfTags(a).concat(["活动回顾"]),
+      coverText: `圆满收官·${f.place || "山里"}`,
+      hashtags: xfTags(a).concat(["活动回顾"]),
+      imageOrder: ["cover", "people", "team", "scenic", "action"],
     },
     moments: `【活动回顾】${f.activityName || "本周活动"}顺利收官🎉 ${signN ? signN + " 位伙伴" : "大家"}一起${type === "完成挑战型" ? "把山踩在了脚下" : "度过了超舒服的一天"}。最开心的不是到达，是路上有人一起走。下一期${xfNextText(a)}`,
     wechat: `各位群友，咱们的${f.activityName || "活动"}圆满收官啦🌿 ${signN ? "共 " + signN + " 位伙伴参加" : "大家玩得超尽兴"}。\n\n特别感谢每一位准时出发、互相照应的伙伴——下次还跟你走。照片已整理在相册，记得自取📷\n\n错过这一次的别慌，${xfNextText(a)}想一起的下期提前占位，我帮你留着～`,
@@ -445,7 +593,7 @@ async function genRecap(a, m, strategy, photos, notes) {
 原则：允许创造表达，禁止创造事件——只基于给定事实与补充资料，不得虚构天气/事件/用户感受/领队行为/具体人数。
 按各平台输出：
 - gzh：公众号回顾 JSON {title,summary,sections:[{h,html}],next}
-- xhs：小红书回顾 JSON {titles:[3],body,cover,tags:[]}
+- xhs：小红书回顾 JSON {titles:[3],body,coverText:封面短句,hashtags:[],imageOrder:[]}
 - moments：朋友圈回顾文案（字符串）
 - wechat：微信群感谢文案（字符串）
 - next：下一期预告（字符串）
@@ -463,40 +611,107 @@ async function genRecap(a, m, strategy, photos, notes) {
       out = await xfLLM(sys + "\n（请严格返回完整 JSON：gzh.sections 至少 5 段，moments/wechat/next 为字符串）", user, true);
     }
     out = xfQualityCheck(out, dir, "recap") || out;
-    // 质量检查不达标 → 自动重生成一次（更强事实约束）
-    if (aiAuthMode() && state.xf && state.xf.quality && state.xf.quality.flag === "fiction_risk") {
-      const retry = await xfLLM(sys + "\n⚠️ 上一版被质量检查判定含虚构表述。请严格只用事实与补充资料，禁止任何天气/事件/用户感受/领队行为描写。", user + "\n请基于事实重新生成，确保零虚构。", true);
-      if (retry && retry.gzh && retry.gzh.sections && retry.gzh.sections.length >= 4) {
-        const rechk = xfQualityCheck(retry, dir, "recap");
-        if (!(state.xf.quality && state.xf.quality.flag === "fiction_risk")) out = rechk || retry;
+    // 质量检查不达标 → 自动重生成一次（§41）
+    if (aiAuthMode() && state.xf && state.xf.quality) {
+      if (state.xf.quality.fictionRisk) {
+        const retry = await xfLLM(sys + "\n⚠️ 上一版被质量检查判定含虚构表述。请严格只用事实与补充资料，禁止任何天气/事件/用户感受/领队行为描写。", user + "\n请基于事实重新生成，确保零虚构。", true);
+        if (retry && retry.gzh && retry.gzh.sections && retry.gzh.sections.length >= 4) {
+          const rechk = xfQualityCheck(retry, dir, "recap");
+          if (state.xf.quality && !state.xf.quality.fictionRisk) out = rechk || retry;
+        }
+      } else if (state.xf.quality.contentRisk) {
+        const retry = await xfLLM(sys + "\n⚠️ 上一版文案质量分偏低（模板感/空洞词/段落重复）。请去掉套路化开头，确保每段基于真实事实，结尾有下一期预告。", user, true);
+        if (retry && retry.gzh && retry.gzh.sections && retry.gzh.sections.length >= 4) {
+          const rechk = xfQualityCheck(retry, dir, "recap");
+          if (state.xf.quality && !state.xf.quality.contentRisk && !state.xf.quality.fictionRisk) out = rechk || retry;
+        }
       }
     }
   }
   if (!out || !out.gzh || !out.gzh.sections) out = xfFallbackRecap(a, m, dir, photos, notes, type);
   out = xfQualityCheck(out, dir, "recap") || out;
+  if (out && out.xhs) out.xhs = xfNormalizeXhs(out.xhs);
   return out;
 }
 
-/* ---------- 质量检查（ContentQualityCheck / EditorialQualityCheck） ---------- */
+/* ---------- 质量检查（§39 ContentQualityCheck / §40 EditorialQualityCheck） ---------- */
+function xfTextOf(out) {
+  const parts = [];
+  const gzh = out.gzh || {};
+  (gzh.sections || []).forEach((s) => { if (s && s.html) parts.push(s.html); });
+  if (gzh.title) parts.push(gzh.title);
+  if (gzh.summary) parts.push(gzh.summary);
+  if (out.xhs && out.xhs.body) parts.push(out.xhs.body);
+  if (out.moments) { if (typeof out.moments === "string") parts.push(out.moments); else ["warm", "formal", "last"].forEach((k) => { if (out.moments[k]) parts.push(out.moments[k]); }); }
+  if (out.wechat) { if (typeof out.wechat === "string") parts.push(out.wechat); else ["recruit", "brief"].forEach((k) => { if (out.wechat[k]) parts.push(out.wechat[k]); }); }
+  return parts.join("\n");
+}
+
+/* §39 ContentQualityCheck：虚构词 / 模板拼接感 / 空洞词 / 重复 / 主题统一 / 图文匹配 / 转化 / 纪实 */
+function xfContentQuality(out, dir, scenario) {
+  const T = xfTextOf(out);
+  const flags = [];
+  let score = 100;
+  const FORBID = ["万里无云", "阳光明媚", "下起了雨", "突然放晴", "领队说", "大家纷纷表示", "据说", "据说当时", "不得不说", "说实话", "我们都很", "大家都说", "很多人都说"];
+  let fiction = 0; FORBID.forEach((w) => { if (T.indexOf(w) >= 0) { fiction++; if (flags.indexOf("fiction:" + w) < 0) flags.push("fiction:" + w); } });
+  if (fiction > 0) score -= Math.min(45, fiction * 14);
+  const TEMPLATE = ["大家好，", "大家好！", "今天给大家", "一起来看看", "不仅如此", "总而言之", "总的来说", "首先，", "其次，", "最后，"];
+  let tpl = 0; TEMPLATE.forEach((w) => { if (T.indexOf(w) >= 0) tpl++; });
+  if (tpl >= 3) { flags.push("template"); score -= 10; }
+  const HOLLOW = ["说走就走", "治愈", "松弛感", "诗和远方", "岁月静好", "人间值得", "小确幸", "元气满满", "绝绝子"];
+  let hollow = 0; HOLLOW.forEach((w) => { if (T.indexOf(w) >= 0) hollow++; });
+  if (hollow >= 2) { flags.push("hollow"); score -= 8; }
+  const secs = (out.gzh && out.gzh.sections || []).map((s) => (s.html || "").replace(/<[^>]+>/g, ""));
+  const seen = {}; let dup = 0;
+  secs.forEach((s) => { const key = s.trim().slice(0, 24); if (key.length > 6) { if (seen[key]) dup++; seen[key] = 1; } });
+  if (dup > 0) { flags.push("repeat"); score -= 8; }
+  const cta = (out.gzh && out.gzh.cta) || (scenario === "recap" && out.gzh && out.gzh.next) || out.next;
+  if (!cta) { flags.push("no_cta"); score -= 6; }
+  if (scenario === "recap" && fiction > 0) { flags.push("recap_fiction"); score -= 10; }
+  return { score: Math.max(0, score), flags: flags, fiction: fiction };
+}
+
+/* §40 EditorialQualityCheck：Card Wall / 同结构连续 / 图片占比 / 留白 / 字体层级 / Hero / 招募回顾差异 / 家族匹配 */
+function xfEditorialQuality(dir, scenario, family, variant) {
+  const flags = [];
+  let score = 100;
+  const fam = XF_FAMILIES[family];
+  if (!fam || !fam.scenario || !fam.scenario.includes(scenario)) { flags.push("family_mismatch"); score -= 20; }
+  const structLen = (dir && dir.structure) ? dir.structure.length : 0;
+  if (scenario === "recruit" && structLen < 4) { flags.push("recruit_struct"); score -= 6; }
+  if (scenario === "recap" && structLen < 5) { flags.push("recap_struct"); score -= 6; }
+  if (dir && dir.layoutRhythm && dir.layoutRhythm.maxSamePatternRepeat && dir.layoutRhythm.maxSamePatternRepeat > 2) { flags.push("rhythm"); score -= 10; }
+  if (dir && dir.visual && !dir.visual.typographic) { flags.push("no_typo"); score -= 6; }
+  if (dir && dir.visual && !dir.visual.coverHint) { flags.push("no_hero"); score -= 6; }
+  if (dir && dir.imageRatio) {
+    const band = scenario === "recruit" ? [0.5, 0.65] : [0.6, 0.75];
+    if (dir.imageRatio < band[0] - 0.05 || dir.imageRatio > band[1] + 0.05) { flags.push("image_ratio"); score -= 8; }
+  }
+  if (dir && dir.whitespace && ["low", "medium", "generous"].indexOf(dir.whitespace) < 0) { flags.push("whitespace"); score -= 8; }
+  return { score: Math.max(0, score), flags: flags };
+}
+
 function xfQualityCheck(out, dir, scenario) {
   if (!out) return out;
   const gzh = out.gzh;
   if (!gzh || !gzh.sections || gzh.sections.length < 3) return out;
-  const FORBID = ["万里无云", "阳光明媚", "下起了雨", "突然放晴", "领队说", "大家纷纷表示", "据说", "据说当时", "不得不说", "说实话", "我们都很", "大家都说", "很多人都说"];
-  let bad = 0; const hits = [];
-  const scan = (s) => {
-    if (s && typeof s === "object") { Object.values(s).forEach((v) => scan(v)); return; }
-    const t = (s == null ? "" : String(s));
-    (FORBID || []).forEach((w) => { if (t.indexOf(w) >= 0) { bad++; if (hits.indexOf(w) < 0) hits.push(w); } });
-  };
-  (gzh.sections || []).forEach((s) => scan(s.html));
-  if (out.moments) scan(out.moments);
-  if (out.wechat) scan(out.wechat);
-  if (out.xhs && out.xhs.body) scan(out.xhs.body);
-  if (bad > 0) {
-    if (state.xf) state.xf.quality = { flag: "fiction_risk", count: bad, hits: hits.slice(0, 5), note: "检测到可能的虚构表述，已自动重生成一次；仍建议人工复核：" + hits.slice(0, 3).join("、") };
-  } else if (state.xf) {
-    state.xf.quality = { flag: "ok", note: "文案基于已确认事实" };
+  const cq = xfContentQuality(out, dir, scenario);
+  const family = (dir && dir.family) || (state.xf && state.xf.family) || "";
+  const eq = xfEditorialQuality(dir, scenario, family, (dir && dir.variant));
+  const fictionRisk = cq.fiction > 0;
+  const contentRisk = cq.score < 60;
+  const editorialRisk = eq.score < 60;
+  if (state.xf) {
+    const ficHits = cq.flags.filter((f) => f.indexOf("fiction:") >= 0).map((f) => f.split(":")[1]).slice(0, 3);
+    state.xf.quality = {
+      flag: fictionRisk ? "fiction_risk" : (contentRisk || editorialRisk ? "quality_risk" : "ok"),
+      content: cq, editorial: eq,
+      contentRisk: contentRisk, editorialRisk: editorialRisk, fictionRisk: fictionRisk,
+      note: fictionRisk ? ("检测到可能的虚构表述，建议人工复核：" + ficHits.join("、"))
+        : (contentRisk ? "文案质量分偏低（" + cq.score + "），已尝试自动重生成"
+          : (editorialRisk ? "版式质量分偏低（" + eq.score + "），已尝试重选家族/变体"
+            : "文案基于已确认事实，质量达标（内容 " + cq.score + " / 版式 " + eq.score + "）")),
+    };
   }
   return out;
 }
@@ -679,9 +894,52 @@ function xfStyleBar(xf) {
   return `<div class="xf-stylebar">
     <div class="xf-stylebar-row"><span class="xf-stylebar-lbl">编辑家族</span>${fams.map((f) => `<button class="xf-chip ${xf.family === f ? "active" : ""}" data-action="xfSwitchFamily" data-f="${f}">${XF_FAMILIES[f].label}</button>`).join("")}</div>
     <div class="xf-stylebar-row"><span class="xf-stylebar-lbl">版式变体</span>${vs.map((v, i) => `<button class="xf-chip ${xf.variant === i ? "active" : ""}" data-action="xfSwitchVariant" data-v="${i}">${v}</button>`).join("")}<button class="btn btn-ghost btn-sm" data-action="xfSwitchStyle">${ICON("refresh")} 换风格</button></div>
+    <div class="xf-stylebar-row xf-quick"><span class="xf-stylebar-lbl">快速风格</span>${(sc === "recruit"
+      ? [["magazine", "更杂志"], ["visual", "更视觉"], ["pro", "更专业"], ["young", "更年轻"], ["challenge", "更有挑战感"]]
+      : [["doc", "更纪实"], ["warm", "更温暖"], ["album", "更像画册"], ["people", "更有人物感"], ["nature", "更自然"]]
+    ).map(([k, l]) => `<button class="xf-chip xf-chip-soft" data-action="xfQuickStyle" data-k="${k}">${l}</button>`).join("")}</div>
     ${dir ? `<div class="xf-dir">编辑方向：<b>${esc(dir.angle || "")}</b>${dir.hook ? ` · 钩子「${esc(dir.hook)}」` : ""} · 视觉 ${esc((dir.visual && dir.visual.color) || "")}/${esc((dir.visual && dir.visual.composition) || "")}</div>` : ""}
     ${xf.quality && xf.quality.note ? `<div class="xf-q">质量：${esc(xf.quality.note)}</div>` : ""}
   </div>`;
+}
+
+/* §38 平台快速风格控制：仅调 ED 权重/视觉参数 + 换版式，不整跑文案 */
+function xfQuickStyle(kind) {
+  const xf = xfState();
+  if (!xf.strategy) { toast("请先生成内容"); return; }
+  const sc = xf.scenario;
+  const map = sc === "recruit"
+    ? {
+      magazine: { family: "route_editorial", color: "墨绿", typographic: "衬线大标题", composition: "左右交替", whitespace: "medium" },
+      visual: { family: "visual_campaign", color: "暖米", typographic: "无衬线粗体", composition: "卡片流", whitespace: "generous" },
+      pro: { family: "challenge_editorial", color: "夜空蓝", typographic: "无衬线粗体", composition: "数据条+区块", whitespace: "low" },
+      young: { family: "visual_campaign", color: "暖米", typographic: "无衬线粗体", composition: "卡片流", whitespace: "generous" },
+      challenge: { family: "challenge_editorial", color: "夜空蓝", typographic: "无衬线粗体", composition: "数据条+区块", whitespace: "low" },
+    }
+    : {
+      doc: { family: "brand_journal", color: "山系橙", composition: "大图主导", whitespace: "generous" },
+      warm: { family: "photo_documentary", color: "松石", composition: "手账步骤", whitespace: "generous" },
+      album: { family: "outdoor_lookbook", color: "暖米", composition: "网格画廊", whitespace: "generous" },
+      people: { family: "photo_documentary", color: "松石", composition: "手账步骤", whitespace: "medium", imagePriority: "high" },
+      nature: { family: "brand_journal", color: "山系橙", composition: "大图主导", whitespace: "generous" },
+    };
+  const cfg = map[kind];
+  if (!cfg) return;
+  const dir = xf.strategy.editorialDirection;
+  if (cfg.family && XF_FAMILIES[cfg.family]) {
+    xf.family = cfg.family; dir.family = cfg.family;
+    const vs = (XF_FAMILIES[cfg.family].variants || [""]).length;
+    xf.variant = Math.floor(xfRand(xfStyleSeed() * 3.3 + 7) * vs) % vs;
+    dir.variant = xf.variant;
+  }
+  if (cfg.color) dir.visual.color = cfg.color;
+  if (cfg.typographic) dir.visual.typographic = cfg.typographic;
+  if (cfg.composition) dir.visual.composition = cfg.composition;
+  if (cfg.whitespace) dir.whitespace = cfg.whitespace;
+  if (cfg.imagePriority) dir.imagePriority = cfg.imagePriority;
+  xf._styleHistory.push({ family: xf.family, variant: xf.variant });
+  toast("已应用风格");
+  showView(state.view);
 }
 
 function xfRecruitResult() {
@@ -796,7 +1054,7 @@ function xfSectionsMarkup(variant, sections, secPhotos, parasFn) {
       const ph = secPhotos[i] || null;
       return `<section class="gzh-sec gzh-sec-spread">
         <h2 class="gzh-sec-spread-h">${esc(s.h)}</h2>
-        ${ph && ph.src ? `<div class="gzh-sec-spread-img" style="background-image:url('${ph.src}')"><span class="gzh-img-cap">${esc(ph.cat || "")}</span></div>` : ""}
+        ${ph && ph.src ? `<div class="gzh-sec-spread-img" style="background-image:url('${ph.src}')"><span class="gzh-img-cap">${esc(xfCap(ph, ""))}</span></div>` : ""}
         <div class="gzh-sec-spread-body">${parasFn(s.html)}</div>
       </section>`;
     }).join("");
@@ -845,34 +1103,29 @@ function xfGzhDiaryHtml(gzh, xf, isRecap) {
   const sections = (gzh.sections || []).map((s, i) => {
     const layoutClass = ["gzh-sec-full", "gzh-sec-split", "gzh-sec-quote", "gzh-sec-img"][i % 4];
     const ph = nextPhoto(layoutClass);
-    const paras = xfGzhTextParas(s.html).map((p) => `<p>${xfGzhHighlight(p, a)}</p>`).join("");
-    if (layoutClass === "gzh-sec-quote") {
-      return `<section class="gzh-sec gzh-sec-quote"><div class="gzh-quote-mark">”</div><h2>${esc(s.h)}</h2><div class="gzh-quote-body">${paras}</div></section>`;
-    }
-    if (layoutClass === "gzh-sec-split" && ph && ph.src) {
-      return `<section class="gzh-sec gzh-sec-split"><div class="gzh-split-text"><h2>${esc(s.h)}</h2>${paras}</div><div class="gzh-split-img" style="background-image:url('${ph.src}')"><span class="gzh-img-cap">${esc(ph.cat || "")}</span></div></section>`;
-    }
-    if (layoutClass === "gzh-sec-img" && ph && ph.src) {
-      return `<section class="gzh-sec gzh-sec-img"><div class="gzh-wide-img" style="background-image:url('${ph.src}')"><span class="gzh-img-cap">${esc(ph.cat || "")}</span></div><div class="gzh-img-text"><h2>${esc(s.h)}</h2>${paras}</div></section>`;
-    }
-    return `<section class="gzh-sec gzh-sec-full"><h2>${esc(s.h)}</h2>${paras}${ph && ph.src ? `<div class="gzh-sec-imgbox" style="background-image:url('${ph.src}')"><span class="gzh-img-cap">${esc(ph.cat || "")}</span></div>` : ""}</section>`;
+    const paras = xfGzhTextParas(s.html).map((p) => `<p>${xfGzhHighlight(p, a)}</p>`);
+    if (layoutClass === "gzh-sec-quote") return xfRenderComponent("PullQuote", { h: s.h, paras: paras });
+    if (layoutClass === "gzh-sec-split" && ph && ph.src) return xfRenderComponent("ImagePair", { h: s.h, paras: paras, ph: ph });
+    if (layoutClass === "gzh-sec-img" && ph && ph.src) return `<section class="gzh-sec gzh-sec-img">${xfRenderComponent("FullBleedImage", { ph: ph })}<div class="gzh-img-text"><h2>${esc(s.h)}</h2>${paras.join("")}</div></section>`;
+    return `<section class="gzh-sec gzh-sec-full"><h2>${esc(s.h)}</h2>${paras.join("")}${ph && ph.src ? `<div class="gzh-sec-imgbox" style="background-image:url('${ph.src}')"><span class="gzh-img-cap">${esc(xfCap(ph, ""))}</span></div>` : ""}</section>`;
   }).join("");
 
   const infoBlock = (!isRecap && gzh.info && gzh.info.length)
-    ? `<div class="gzh-info-grid">${gzh.info.map((r) => `<div class="gzh-info-cell"><span class="gzh-info-k">${esc(r.k)}</span><span class="gzh-info-v">${esc(r.v)}</span></div>`).join("")}</div>`
+    ? `<div class="gzh-info-grid">${xfRenderComponent("InfoGrid", { rows: gzh.info })}</div>`
     : "";
 
   const feeBlock = (!isRecap && gzh.fee)
-    ? `<div class="gzh-diary-block"><h2>费用说明</h2><p>${esc(gzh.fee)}</p>${gzh.service ? `<p class="gzh-service">${esc(gzh.service)}</p>` : ""}</div>`
+    ? `<div class="gzh-diary-block"><h2>费用说明</h2>${xfRenderComponent("FeeBlock", { fee: gzh.fee, service: gzh.service })}</div>`
     : "";
 
   const uploadHint = !hasPhotos
     ? `<div class="gzh-upload-tip"><div class="gzh-upload-tip-ic">📷</div><div><b>这张图文还没有照片</b><p>在「添加图片 / 海报」处上传 3–6 张活动照片，系统会自动匹配到封面与各段落，排版会立刻更有杂志感。</p></div></div>`
     : "";
 
-  const cta = gzh.cta || (isRecap && gzh.next) ? `<div class="gzh-diary-cta">${esc(gzh.cta || gzh.next || "")}</div>` : "";
+  const ctaText = gzh.cta || (isRecap && gzh.next) || "";
+  const cta = ctaText ? xfRenderComponent("EditorialCTA", { text: ctaText }) : "";
 
-  return `<div class="gzh-article gzh-diary gzh-var-${xf.variant}" id="xfGzhArticle" contenteditable="true" spellcheck="false">
+  return `<div class="gzh-article gzh-diary gzh-var-${xf.variant}"${xfWsIr(xf, isRecap)} id="xfGzhArticle" contenteditable="true" spellcheck="false">
     ${hero}
     ${lead}
     ${vSec != null ? vSec : sections}
@@ -896,12 +1149,13 @@ function xfGzhClassicHtml(gzh, xf, layout, isRecap) {
   const parasFn = (html) => xfGzhTextParas(html).map((p) => `<p>${xfGzhHighlight(p, a)}</p>`).join("");
   const vSec = (xf.variant >= 1) ? xfSectionsMarkup(xf.variant, gzh.sections, secPhotos, parasFn) : null;
   const infoBlock = (!isRecap && gzh.info && gzh.info.length)
-    ? `<div class="gzh-info"><h2>活动信息</h2><table>${gzh.info.map((r) => `<tr><td>${esc(r.k)}</td><td>${esc(r.v)}</td></tr>`).join("")}</table></div>`
+    ? `<div class="gzh-info"><h2>活动信息</h2>${xfRenderComponent("InfoTable", { rows: gzh.info })}</div>`
     : "";
   const feeBlock = (!isRecap && gzh.fee)
-    ? `<div class="gzh-block"><h2>费用说明</h2><p>${esc(gzh.fee)}</p>${gzh.service ? `<p>${esc(gzh.service)}</p>` : ""}</div>`
+    ? `<div class="gzh-block"><h2>费用说明</h2>${xfRenderComponent("FeeBlock", { fee: gzh.fee, service: gzh.service })}</div>`
     : "";
-  const cta = gzh.cta || (isRecap && gzh.next) ? `<div class="gzh-cta">${esc(gzh.cta || gzh.next || "")}</div>` : "";
+  const ctaText = gzh.cta || (isRecap && gzh.next) || "";
+  const cta = ctaText ? xfRenderComponent("EditorialCTA", { text: ctaText, cls: "gzh-cta" }) : "";
   const uploadHint = !hasPhotos
     ? `<div class="gzh-upload-tip"><div class="gzh-upload-tip-ic">📷</div><div><b>这张图文还没有照片</b><p>上传 3–6 张照片，各版式会自动匹配封面与段落配图。</p></div></div>`
     : "";
@@ -909,18 +1163,11 @@ function xfGzhClassicHtml(gzh, xf, layout, isRecap) {
   if (layout === "youth") {
     const cards = (gzh.sections || []).map((s, i) => {
       const ph = secPhotos[i] || null;
-      const paras = parasFn(s.html);
-      return `<div class="gzh-youth-card">
-        ${ph && ph.src ? `<div class="gzh-youth-card-img" style="background-image:url('${ph.src}')"><span class="gzh-img-cap">${esc(ph.cat || "")}</span></div>` : ""}
-        <div class="gzh-youth-card-body">
-          <div class="gzh-youth-card-num">0${(i % 9) + 1}</div>
-          <h3>${esc(s.h)}</h3>
-          ${paras}
-        </div>
-      </div>`;
+      const paras = xfGzhTextParas(s.html).map((p) => `<p>${xfGzhHighlight(p, a)}</p>`);
+      return xfRenderComponent("YouthCard", { h: s.h, paras: paras, ph: ph, i: i });
     }).join("");
-    const tags = xfTags(a).slice(0, 6).map((t) => `<span class="gzh-youth-tag">#${esc(t)}</span>`).join("");
-    return `<div class="gzh-article gzh-youth gzh-var-${xf.variant}" id="xfGzhArticle" contenteditable="true" spellcheck="false">
+    const tags = xfTags(a).slice(0, 6);
+    return `<div class="gzh-article gzh-youth gzh-var-${xf.variant}"${xfWsIr(xf, isRecap)} id="xfGzhArticle" contenteditable="true" spellcheck="false">
       <div class="gzh-youth-hero">
         <div class="gzh-youth-eyebrow">${esc(eyebrow)}</div>
         <h1 class="gzh-youth-title">${esc(gzh.title)}</h1>
@@ -929,7 +1176,7 @@ function xfGzhClassicHtml(gzh, xf, layout, isRecap) {
       </div>
       ${gzh.summary ? `<div class="gzh-youth-lead">${parasFn(gzh.summary)}</div>` : ""}
       <div class="gzh-youth-cards">${vSec != null ? vSec : cards}</div>
-      <div class="gzh-youth-tags">${tags}</div>
+      <div class="gzh-youth-tags">${xfRenderComponent("TagRow", { tags: tags })}</div>
       ${infoBlock}
       ${feeBlock}
       ${uploadHint}
@@ -940,17 +1187,10 @@ function xfGzhClassicHtml(gzh, xf, layout, isRecap) {
   if (layout === "family") {
     const steps = (gzh.sections || []).map((s, i) => {
       const ph = secPhotos[i] || null;
-      const paras = parasFn(s.html);
-      return `<div class="gzh-family-step">
-        <div class="gzh-family-step-num">${i + 1}</div>
-        <div class="gzh-family-step-body">
-          <h3>${esc(s.h)}</h3>
-          ${paras}
-        </div>
-        ${ph && ph.src ? `<div class="gzh-family-step-img" style="background-image:url('${ph.src}')"><span class="gzh-img-cap">${esc(ph.cat || "")}</span></div>` : ""}
-      </div>`;
+      const paras = xfGzhTextParas(s.html).map((p) => `<p>${xfGzhHighlight(p, a)}</p>`);
+      return xfRenderComponent("FamilyStep", { h: s.h, paras: paras, ph: ph, i: i });
     }).join("");
-    return `<div class="gzh-article gzh-family gzh-var-${xf.variant}" id="xfGzhArticle" contenteditable="true" spellcheck="false">
+    return `<div class="gzh-article gzh-family gzh-var-${xf.variant}"${xfWsIr(xf, isRecap)} id="xfGzhArticle" contenteditable="true" spellcheck="false">
       <div class="gzh-family-hero">
         <div class="gzh-family-cover" ${cover.src ? `style="background-image:url('${cover.src}')"` : ""}>
           <div class="gzh-family-cover-mask"></div>
@@ -977,22 +1217,13 @@ function xfGzhClassicHtml(gzh, xf, layout, isRecap) {
       { k: "强度", v: f.difficulty || "--" },
       { k: "天数", v: (f.days || 1) + "天" },
     ];
-    const kvHtml = kv.map((r) => `<div class="gzh-challenge-kv"><b>${esc(r.v)}</b><span>${esc(r.k)}</span></div>`).join("");
+    const kvHtml = xfRenderComponent("MetricStrip", { kvs: kv });
     const sections = (gzh.sections || []).map((s, i) => {
       const ph = secPhotos[i] || null;
-      const paras = parasFn(s.html);
-      return `<section class="gzh-sec gzh-challenge-sec">
-        <div class="gzh-challenge-sec-head">
-          <div class="gzh-challenge-sec-num">0${(i % 9) + 1}</div>
-          <h2>${esc(s.h)}</h2>
-        </div>
-        <div class="gzh-challenge-sec-body">
-          ${paras}
-          ${ph && ph.src ? `<div class="gzh-challenge-img" style="background-image:url('${ph.src}')"><span class="gzh-img-cap">${esc(ph.cat || "")}</span></div>` : ""}
-        </div>
-      </section>`;
+      const paras = xfGzhTextParas(s.html).map((p) => `<p>${xfGzhHighlight(p, a)}</p>`);
+      return xfRenderComponent("ChallengeSec", { h: s.h, paras: paras, ph: ph, i: i });
     }).join("");
-    return `<div class="gzh-article gzh-challenge gzh-var-${xf.variant}" id="xfGzhArticle" contenteditable="true" spellcheck="false">
+    return `<div class="gzh-article gzh-challenge gzh-var-${xf.variant}"${xfWsIr(xf, isRecap)} id="xfGzhArticle" contenteditable="true" spellcheck="false">
       <div class="gzh-challenge-hero">
         <div class="gzh-challenge-eyebrow">${esc(eyebrow)}</div>
         <h1 class="gzh-challenge-title">${esc(gzh.title)}</h1>
@@ -1017,21 +1248,14 @@ function xfGzhClassicHtml(gzh, xf, layout, isRecap) {
       { k: "爬升", v: f.elevation ? f.elevation + "m" : "--" },
       { k: "强度", v: f.difficulty || "--" },
     ];
-    const kvHtml = kv.map((r) => `<div class="gzh-longform-kv"><b>${esc(r.v)}</b><span>${esc(r.k)}</span></div>`).join("");
+    const kvHtml = xfRenderComponent("MetricStrip", { kvs: kv });
     const sections = (gzh.sections || []).map((s, i) => {
       const ph = secPhotos[i] || null;
-      const paras = parasFn(s.html);
+      const paras = xfGzhTextParas(s.html).map((p) => `<p>${xfGzhHighlight(p, a)}</p>`);
       const align = i % 2 === 0 ? "left" : "right";
-      return `<section class="gzh-sec gzh-longform-sec gzh-longform-sec-${align}">
-        ${ph && ph.src ? `<div class="gzh-longform-img" style="background-image:url('${ph.src}')"><span class="gzh-img-cap">${esc(ph.cat || "")}</span></div>` : ""}
-        <div class="gzh-longform-text">
-          <div class="gzh-longform-sec-num">0${(i % 9) + 1}</div>
-          <h2>${esc(s.h)}</h2>
-          ${paras}
-        </div>
-      </section>`;
+      return xfRenderComponent("LongformSec", { h: s.h, paras: paras, ph: ph, i: i, align: align });
     }).join("");
-    return `<div class="gzh-article gzh-longform gzh-var-${xf.variant}" id="xfGzhArticle" contenteditable="true" spellcheck="false">
+    return `<div class="gzh-article gzh-longform gzh-var-${xf.variant}"${xfWsIr(xf, isRecap)} id="xfGzhArticle" contenteditable="true" spellcheck="false">
       <div class="gzh-longform-hero">
         ${cover.src ? `<div class="gzh-longform-cover" style="background-image:url('${cover.src}')"><div class="gzh-longform-cover-mask"></div></div>` : ""}
         <div class="gzh-longform-hero-txt">
@@ -1062,14 +1286,14 @@ function xfGzhClassicHtml(gzh, xf, layout, isRecap) {
         <h2>${esc(s.h)}</h2>
         ${paras}
       </div>
-      ${ph && ph.src ? `<div class="gzh-mag-img" style="background-image:url('${ph.src}')"><span class="gzh-img-cap">${esc(ph.cat || "")}</span></div>` : ""}
+      ${ph && ph.src ? `<div class="gzh-mag-img" style="background-image:url('${ph.src}')"><span class="gzh-img-cap">${esc(xfCap(ph, ""))}</span></div>` : ""}
     </section>`;
   }).join("");
   const gallery = photos.length > 1
-    ? `<div class="gzh-gallery-classic"><h2>本期画面</h2><div class="gzh-gallery-grid">${photos.slice(0, 4).map((p) => `<div class="gzh-gallery-item" style="background-image:url('${p.src}')"><span class="gzh-img-cap">${esc(p.cat || "")}</span></div>`).join("")}</div></div>`
+    ? `<div class="gzh-gallery-classic"><h2>本期画面</h2>${xfRenderComponent("GalleryGrid", { photos: photos.slice(0, 4) })}</div>`
     : "";
-  return `<div class="gzh-article gzh-magazine gzh-var-${xf.variant}" id="xfGzhArticle" contenteditable="true" spellcheck="false">
-    <div class="gzh-cover" ${cover.src ? `style="background-image:url('${cover.src}')"` : ""}><div class="gzh-cover-mask"><div class="gzh-cover-cap">${esc(cover.cat ? "封面建议：" + cover.cat : (xf.photos && xf.photos.length ? "可换一张更具张力的大图作封面" : "未上传照片，建议补 1 张封面大图"))}</div></div></div>
+  return `<div class="gzh-article gzh-magazine gzh-var-${xf.variant}"${xfWsIr(xf, isRecap)} id="xfGzhArticle" contenteditable="true" spellcheck="false">
+    <div class="gzh-cover" ${cover.src ? `style="background-image:url('${cover.src}')"` : ""}><div class="gzh-cover-mask"><div class="gzh-cover-cap">${esc(xfCap(cover, "") ? "封面建议：" + xfCap(cover, "") : (xf.photos && xf.photos.length ? "可换一张更具张力的大图作封面" : "未上传照片，建议补 1 张封面大图"))}</div></div></div>
     <div class="gzh-mag-head">
       <div class="gzh-mag-eyebrow">${esc(eyebrow)}</div>
       <h1 class="gzh-title">${esc(gzh.title)}</h1>
@@ -1086,11 +1310,17 @@ function xfGzhClassicHtml(gzh, xf, layout, isRecap) {
 }
 
 function xfXhsPanel(x) {
+  const d = xfNormalizeXhs(x);
+  const orderLabel = { cover: "封面", scenic: "风景", people: "人物", action: "行进步", team: "团队", gear: "装备", meal: "餐食", camp: "营地", route: "路线", water: "亲水", detail: "细节" };
+  const orderChips = (d.imageOrder && d.imageOrder.length)
+    ? d.imageOrder.map((o) => `<span class="xf-tag xf-tag-soft">${esc(orderLabel[o] || o)}</span>`).join("")
+    : "";
   return `<div class="xf-text-card">
-    <div class="xf-field"><label>标题候选</label>${x.titles.map((t) => `<div class="xf-line">· ${esc(t)} <button class="copy-btn" data-action="xfCopyText" data-text="${esc(t)}">复制</button></div>`).join("")}</div>
-    <div class="xf-field"><label>正文</label><div class="xf-pre">${esc(x.body)}</div><button class="copy-btn" data-action="xfCopyText" data-text="${esc(x.body)}">复制正文</button></div>
-    <div class="xf-field"><label>封面短句</label><div class="xf-line">${esc(x.cover)}</div></div>
-    <div class="xf-field"><label>话题标签</label><div class="xf-tags">${x.tags.map((t) => `<span class="xf-tag">#${esc(t)}</span>`).join("")}</div></div>
+    <div class="xf-field"><label>标题候选</label>${d.titles.map((t) => `<div class="xf-line">· ${esc(t)} <button class="copy-btn" data-action="xfCopyText" data-text="${esc(t)}">复制</button></div>`).join("")}</div>
+    <div class="xf-field"><label>正文</label><div class="xf-pre">${esc(d.body)}</div><button class="copy-btn" data-action="xfCopyText" data-text="${esc(d.body)}">复制正文</button></div>
+    <div class="xf-field"><label>封面短句</label><div class="xf-line">${esc(d.coverText)}</div></div>
+    <div class="xf-field"><label>话题标签</label><div class="xf-tags">${d.hashtags.map((t) => `<span class="xf-tag">#${esc(t)}</span>`).join("")}</div></div>
+    ${orderChips ? `<div class="xf-field"><label>建议配图顺序</label><div class="xf-tags">${orderChips}</div></div>` : ""}
   </div>`;
 }
 function xfMomentsPanel(m) {

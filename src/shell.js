@@ -1261,6 +1261,7 @@
         showView(state.view);
         break;
       }
+      case "xfQuickStyle": { xfQuickStyle(d.k); break; }
       case "xfSwitchStyle": {
         const xf = xfState();
         const a = xf._a || (state.activities || []).find((x) => x.id === xf.aid);
@@ -1292,7 +1293,13 @@
         xf.genState = "loading"; showView(state.view);
         try {
           xf.strategy = await genStrategy(a, xf.photos, xf.notes, "recruit");
+          xf.master.keyImages = await xfAttachPhotoCaptions(xf.master.keyImages, xf.master.confirmedFacts, xf.strategy.editorialDirection);
           xf.out = await genRecruit(a, xf.master, xf.strategy);
+          // §41：版式质量不达标 → 重选家族/变体（重生成 ED/Layout）一次
+          if (aiAuthMode() && state.xf.quality && state.xf.quality.editorialRisk) {
+            xf.strategy = await genStrategy(a, xf.photos, xf.notes, "recruit");
+            xf.out = await genRecruit(a, xf.master, xf.strategy);
+          }
           xf.family = xf.strategy.editorialDirection.family;
           xf.variant = xf.strategy.editorialDirection.variant;
           xf.styleSeed = xf.strategy.editorialDirection.styleSeed;
@@ -1330,7 +1337,13 @@
         xf.genState = "loading"; showView(state.view);
         try {
           xf.strategy = await genStrategy(a, xf.photos, xf.recapNotes, "recap");
+          xf.master.keyImages = await xfAttachPhotoCaptions(xf.master.keyImages, xf.master.confirmedFacts, xf.strategy.editorialDirection);
           xf.recap = await genRecap(a, xf.master, xf.strategy, xf.photos, xf.recapNotes);
+          // §41：版式质量不达标 → 重选家族/变体（重生成 ED/Layout）一次
+          if (aiAuthMode() && state.xf.quality && state.xf.quality.editorialRisk) {
+            xf.strategy = await genStrategy(a, xf.photos, xf.recapNotes, "recap");
+            xf.recap = await genRecap(a, xf.master, xf.strategy, xf.photos, xf.recapNotes);
+          }
           xf.recapType = xfRecapType(a, xf.photos);
           xf.family = xf.strategy.editorialDirection.family;
           xf.variant = xf.strategy.editorialDirection.variant;

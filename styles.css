@@ -4800,3 +4800,15 @@ body{
 .gzh-sec-cell-body{padding:10px 0 0}
 .gzh-sec-cell-body h3{font-size:16px;color:var(--brand-700);margin-bottom:6px}
 .gzh-sec-cell-body p{font-size:13px;line-height:1.75;color:var(--ink-2)}
+
+/* ============ §27/§28/§29 版式节奏 / 留白 / 图片占比 ============ */
+.gzh-ws-low .gzh-sec, .gzh-ws-low .gzh-youth-card, .gzh-ws-low .gzh-family-step, .gzh-ws-low .gzh-challenge-sec, .gzh-ws-low .gzh-longform-sec, .gzh-ws-low .gzh-mag-sec { margin-bottom: 14px; }
+.gzh-ws-medium .gzh-sec, .gzh-ws-medium .gzh-youth-card, .gzh-ws-medium .gzh-family-step, .gzh-ws-medium .gzh-challenge-sec, .gzh-ws-medium .gzh-longform-sec, .gzh-ws-medium .gzh-mag-sec { margin-bottom: 26px; }
+.gzh-ws-generous .gzh-sec, .gzh-ws-generous .gzh-youth-card, .gzh-ws-generous .gzh-family-step, .gzh-ws-generous .gzh-challenge-sec, .gzh-ws-generous .gzh-longform-sec, .gzh-ws-generous .gzh-mag-sec { margin-bottom: 40px; }
+.gzh-ws-low .gzh-lead, .gzh-ws-low .gzh-sum { margin-bottom: 14px; }
+.gzh-ws-medium .gzh-lead, .gzh-ws-medium .gzh-sum { margin-bottom: 22px; }
+.gzh-ws-generous .gzh-lead, .gzh-ws-generous .gzh-sum { margin-bottom: 32px; }
+/* 图片占比：回顾(high) 图片更大；招募(mid) 适中 */
+.gzh-ir-mid .gzh-split-img, .gzh-ir-mid .gzh-wide-img, .gzh-ir-mid .gzh-sec-imgbox, .gzh-ir-mid .gzh-youth-card-img, .gzh-ir-mid .gzh-family-step-img, .gzh-ir-mid .gzh-challenge-img, .gzh-ir-mid .gzh-longform-img, .gzh-ir-mid .gzh-mag-img { min-height: 220px; }
+.gzh-ir-high .gzh-split-img, .gzh-ir-high .gzh-wide-img, .gzh-ir-high .gzh-sec-imgbox, .gzh-ir-high .gzh-youth-card-img, .gzh-ir-high .gzh-family-step-img, .gzh-ir-high .gzh-challenge-img, .gzh-ir-high .gzh-longform-img, .gzh-ir-high .gzh-mag-img { min-height: 320px; }
+.gzh-ir-high .gzh-hero, .gzh-ir-high .gzh-cover, .gzh-ir-high .gzh-youth-cover, .gzh-ir-high .gzh-family-cover, .gzh-ir-high .gzh-challenge-cover, .gzh-ir-high .gzh-longform-cover { min-height: 420px; }
