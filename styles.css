@@ -4680,3 +4680,35 @@ body{
 .card{ box-shadow: var(--shadow); }
 .btn, .nav-item, .brand-logo, .card, .sidebar-foot .card{ border-radius: var(--radius); }
 .btn-lg{ border-radius: var(--radius-sm); } .btn-sm{ border-radius: var(--radius-xs); }
+
+/* ============ AI 宣发中心 V2：编辑家族 / 版式变体 工具条 ============ */
+.xf-stylebar{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:14px;display:flex;flex-direction:column;gap:10px}
+.xf-stylebar-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.xf-stylebar-lbl{font-size:11px;font-weight:800;letter-spacing:.1em;color:var(--muted);min-width:56px}
+.xf-chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 12px;font-size:12px;color:var(--ink-2);cursor:pointer;transition:.15s}
+.xf-chip:hover{border-color:var(--brand)}
+.xf-chip.active{border-color:var(--brand);background:var(--brand);color:#fff;font-weight:700}
+.xf-dir{font-size:12px;color:var(--ink-2);line-height:1.7;background:var(--brand-tint);border-radius:10px;padding:8px 12px}
+.xf-dir b{color:var(--brand-700)}
+.xf-q{font-size:11px;color:var(--muted);padding-top:2px}
+.xf-q:before{content:"● ";color:var(--ok,#2e9e5b)}
+
+/* ============ 版式变体（18 式：家族×变体，第三视觉维度） ============ */
+/* 变体 0：经典版（默认） */
+/* 变体 1：舒展版（封面更高、标题更大、强调线） */
+.gzh-article.gzh-var-1 .gzh-cover{height:380px}
+.gzh-article.gzh-var-1 .gzh-title{font-size:32px}
+.gzh-article.gzh-var-1 .gzh-sec h2{box-shadow:inset 4px 0 0 var(--brand);padding-left:12px}
+/* 变体 2：紧致版（更密、小标、细分割线） */
+.gzh-article.gzh-var-2{padding:22px 20px;font-size:14.5px;line-height:1.7}
+.gzh-article.gzh-var-2 .gzh-cover{height:260px}
+.gzh-article.gzh-var-2 .gzh-title{font-size:24px}
+.gzh-article.gzh-var-2 .gzh-sec{margin-bottom:16px;border-top:1px dashed var(--line);padding-top:14px}
+.gzh-article.gzh-var-2 .gzh-sec:first-of-type{border-top:none;padding-top:0}
+
+/* 家族配色微调（在既有布局基础上追加个性） */
+.gzh-article.gzh-youth{--brand:var(--brand);}
+.gzh-article.gzh-family{--brand:#1f9e8a}
+.gzh-article.gzh-challenge{--brand:#2b4a7a}
+.gzh-article.gzh-longform{--brand:#7a5a2b}
+.gzh-article.gzh-magazine{--brand:#3f6b4f}

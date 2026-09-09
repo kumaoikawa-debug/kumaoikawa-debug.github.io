@@ -1247,7 +1247,39 @@
         break;
       }
       case "xfPlatTab": { xfState().platTab = d.k; showView(state.view); break; }
-      case "xfSwitchLayout": { xfState().layout = d.l; showView(state.view); break; }
+      case "xfSwitchFamily": {
+        const xf = xfState();
+        xf.family = d.f;
+        const vs = (XF_FAMILIES[xf.family] && XF_FAMILIES[xf.family].variants) || [""];
+        if (xf.variant >= vs.length) xf.variant = 0;
+        showView(state.view);
+        break;
+      }
+      case "xfSwitchVariant": {
+        const xf = xfState();
+        xf.variant = (+d.v) || 0;
+        showView(state.view);
+        break;
+      }
+      case "xfSwitchStyle": {
+        const xf = xfState();
+        const a = xf._a || (state.activities || []).find((x) => x.id === xf.aid);
+        if (!a) { toast("请先重新选择活动再换风格"); break; }
+        xf.styleSeed = Math.floor(Date.now() % 1000000) + Math.floor(Math.random() * 1000);
+        xf.genState = "loading"; showView(state.view);
+        try {
+          xf.strategy = await genStrategy(a, xf.photos, xf.notes || xf.recapNotes, xf.scenario);
+          if (xf.scenario === "recruit") xf.out = await genRecruit(a, xf.master, xf.strategy);
+          else xf.recap = await genRecap(a, xf.master, xf.strategy, xf.photos, xf.recapNotes);
+          xf.family = xf.strategy.editorialDirection.family;
+          xf.variant = xf.strategy.editorialDirection.variant;
+          xf._styleHistory.push({ family: xf.family, variant: xf.variant });
+          xf.genState = "idle"; xf.platTab = "gzh";
+          toast("已换风格重生成");
+        } catch (e) { xf.genState = "idle"; toast("换风格失败：" + (e && e.message ? e.message : e)); }
+        showView(state.view);
+        break;
+      }
       case "xfReset": { state.xf = null; showView(state.view); break; }
       case "xfRecruitGen": {
         const xf = xfState();
@@ -1255,10 +1287,16 @@
         if (ta) xf.notes = ta.value;
         const a = (state.activities || []).find((x) => x.id === xf.aid);
         if (!a) { toast("请先选择一场活动"); break; }
+        xf._a = a;
         xf.master = buildContentMaster(a, xf.photos);
         xf.genState = "loading"; showView(state.view);
         try {
-          xf.out = await genRecruit(a, xf.master);
+          xf.strategy = await genStrategy(a, xf.photos, xf.notes, "recruit");
+          xf.out = await genRecruit(a, xf.master, xf.strategy);
+          xf.family = xf.strategy.editorialDirection.family;
+          xf.variant = xf.strategy.editorialDirection.variant;
+          xf.styleSeed = xf.strategy.editorialDirection.styleSeed;
+          xf._styleHistory.push({ family: xf.family, variant: xf.variant });
           xf.step = "result"; xf.genState = "idle"; xf.platTab = "gzh";
           toast("已生成宣传内容");
         } catch (e) { xf.genState = "idle"; toast("生成失败：" + (e && e.message ? e.message : e)); }
@@ -1287,11 +1325,17 @@
             leaderName: customFields.leader.trim(), status: "ended",
           };
         }
+        xf._a = a;
         xf.master = buildContentMaster(a, xf.photos);
         xf.genState = "loading"; showView(state.view);
         try {
-          xf.recap = await genRecap(a, xf.master, xf.photos, xf.recapNotes);
+          xf.strategy = await genStrategy(a, xf.photos, xf.recapNotes, "recap");
+          xf.recap = await genRecap(a, xf.master, xf.strategy, xf.photos, xf.recapNotes);
           xf.recapType = xfRecapType(a, xf.photos);
+          xf.family = xf.strategy.editorialDirection.family;
+          xf.variant = xf.strategy.editorialDirection.variant;
+          xf.styleSeed = xf.strategy.editorialDirection.styleSeed;
+          xf._styleHistory.push({ family: xf.family, variant: xf.variant });
           xf.step = "result"; xf.genState = "idle"; xf.platTab = "gzh";
           toast("已生成活动回顾");
         } catch (e) { xf.genState = "idle"; toast("生成失败：" + (e && e.message ? e.message : e)); }

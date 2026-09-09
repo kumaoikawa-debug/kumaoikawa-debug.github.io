@@ -4,16 +4,38 @@
    小红书 / 朋友圈 / 微信群 / 口播 / 海报；活动结束可生成活动回顾。
    无 AI Key 时全部回退到基于真实活动事实的模板生成。 */
 
+/* ================= ClubOS · AI 宣发中心 V2（两阶段生成 + Editorial Direction） =================
+   流程：confirmedFacts → Content Strategy → Photo Analysis → Editorial Direction
+        → AI 完整文案（六平台） → Layout Plan（family/variant） → 前端组件渲染
+   所有文案原则上由 AI 基于真实事实生成；无 Key 时回退到基于事实的模板（仍受 Editorial Direction 驱动）。
+   两最高原则：① 允许创造表达，禁止创造事件（不虚构天气/领队行为/用户感受/具体人数/未提供价格）；
+              ② 换版式只改视觉、换风格才重生成方向+文案。 */
+
+/* Editorial 家族：3 招募 + 3 回顾，每族 ≥3 变体 = 18 版式 */
+var XF_FAMILIES = {
+  diary:       { label: "沉浸叙事", scenario: ["recruit", "recap"], variants: ["山野日记", "晨昏手札", "长线随记"] },
+  magazine:    { label: "户外杂志", scenario: ["recruit", "recap"], variants: ["杂志专题", "大片跨页", "极简刊例"] },
+  social:      { label: "社交种草", scenario: ["recruit"],           variants: ["潮流卡片", "清单体", "对话体"] },
+  family:      { label: "亲子自然", scenario: ["recruit", "recap"], variants: ["手账步骤", "问答体", "绘本体"] },
+  achievement: { label: "成就展示", scenario: ["recap"],             variants: ["数据战报", "登顶纪实", "勋章墙"] },
+  gallery:     { label: "图文画廊", scenario: ["recap"],             variants: ["长图长廊", "九宫格", "胶片墙"] },
+};
+/* 家族 → 基础版式渲染器（变体在渲染器内做差异化） */
+var XF_FAMILY_LAYOUT = { diary: "diary", magazine: "magazine", social: "youth", family: "family", achievement: "challenge", gallery: "longform" };
+
 function xfState() {
   state.xf = state.xf || {
     scenario: null, aid: null, step: null,
     master: null, out: null, recap: null,
-    layout: "diary", photos: [], notes: "", recapNotes: "",
+    layout: "diary", family: "diary", variant: 0, styleSeed: null,
+    photos: [], notes: "", recapNotes: "",
     genState: "idle", platTab: "gzh", recapType: "",
+    strategy: null, quality: null,
     customRecap: { title: "", date: "", place: "", type: "", signups: "", leader: "" },
+    _a: null, _styleHistory: [],
   };
   if (!state.xf.customRecap) state.xf.customRecap = { title: "", date: "", place: "", type: "", signups: "", leader: "" };
-  /* 一致性守卫：旧版残留的半截生成状态若缺关键字段，回退到选择页，避免渲染崩溃 */
+  if (!state.xf._styleHistory) state.xf._styleHistory = [];
   var xf0 = state.xf;
   if (xf0.scenario === "recruit" && xf0.step === "result") {
     if (!xf0.out || !xf0.master || !xf0.master.mainTheme) { xf0.step = null; xf0.out = null; }
@@ -52,7 +74,6 @@ function xfConcern(a) {
   return "值不值这个价、强度适不适合我、有没有人带";
 }
 
-/* 按活动类型给出统一的「主传播主题 + 价值」 */
 function xfTypeProfile(a) {
   const t = (a.type || "") + (a.title || "");
   if (/亲子|研学|自然|儿童|少儿/.test(t)) return { kind: "family", tone: "温暖、轻快、有画面", themeA: "陪孩子去自然里上一堂户外课", scenic: "孩子能蹲下来观察的昆虫、溪流与植物", experience: "亲子协作的小任务，孩子在玩里认识世界", participation: "一段高质量陪伴，和孩子共同的自然记忆" };
@@ -69,10 +90,9 @@ function xfCta(a) {
   return `报名方式：私信 / 群里接龙，或直接在本页提交报名。${when} 出发，名额${a.limit ? a.limit + (a.limitUnit || "人") + "，" : ""}先到先得。`;
 }
 
-/* ---------- Content Master ---------- */
-function buildContentMaster(a, photos) {
-  const p = xfTypeProfile(a);
-  const facts = {
+/* ---------- Content Master（确认事实层 + 实际活动数据） ---------- */
+function xfConfirmedFacts(a, photos) {
+  return {
     activityName: a.title || "", activityType: a.type || "", place: a.place || "",
     date: a.dateMD || a.date || "", season: xfSeason(a),
     price: a.price != null ? a.price : "", limit: a.limit || "", limitUnit: a.limitUnit || "人",
@@ -83,21 +103,26 @@ function buildContentMaster(a, photos) {
     transport: a.transport || "", meal: a.meal || "", insurance: a.insurance || "",
     leader: a.leaderName ? (a.leaderName + (a.leaderYears ? "（" + a.leaderYears + "）" : "")) : "",
     itinerary: a.itineraryDays || [],
+    photosCount: (photos || []).length,
   };
+}
+function buildContentMaster(a, photos) {
+  const f = xfConfirmedFacts(a, photos);
+  const p = xfTypeProfile(a);
   const cv = {
     scenicValue: p.scenic, experienceValue: p.experience, participationValue: p.participation,
     targetUser: xfTargetUser(a), mainConcern: xfConcern(a), mainSellingPoint: p.themeA,
   };
   const cs = { mainTheme: p.themeA, secondaryTheme: "", mainSellingPoint: p.themeA, audienceInsight: cv.targetUser, tone: p.tone };
   return {
-    contentType: "recruitment", confirmedFacts: facts,
+    contentType: "recruitment", confirmedFacts: f, actualActivityData: f,
     targetAudience: cv.targetUser, mainTheme: cs.mainTheme, mainSellingPoint: cs.mainSellingPoint,
     scenicValue: cv.scenicValue, experienceValue: cv.experienceValue, participationValue: cv.participationValue,
     tone: cs.tone, keyImages: autoClassifyPhotos([...(photos || []), ...(a.photos || [])].filter((x, i, arr) => x && arr.indexOf(x) === i)), cta: xfCta(a),
   };
 }
 
-/* ---------- 照片分类 ---------- */
+/* ---------- 照片分析（Photo Analysis） ---------- */
 function xfPhotoCategory(src, i) {
   const meta = (typeof photoMeta === "function") ? photoMeta(src) : null;
   if (meta && meta.category) return meta.category;
@@ -118,6 +143,22 @@ function matchPhoto(m, prefer, idx) {
   if (f) return f;
   return list[idx % list.length] || list[0];
 }
+function xfPhotoProfile(a, photos, scenario) {
+  const list = autoClassifyPhotos(photos || []);
+  const byCat = {};
+  list.forEach((p) => { (byCat[p.cat] = byCat[p.cat] || []).push(p); });
+  const has = (c) => (byCat[c] || []).length > 0;
+  return {
+    count: list.length,
+    cats: Object.keys(byCat),
+    cover: (byCat.cover && byCat.cover[0]) || list[0] || null,
+    hasScenic: has("scenic") || has("route") || has("water") || has("camp"),
+    hasPeople: has("people") || has("team"),
+    hasAction: has("action"),
+    mood: (byCat.scenic && byCat.scenic.length >= 3) ? "风景主导" : (has("people") ? "人物主导" : "综合"),
+    note: list.length === 0 ? "未上传照片，建议补充 3-6 张活动照以增强排版" : "",
+  };
+}
 
 /* ---------- AI 增强（可选） ---------- */
 async function xfLLM(system, user, json) {
@@ -127,82 +168,165 @@ async function xfLLM(system, user, json) {
   } catch (e) { return null; }
 }
 
-/* ================= 活动招募生成 ================= */
-async function genRecruit(a, m) {
-  const f = m.confirmedFacts;
-  const placeLine = f.place ? `在${f.place}` : "在山野里";
-  const seasonLine = f.season ? `${f.season}的` : "";
-  const diffLine = f.difficulty ? `，强度${f.difficulty}` : "";
-  const elevLine = f.elevation ? `，海拔约 ${f.elevation} 米` : "";
-  const dayLine = f.days > 1 ? `，全程 ${f.days} 天` : "";
-
-  // 公众号正文（优先 AI，失败回退模板）
-  let gzh = null;
-  if (aiAuthMode()) {
-    const sys = `你是户外俱乐部公众号主编。基于已确认事实写公众号图文，按消费者决策逻辑：为什么值得去→体验→收获→适合谁→真实信息→报名。禁止虚构领队/天气/事件/用户感受。只返回 JSON：{title,subtitle,summary,sections:[{h,html}],info:[{k,v}],fee,service,cta}`;
-    const user = `活动：${JSON.stringify(f)}\n主主题：${m.mainTheme}\n价值：${m.scenicValue} / ${m.experienceValue} / ${m.participationValue}\n语气：${m.tone}`;
-    gzh = await xfLLM(sys, user, true);
+/* ---------- styleSeed + 加权随机（Rule-based Weighted Randomization） ---------- */
+function xfStyleSeed() {
+  const xf = xfState();
+  if (!xf.styleSeed) xf.styleSeed = Math.floor((Date.now() % 1000000) + Math.random() * 1000);
+  return xf.styleSeed;
+}
+function xfRand(seed) {
+  let x = Math.sin(seed * 999.137) * 10000;
+  return x - Math.floor(x);
+}
+function xfWeightedPick(keys, weight, seed) {
+  let total = 0; keys.forEach((k) => { total += Math.max(0.01, weight[k] || 1); });
+  let r = xfRand(seed) * total;
+  for (const k of keys) {
+    r -= Math.max(0.01, weight[k] || 1);
+    if (r <= 0) return k;
   }
-  if (!gzh || !gzh.sections) {
-    gzh = {
+  return keys[keys.length - 1];
+}
+function xfPickFamily(a, photos, scenario) {
+  const allowed = Object.keys(XF_FAMILIES).filter((f) => XF_FAMILIES[f].scenario.includes(scenario));
+  const t = (a.type || "") + (a.title || "");
+  const weight = {}; allowed.forEach((f) => { weight[f] = 1; });
+  if (/亲子|研学|自然|儿童/.test(t)) { weight.family += 3; weight.diary += 1; }
+  if (/摄影|风光|秋色|红叶|花海/.test(t)) { weight.magazine += 2; weight.gallery += 2; }
+  if (/漂流|溯溪|水上|派对|音乐|露营/.test(t)) { weight.social += 2; weight.diary += 1; }
+  if (/登山|雪山|越野|高海拔|攀岩/.test(t)) { weight.achievement += 3; weight.magazine += 1; }
+  if (scenario === "recap") { weight.achievement += 2; weight.gallery += 2; weight.diary += 1; }
+  return xfWeightedPick(allowed, weight, xfStyleSeed() * 1.7 + 3);
+}
+function xfPickVariant(family, scenario, seed) {
+  const n = (XF_FAMILIES[family].variants || [""]).length;
+  if (n <= 1) return 0;
+  const hist = (state.xf && state.xf._styleHistory) || [];
+  const last = hist.filter((h) => h.family === family).slice(-1)[0];
+  let v = Math.floor(xfRand(seed * 7.13 + 11) * n) % n;
+  if (last && last.variant === v) v = (v + 1) % n;
+  return v;
+}
+
+/* ---------- 阶段一：Content Strategy + Photo Analysis + Editorial Direction ---------- */
+function xfHeuristicDirection(a, p, family, scenario, photoProfile) {
+  const angleMap = {
+    family: "把自然变成孩子的第一间教室", social: "这周末，去山里当个本地人",
+    diary: "走得慢一点，才看得见山", magazine: "这一程，值得被认真记录",
+    achievement: "我们真的把这座山走完了", gallery: "把这一程，存进相册里",
+  };
+  const hookMap = {
+    family: "原来陪玩也能这么省心", social: "谁懂啊这地方", diary: "山一直在，刚好今天有空",
+    magazine: "这一程，值得被认真记录", achievement: "登顶那刻，值了", gallery: "九张图，装下整个周末",
+  };
+  const compMap = { diary: "大图主导", magazine: "左右交替", social: "卡片流", family: "手账步骤", achievement: "数据条+区块", gallery: "网格画廊" };
+  const colorMap = { diary: "山系橙", magazine: "墨绿", social: "暖米", family: "松石", achievement: "夜空蓝", gallery: "暖米" };
+  const structRecruit = ["为什么值得去", "来了会体验什么", "参加完你能得到什么", "适不适合我", "真实信息", "怎么报名"];
+  const structRecap = ["开场", "本次活动核心记忆", "本次参与体验", "值得记住的瞬间", "参与者收获", "照片回顾", "下一期预告"];
+  return {
+    family: family, variant: xfPickVariant(family, scenario, xfStyleSeed()),
+    styleSeed: xfStyleSeed(),
+    angle: angleMap[family] || p.themeA,
+    tone: p.tone,
+    voice: scenario === "recap" ? "第一人称、认真回看" : "第一人称、像朋友安利",
+    hook: hookMap[family] || "周末就该这么过",
+    structure: scenario === "recap" ? structRecap : structRecruit,
+    visual: { mood: photoProfile.mood, color: colorMap[family], composition: compMap[family], coverHint: photoProfile.cover ? "用已上传封面" : "建议补充 1 张大图", typographic: family === "magazine" ? "衬线大标题" : "无衬线粗体" },
+    copyDirectives: { avoid: ["硬销", "名额仅剩", "最后机会"], must: ["地点真实感", "基于已确认事实"] },
+  };
+}
+async function genStrategy(a, photos, notes, scenario) {
+  const facts = xfConfirmedFacts(a, photos);
+  const photoProfile = xfPhotoProfile(a, photos, scenario);
+  const p = xfTypeProfile(a);
+  const family = xfPickFamily(a, photos, scenario);
+  const styleSeed = xfStyleSeed();
+  const variant = xfPickVariant(family, scenario, styleSeed);
+  let dir = null;
+  if (aiAuthMode()) {
+    const sys = `你是 ClubOS 的户外内容主编兼视觉指导。基于"已确认事实"产出一份 Editorial Direction（编辑方向），它将同时驱动文案写作与视觉排版。
+原则：允许创造表达，禁止创造事件——只能基于给定事实（活动名称/地点/日期/强度/价格/领队/照片分类等），不得虚构天气、领队行为、用户感受、具体人数、未提供的价格。
+返回 JSON：{
+  angle: 一句话编辑角度（≤18字，带观点而非硬销），
+  tone: 语气关键词,
+  voice: 人称与口吻（如"第一人称松弛"）,
+  hook: 一个情绪/反差钩子（≤14字）,
+  structure: [4-6个章节标题，按消费者决策或回顾逻辑排序],
+  visual: { mood, color:"山系橙/墨绿/夜空蓝/暖米/松石", composition:"大图主导/网格/左右交替/卡片流", coverHint, typographic:"衬线大标题/无衬线粗体/手写感" },
+  copyDirectives: { avoid:[], must:[] }
+}`;
+    const user = `场景：${scenario === "recruit" ? "活动招募" : "活动回顾"}
+事实：${JSON.stringify(facts)}
+照片画像：${JSON.stringify(photoProfile)}
+活动类型画像：${JSON.stringify({ kind: p.kind, themeA: p.themeA, tone: p.tone })}
+补充资料：${notes || "无"}
+指定编辑家族：${family}（${XF_FAMILIES[family].label}），变体序号：${variant}`;
+    dir = await xfLLM(sys, user, true);
+  }
+  if (!dir || !dir.angle) dir = xfHeuristicDirection(a, p, family, scenario, photoProfile);
+  dir.family = family; dir.variant = variant; dir.styleSeed = styleSeed;
+  return {
+    contentStrategy: {
+      mainTheme: p.themeA, secondaryTheme: dir.angle || p.themeA,
+      mainSellingPoint: p.themeA, audienceInsight: xfTargetUser(a),
+      tone: p.tone, angle: dir.angle, hook: dir.hook, scenario: scenario,
+    },
+    photoProfile: photoProfile,
+    editorialDirection: dir,
+  };
+}
+
+/* ---------- 阶段二：AI 完整文案（六平台，全部由 AI 生成） ---------- */
+function xfSectionBody(h, a, m) {
+  const f = m.confirmedFacts;
+  if (/为什么|值得去|风景|景|地点|路线|地貌/.test(h || "")) return `${m.scenicValue}。${f.place ? "在" + f.place + "的" : ""}${f.season ? f.season + "，" : ""}风景不是手机壁纸能替代的——得自己走一趟才装得下。`;
+  if (/体验|玩|挑战|探索|运动|做/.test(h || "")) return `${m.experienceValue}。${f.days > 1 ? "两天一夜" : "一天"}的节奏里，你会暂时忘记待办清单，只剩下脚下的路和身边的人。`;
+  if (/收获|得到|适合|谁|陪伴|成长/.test(h || "")) return `${m.participationValue}。比起又刷了一天手机，这种踏实感更耐放。`;
+  if (/适合|谁|门槛/.test(h || "")) { const age = f.ageRange ? `适合 ${f.ageRange}` : "门槛友好"; return `${age}。${m.targetAudience}。这场有${f.leader || "专业领队"}带队，路线成熟，按自己的节奏走就好。`; }
+  if (/信息|报名|费用|详情/.test(h || "")) return `${f.date || "近期"} 出发，${f.price != null ? "费用 ¥" + f.price + "/" + (f.limitUnit || "人") : "费用详询"}，${f.difficulty ? "强度" + f.difficulty : "强度友好"}。${m.cta}`;
+  if (/预告|下一期|集结/.test(h || "")) return `咱们还会继续进山，下一期路线正在安排，留意群里接龙就能占位。`;
+  return `${m.scenicValue} ${m.experienceValue}`;
+}
+
+function xfFallbackRecruit(a, m, dir) {
+  const f = m.confirmedFacts;
+  const struct = (dir.structure && dir.structure.length >= 4) ? dir.structure.slice(0, 6) : ["为什么值得去", "来了会体验什么", "参加完你能得到什么", "适不适合我", "真实信息", "怎么报名"];
+  const sections = struct.map((h) => ({ h: h, html: xfSectionBody(h, a, m) }));
+  const angle = dir.angle || m.mainTheme;
+  return {
+    gzh: {
       title: `${f.activityName || "这场活动"}｜${m.mainTheme}`,
-      subtitle: `${seasonLine}${placeLine}，${f.date || "近期"}出发${dayLine}${diffLine}${elevLine}`,
-      summary: `${m.mainTheme}。${m.scenicValue}本文讲清为什么值得去、来了体验什么、参加完能得到什么，以及真实的报名信息。`,
-      sections: [
-        { h: "为什么值得去", html: `${m.scenicValue}。${placeLine}的${seasonLine}风景，不是手机壁纸能替代的——得自己走一趟才装得下。` },
-        { h: "来了会体验什么", html: `${m.experienceValue}。${f.days > 1 ? "两天一夜" : "一天"}的节奏里，你会暂时忘记待办清单，只剩下脚下的路和身边的人。` },
-        { h: "参加完你能得到什么", html: `${m.participationValue}。比起又刷了一天手机，这种踏实感更耐放。` },
-        { h: xfFitTitle(a), html: xfFitText(a, m) },
-      ],
+      subtitle: `${dir.hook ? dir.hook + " · " : ""}${f.place ? "在" + f.place + "的" : ""}${f.season ? f.season : ""}${f.date || "近期"}出发`,
+      summary: `${angle}。${m.scenicValue}本文讲清为什么值得去、来了体验什么、参加完能得到什么，以及真实的报名信息。`,
+      sections: sections,
       info: xfInfoRows(a),
       fee: f.price != null ? `¥${f.price}/${f.limitUnit || "人"}${f.limit ? `，限 ${f.limit}${f.limitUnit || "人"}` : ""}` : "详询",
       service: (f.includedServices && f.includedServices.length) ? f.includedServices.join("、") : "专业领队全程陪同",
       cta: m.cta,
-    };
-  }
-
-  // 小红书（优先 AI）
-  let xhs = null;
-  if (aiAuthMode()) {
-    const sys = `你是小红书户外赛道爆款博主，擅长把一场普通周末活动写成让人忍不住收藏的笔记。
-要求：
-1) titles：3-5 个标题，必须带强钩子——用「谁懂啊 / 后悔没早来 / 被问爆了 / 周末封神 / 本地人都不一定知道」等情绪前缀，含 emoji，长度≤20字，可带地点或结果；
-2) body：第一人称、有画面、有细节、有情绪起伏。结构：① 一句话钩子（emoji+反差/痛点）② 2-4 个带小标题的分段（如「📍在哪」「✅为什么值」「🎒怎么玩」「💡真心话」）③ 每段 2-4 句，口语、不要说明书腔 ④ 结尾行动钩子（"码住 / 约起来 / 评论区扣1"）；
-3) cover：一句能当封面大字报的短句（≤12字，带 emoji）；
-4) tags：6-10 个，含 #地点+活动 类（如 #成都周边游 #周末去哪儿 #徒步）和情绪类（#小众秘境 #出片圣地 #治愈系风景）；
-5) imgOrder：留空数组即可。
-禁止虚构天气/人数/价格/领队；只基于给定事实。返回 JSON：{titles:[3-5],body,cover,tags:[],imgOrder:[]}`;
-    xhs = await xfLLM(sys, `活动：${JSON.stringify(f)}\n价值：${m.scenicValue}/${m.experienceValue}/${m.participationValue}`, true);
-  }
-  if (!xhs || !xhs.body) {
-    xhs = {
-      titles: [xfXhsTitle(a, m, 1), xfXhsTitle(a, m, 2), xfXhsTitle(a, m, 3)],
-      body: `谁懂啊😭 ${m.mainTheme}这么玩也太舒服了\n\n📍 ${placeLine}的${seasonLine}这一程，不是手机壁纸能替代的——得自己走一趟才装得下。\n\n✅ 为什么值得去\n${m.scenicValue}。呼吸、流汗、和朋友边走边聊，比刷一天手机耐放多了。\n\n🎒 怎么玩\n${m.experienceValue}。${f.days > 1 ? "两天一夜" : "一天"}的节奏，不用赶景点，时间全是自己的。\n\n💡 真心话\n${m.participationValue}。真实去一次，比收藏一百篇攻略都管用。\n\n📌 实用信息\n· 时间：${f.date || "近期"}\n· ${f.price != null ? "费用：¥" + f.price + "/" + (f.limitUnit || "人") : "费用详询"}\n· ${f.difficulty ? "强度：" + f.difficulty : "强度友好"}\n· 装备：${(f.gear && f.gear.length) ? f.gear.slice(0, 4).join("、") : "轻装即可"}\n\n码住这篇，周末约起来👀 评论区扣 1 我拉你进群～`,
+    },
+    xhs: {
+      titles: [xfXhsTitle(a, m, 1, dir), xfXhsTitle(a, m, 2, dir), xfXhsTitle(a, m, 3, dir)],
+      body: `谁懂啊😭 ${angle}这么玩也太舒服了\n\n📍 ${f.place ? "在" + f.place + "的" : ""}${f.season || ""}这一程，不是手机壁纸能替代的——得自己走一趟才装得下。\n\n✅ 为什么值得去\n${m.scenicValue}。呼吸、流汗、和朋友边走边聊，比刷一天手机耐放多了。\n\n🎒 怎么玩\n${m.experienceValue}。${f.days > 1 ? "两天一夜" : "一天"}的节奏，不用赶景点，时间全是自己的。\n\n💡 真心话\n${m.participationValue}。真实去一次，比收藏一百篇攻略都管用。\n\n📌 实用信息\n· 时间：${f.date || "近期"}\n· ${f.price != null ? "费用：¥" + f.price + "/" + (f.limitUnit || "人") : "费用详询"}\n· ${f.difficulty ? "强度：" + f.difficulty : "强度友好"}\n· 装备：${(f.gear && f.gear.length) ? f.gear.slice(0, 4).join("、") : "轻装即可"}\n\n码住这篇，周末约起来👀 评论区扣 1 我拉你进群～`,
       cover: `${f.place || "山里"}·${xfSeason(a) || ""}封神`,
       tags: xfTags(a),
       imgOrder: [],
-    };
-  }
-
-  // 朋友圈 / 微信群 / 口播 / 海报（基于同一 master）
-  return {
-    gzh: gzh, xhs: xhs,
+    },
     moments: {
-      warm: `周末想透口气的不妨看过来🌿 ${placeLine}的${seasonLine}局又开了，${f.date || ""} 出发。不用做攻略，跟着走就行，想一起的私我占位～`,
-      formal: `【招募】${f.activityName || "本周活动"} · ${f.date || "近期"} 出发${dayLine}${diffLine}\n${m.mainSellingPoint}。名额不多，先把你那天的日历空出来☀️ 报名戳我或群里接龙。`,
-      last: `⏰ 最后几个名额！${f.activityName || "本周活动"} ${f.date || ""} 出发，${m.mainSellingPoint}。错过这期要等下个月，想来的抓紧私信，手慢无～`,
+      warm: `${dir.hook ? dir.hook + " " : ""}周末想透口气的不妨看过来🌿 ${f.place ? "在" + f.place + "的" : ""}${f.season || ""}局又开了，${f.date || ""} 出发。不用做攻略，跟着走就行，想一起的私我占位～`,
+      formal: `【招募】${f.activityName || "本周活动"} · ${f.date || "近期"} 出发\n${angle}。名额不多，先把你那天的日历空出来☀️ 报名戳我或群里接龙。`,
+      last: `⏰ 最后几个名额！${f.activityName || "本周活动"} ${f.date || ""} 出发，${angle}。错过这期要等下个月，想来的抓紧私信，手慢无～`,
     },
     wechat: {
-      recruit: `各位群友好👋 ${f.activityName || "本周活动"} 开始招募啦，这趟真的别错过：\n🗓 时间：${f.date || "近期"}${dayLine}\n📍 地点：${f.place || "集合点群内发"}\n💰 ${f.price != null ? "费用：¥" + f.price + "/" + (f.limitUnit || "人") : "费用详询"}\n🔥 强度：${f.difficulty || "适中"}\n\n${m.mainSellingPoint}。名额有限，想一起的直接接龙或私信我，我帮你留位～`,
-      brief: `【一句话】${f.activityName || "活动"} ${f.date || ""} 出发｜${m.mainSellingPoint}｜名额有限，戳我报名👇`,
+      recruit: `各位群友好👋 ${f.activityName || "本周活动"} 开始招募啦，这趟真的别错过：\n🗓 时间：${f.date || "近期"}\n📍 地点：${f.place || "集合点群内发"}\n💰 ${f.price != null ? "费用：¥" + f.price + "/" + (f.limitUnit || "人") : "费用详询"}\n🔥 强度：${f.difficulty || "适中"}\n\n${angle}。名额有限，想一起的直接接龙或私信我，我帮你留位～`,
+      brief: `【一句话】${f.activityName || "活动"} ${f.date || ""} 出发｜${angle}｜名额有限，戳我报名👇`,
     },
     voice: {
-      s30: `大家好，这周末咱们去${f.place || "山里"}，主题是${m.mainTheme}。${f.price != null ? "费用" + f.price + "一人" : "费用详询"}，强度${f.difficulty || "适中"}，新手也能跟上。想一起的朋友私信我报名哈。`,
-      s60: `大家好，给大伙说个周末的好去处。咱们${f.date || "这周末"}去${f.place || "山里"}，这场活动的主题是${m.mainTheme}。${m.experienceValue}，参加完${m.participationValue}。${f.price != null ? "费用" + f.price + "一人" : "费用详询"}，含${gzh.service || "领队陪同"}，强度${f.difficulty || "适中"}，不用担心跟不上。名额不多，想一起的朋友现在就可以私信我报名。`,
+      s30: `大家好，这周末咱们去${f.place || "山里"}，主题是${angle}。${f.price != null ? "费用" + f.price + "一人" : "费用详询"}，强度${f.difficulty || "适中"}，新手也能跟上。想一起的朋友私信我报名哈。`,
+      s60: `大家好，给大伙说个周末的好去处。咱们${f.date || "这周末"}去${f.place || "山里"}，这场活动的主题是${angle}。${m.experienceValue}，参加完${m.participationValue}。${f.price != null ? "费用" + f.price + "一人" : "费用详询"}，含${f.includedServices && f.includedServices.length ? f.includedServices.join("、") : "领队陪同"}，强度${f.difficulty || "适中"}，不用担心跟不上。名额不多，想一起的朋友现在就可以私信我报名。`,
     },
     poster: {
       title: f.activityName || "户外活动",
-      sub: m.mainTheme,
+      sub: angle,
       place: f.place || "",
       points: [m.scenicValue, m.experienceValue].map((s) => s.split("。")[0]).filter(Boolean).slice(0, 2),
       time: f.date || "近期",
@@ -212,6 +336,123 @@ async function genRecruit(a, m) {
   };
 }
 
+async function genRecruit(a, m, strategy) {
+  const f = m.confirmedFacts;
+  const dir = strategy.editorialDirection;
+  const p = xfTypeProfile(a);
+  let out = null;
+  if (aiAuthMode()) {
+    const sys = `你是 ClubOS 户外俱乐部的多平台内容写手。严格遵循下面的 Editorial Direction 写作，所有事实只来自 confirmedFacts，禁止虚构天气/领队行为/用户感受/具体人数/未给的价格。
+按各平台输出：
+- gzh：公众号图文 JSON {title,subtitle,summary,sections:[{h,html}],info:[{k,v}],fee,service,cta}
+- xhs：小红书 JSON {titles:[3-5],body,cover,tags:[]}
+- moments：朋友圈三版 {warm,formal,last}
+- wechat：微信群 {recruit,brief}
+- voice：口播 {s30,s60}
+- poster：海报 {title,sub,place,points:[2],time,price,cta}
+所有标题/正文/章节标题/摘要/图片说明/CTA 由你创作，不要使用固定模板句式；章节标题参考 Editorial Direction.structure，但可根据事实调整。`;
+    const user = `Editorial Direction：${JSON.stringify(dir)}
+confirmedFacts：${JSON.stringify(f)}
+价值：${m.scenicValue} / ${m.experienceValue} / ${m.participationValue}
+受众：${m.targetAudience}`;
+    out = await xfLLM(sys, user, true);
+    if (!out || !out.gzh || !out.gzh.sections || out.gzh.sections.length < 3) {
+      out = await xfLLM(sys + "\n（上一次返回不完整，请严格返回全部 6 个平台的完整 JSON，gzh.sections 至少 4 段）", user, true);
+    }
+  }
+  if (!out || !out.gzh || !out.gzh.sections) out = xfFallbackRecruit(a, m, dir);
+  out = xfQualityCheck(out, dir, "recruit") || out;
+  return out;
+}
+
+/* ---------- 活动回顾 阶段二 ---------- */
+function xfFallbackRecap(a, m, dir, photos, notes, type) {
+  const f = m.confirmedFacts;
+  const signN = a.signups || (a.departures ? a.departures.reduce((s, d) => s + (d.sign || 0), 0) : 0);
+  const struct = (dir.structure && dir.structure.length >= 5) ? dir.structure.slice(0, 7) : ["开场", "本次活动核心记忆", "本次参与体验", "值得记住的瞬间", "参与者收获", "照片回顾", "下一期预告"];
+  const sections = struct.map((h) => ({ h: h, html: xfRecapBody(h, a, m, signN, notes, type) }));
+  const angle = dir.angle || (type + "的一天");
+  return {
+    gzh: {
+      title: `回顾｜${f.activityName || "这场活动"}，${type === "完成挑战型" ? "我们登顶了" : "我们一起走过"}`,
+      summary: `${f.date || "这场活动"}，${signN ? signN + " 位伙伴" : "一群伙伴"}在${f.place || "山野"}${angle}。`,
+      sections: sections,
+      next: xfNextText(a),
+    },
+    xhs: {
+      titles: [`回顾｜${f.activityName || "这场活动"}，值了🔥`, `周末去${f.place || "山里"}的人，后来都怎样了`, `${type}的一天，比想象中更难忘`],
+      body: `刚结束的${f.activityName || "这场活动"}，我宣布：值了📷\n\n🌟 最难忘的瞬间\n${sections[1] ? sections[1].html : ""}\n\n🤝 一起走过的人\n${sections[3] ? sections[3].html : ""}\n\n💬 真心话\n真实去一次，比任何攻略都具体。下一期${xfNextText(a)}，我已经先占位了。\n\n评论区蹲下次活动的小伙伴扣 1 👇`,
+      cover: `圆满收官·${f.place || "山里"}`,
+      tags: xfTags(a).concat(["活动回顾"]),
+    },
+    moments: `【活动回顾】${f.activityName || "本周活动"}顺利收官🎉 ${signN ? signN + " 位伙伴" : "大家"}一起${type === "完成挑战型" ? "把山踩在了脚下" : "度过了超舒服的一天"}。最开心的不是到达，是路上有人一起走。下一期${xfNextText(a)}`,
+    wechat: `各位群友，咱们的${f.activityName || "活动"}圆满收官啦🌿 ${signN ? "共 " + signN + " 位伙伴参加" : "大家玩得超尽兴"}。\n\n特别感谢每一位准时出发、互相照应的伙伴——下次还跟你走。照片已整理在相册，记得自取📷\n\n错过这一次的别慌，${xfNextText(a)}想一起的下期提前占位，我帮你留着～`,
+    next: xfNextText(a),
+  };
+}
+function xfRecapBody(h, a, m, signN, notes, type) {
+  const f = m.confirmedFacts;
+  if (/开场|集结/.test(h || "")) return `${f.date || "那天"}，${signN ? signN + " 位伙伴" : "我们"}在${f.place || "集合点"}汇合。${type === "完成挑战型" ? "目标很明确：走完它。" : "没有什么宏大目标，就是认真地把这一天过好。"}`;
+  if (/核心记忆|风景|画面|景/.test(h || "")) return `${(type === "风景纪实型") ? (m.scenicValue + "，这一程的景色是主线。") : (m.experienceValue + "，大家投入的样子就是最好的回忆。")}`;
+  if (/参与体验|强度|节奏/.test(h || "")) return `${f.difficulty ? "强度" + f.difficulty + "，" : ""}但节奏把控得刚好。${f.leader ? f.leader + "带队，" : ""}该停就停，该走就走。`;
+  if (/瞬间|记得|特别/.test(h || "")) return notes && notes.trim() ? `这次特别记下：${notes.trim()}` : `合照那一刻、抵达那一刻、还有返程车上安静下来的那一刻——都算数。`;
+  if (/收获|得到/.test(h || "")) return `${m.participationValue}。有人说来对了，这就够。`;
+  if (/照片|相册|回顾/.test(h || "")) return `这一程的画面都在下面，留给一起走过的人。`;
+  if (/预告|下一期|集结/.test(h || "")) return xfNextText(a);
+  return `${m.experienceValue}`;
+}
+
+async function genRecap(a, m, strategy, photos, notes) {
+  const f = m.confirmedFacts;
+  const dir = strategy.editorialDirection;
+  const type = xfRecapType(a, photos);
+  const signN = a.signups || (a.departures ? a.departures.reduce((s, d) => s + (d.sign || 0), 0) : 0);
+  let out = null;
+  if (aiAuthMode()) {
+    const sys = `你是 ClubOS 户外俱乐部内容主笔，写活动回顾。像真正参加过的人认真回看这一天：真实、有画面、有完成感。
+原则：允许创造表达，禁止创造事件——只基于给定事实与补充资料，不得虚构天气/事件/用户感受/领队行为/具体人数。
+按各平台输出：
+- gzh：公众号回顾 JSON {title,summary,sections:[{h,html}],next}
+- xhs：小红书回顾 JSON {titles:[3],body,cover,tags:[]}
+- moments：朋友圈回顾文案（字符串）
+- wechat：微信群感谢文案（字符串）
+- next：下一期预告（字符串）
+章节标题参考 Editorial Direction.structure，但可按回顾逻辑调整。`;
+    const user = `Editorial Direction：${JSON.stringify(dir)}
+事实：${JSON.stringify(f)}
+回顾类型：${type}
+实际参与：${signN} 人
+补充资料：${notes || "无"}
+照片：${photos.length} 张（已分类）`;
+    out = await xfLLM(sys, user, true);
+    if (!out || !out.gzh || !out.gzh.sections || out.gzh.sections.length < 4) {
+      out = await xfLLM(sys + "\n（请严格返回完整 JSON：gzh.sections 至少 5 段，moments/wechat/next 为字符串）", user, true);
+    }
+  }
+  if (!out || !out.gzh || !out.gzh.sections) out = xfFallbackRecap(a, m, dir, photos, notes, type);
+  out = xfQualityCheck(out, dir, "recap") || out;
+  return out;
+}
+
+/* ---------- 质量检查（ContentQualityCheck / EditorialQualityCheck） ---------- */
+function xfQualityCheck(out, dir, scenario) {
+  if (!out) return null;
+  const gzh = out.gzh;
+  if (!gzh || !gzh.sections || gzh.sections.length < 3) return null;
+  // 事实安全：检测明显虚构信号（天气/领队行为/用户感受代词）
+  const FORBID = ["万里无云", "阳光明媚", "下起了雨", "领队说", "大家纷纷表示", "据说", "据说当时"];
+  let bad = 0;
+  (gzh.sections || []).forEach((s) => { (FORBID || []).forEach((w) => { if ((s.html || "").indexOf(w) >= 0) bad++; }); });
+  if (bad > 0) {
+    // 仅记录，不自动改写（避免破坏 AI 创作）；严重时不阻断
+    if (state.xf) state.xf.quality = { flag: "fiction_risk", count: bad, note: "检测到可能的虚构表述，请人工复核" };
+  } else if (state.xf) {
+    state.xf.quality = { flag: "ok", note: "文案基于已确认事实" };
+  }
+  return out;
+}
+
+/* ---------- 文案辅助（保留原有模板回退用） ---------- */
 function xfFitTitle(a) { return (a.audience && a.audience.length) ? `适合谁 · ${a.audience.join("/")}` : "适不适合我"; }
 function xfFitText(a, m) {
   const f = m.confirmedFacts;
@@ -242,19 +483,18 @@ function xfTags(a) {
   else base.push("徒步", "爬山");
   return base;
 }
-function xfXhsTitle(a, m, n) {
+function xfXhsTitle(a, m, n, dir) {
   const f = m.confirmedFacts;
+  const angle = (dir && dir.angle) ? dir.angle : m.mainTheme;
   const arr = [
-    `${f.place || "山里"}的${xfSeason(a) || ""}也太好拍了｜${m.mainTheme}`,
+    `${f.place || "山里"}的${xfSeason(a) || ""}也太好拍了｜${angle}`,
     `周末去哪？${f.activityName || "这场活动"}直接封神`,
     `谁懂啊，${f.place || "这儿"}才是${xfSeason(a) || "周末"}正确打开方式`,
-    `${m.mainTheme}｜一次说走就走的户外充电`,
+    `${angle}｜一次说走就走的户外充电`,
     `${f.activityName || "活动"}实录：原来户外可以这么松弛`,
   ];
   return arr[(n - 1) % arr.length];
 }
-
-/* ================= 活动回顾生成 ================= */
 function xfRecapType(a, photos) {
   const t = (a.type || "") + (a.title || "");
   if (/亲子|研学|自然|儿童/.test(t)) return "亲子陪伴型";
@@ -264,61 +504,7 @@ function xfRecapType(a, photos) {
   if (photos && photos.length >= 6) return "团队成长型";
   return "户外体验型";
 }
-async function genRecap(a, m, photos, notes) {
-  const f = m.confirmedFacts;
-  const type = xfRecapType(a, photos);
-  const signN = a.signups || (a.departures ? a.departures.reduce((s, d) => s + (d.sign || 0), 0) : 0);
-  let gzh = null;
-  if (aiAuthMode()) {
-    const sys = `你是户外俱乐部内容主笔，写活动回顾。像真正参加过的人认真回看这一天：真实、有画面、有完成感，禁止虚构天气/事件/用户感受/领队行为。只返回 JSON：{title,summary,sections:[{h,html}],next}`;
-    const user = `活动：${JSON.stringify(f)}\n回顾类型：${type}\n实际参与：${signN} 人\n补充资料：${notes || "无"}\n照片：${photos.length} 张（已分类）`;
-    gzh = await xfLLM(sys, user, true);
-  }
-  if (!gzh || !gzh.sections) {
-    gzh = {
-      title: `回顾｜${f.activityName || "这场活动"}，我们${type === "完成挑战型" ? "登顶了" : "一起走过"}`,
-      summary: `${f.date || "这场活动"}，${signN ? signN + " 位伙伴" : "一群伙伴"}在${f.place || "山野"}完成了一次${type}的户外日。`,
-      sections: [
-        { h: "开场", html: `${f.date || "那天"}，${signN ? signN + " 位伙伴" : "我们"}在${f.place || "集合点"}汇合。${type === "完成挑战型" ? "目标很明确：走完它。" : "没有什么宏大目标，就是认真地把这一天过好。"}` },
-        { h: "本次活动核心记忆", html: `${type === "风景纪实型" ? (m.scenicValue + "，这一程的景色是主线。") : (m.experienceValue + "，大家投入的样子就是最好的回忆。")}` },
-        { h: "本次参与体验", html: `${f.difficulty ? "强度" + f.difficulty + "，" : ""}但节奏把控得刚好。${f.leader ? f.leader + "带队，" : ""}该停就停，该走就走。` },
-        { h: "值得记住的瞬间", html: notes && notes.trim() ? `这次特别记下：${notes.trim()}` : `合照那一刻、抵达那一刻、还有返程车上安静下来的那一刻——都算数。` },
-        { h: "参与者收获", html: `${m.participationValue}。有人说来对了，这就够。` },
-        { h: "照片回顾", html: `这一程的画面都在下面，留给一起走过的人。` },
-        { h: "结尾", html: `山还在，路还在。谢谢每一位把周末交给户外的人。` },
-        { h: "下一期预告", html: xfNextText(a) },
-      ],
-      next: xfNextText(a),
-    };
-  }
-  let xhs = null;
-  if (aiAuthMode()) {
-    const sys = `你是小红书活动回顾爆款博主，把刚结束的一场活动写成有温度、有画面、让人想参加的笔记。
-要求：
-1) titles：3 个，带情绪钩子（"圆满收官 / 被治愈了 / 下次还来 / 值了"），含 emoji，≤20字；
-2) body：第一人称回顾。结构：① 一句钩子（"刚结束的XX，我宣布值了"）② 2-3 个分段小标题（如「🌟最难忘的瞬间」「🤝一起走过的人」「📷出片现场」「💬真心话」）③ 每段口语 2-4 句，有画面有情绪，可引用 notes 中的特别瞬间 ④ 结尾钩子（"下一期我已占位 / 评论区蹲下次"）；
-3) cover：≤12字封面短句带 emoji；
-4) tags：6-10 个，含 #活动回顾 #地点 #活动类型 与情绪类。
-禁止虚构天气/事件/用户感受；只基于给定事实与补充说明。返回 JSON：{titles:[3],body,cover,tags:[]}`;
-    xhs = await xfLLM(sys, `活动：${JSON.stringify(f)}\n类型：${type}\n补充：${notes || "无"}`, true);
-  }
-  if (!xhs || !xhs.body) {
-    xhs = {
-      titles: [`回顾｜${f.activityName || "这场活动"}，值了🔥`, `周末去${f.place || "山里"}的人，后来都怎样了`, `${type}的一天，比想象中更难忘`],
-      body: `刚结束的${f.activityName || "这场活动"}，我宣布：值了📷\n\n🌟 最难忘的瞬间\n${gzh.sections[1].html}\n\n🤝 一起走过的人\n${gzh.sections[3].html}\n\n💬 真心话\n真实去一次，比任何攻略都具体。下一期${xfNextText(a)}，我已经先占位了。\n\n评论区蹲下次活动的小伙伴扣 1 👇`,
-      cover: `圆满收官·${f.place || "山里"}`,
-      tags: xfTags(a).concat(["活动回顾"]),
-    };
-  }
-  return {
-    gzh: gzh, xhs: xhs,
-    moments: `【活动回顾】${f.activityName || "本周活动"}顺利收官🎉 ${signN ? signN + " 位伙伴" : "大家"}一起${type === "完成挑战型" ? "把山踩在了脚下" : "度过了超舒服的一天"}。最开心的不是到达，是路上有人一起走。下一期${xfNextText(a)}`,
-    wechat: `各位群友，咱们的${f.activityName || "活动"}圆满收官啦🌿 ${signN ? "共 " + signN + " 位伙伴参加" : "大家玩得超尽兴"}。\n\n特别感谢每一位准时出发、互相照应的伙伴——下次还跟你走。照片已整理在相册，记得自取📷\n\n错过这一次的别慌，${xfNextText(a)}想一起的下期提前占位，我帮你留着～`,
-    next: xfNextText(a),
-  };
-}
 function xfNextText(a) {
-  const f = (a && (a.dateMD || a.date)) ? (a.dateMD || a.date) : "";
   return `咱们还会继续进山，下一期路线正在安排，留意群里接龙就能占位。`;
 }
 
@@ -436,6 +622,19 @@ function xfPlatTabs(active, prefix) {
   return `<div class="xf-tabs">${tabs.map(([k, l]) => `<button class="xf-tab ${active === k ? "active" : ""}" data-action="xfPlatTab" data-k="${k}" data-prefix="${prefix}">${l}</button>`).join("")}</div>`;
 }
 
+function xfStyleBar(xf) {
+  const sc = xf.scenario;
+  const fams = Object.keys(XF_FAMILIES).filter((f) => XF_FAMILIES[f].scenario.includes(sc));
+  const dir = xf.strategy && xf.strategy.editorialDirection;
+  const vs = (XF_FAMILIES[xf.family] && XF_FAMILIES[xf.family].variants) || [""];
+  return `<div class="xf-stylebar">
+    <div class="xf-stylebar-row"><span class="xf-stylebar-lbl">编辑家族</span>${fams.map((f) => `<button class="xf-chip ${xf.family === f ? "active" : ""}" data-action="xfSwitchFamily" data-f="${f}">${XF_FAMILIES[f].label}</button>`).join("")}</div>
+    <div class="xf-stylebar-row"><span class="xf-stylebar-lbl">版式变体</span>${vs.map((v, i) => `<button class="xf-chip ${xf.variant === i ? "active" : ""}" data-action="xfSwitchVariant" data-v="${i}">${v}</button>`).join("")}<button class="btn btn-ghost btn-sm" data-action="xfSwitchStyle">${ICON("refresh")} 换风格</button></div>
+    ${dir ? `<div class="xf-dir">编辑方向：<b>${esc(dir.angle || "")}</b>${dir.hook ? ` · 钩子「${esc(dir.hook)}」` : ""} · 视觉 ${esc((dir.visual && dir.visual.color) || "")}/${esc((dir.visual && dir.visual.composition) || "")}</div>` : ""}
+    ${xf.quality && xf.quality.note ? `<div class="xf-q">质量：${esc(xf.quality.note)}</div>` : ""}
+  </div>`;
+}
+
 function xfRecruitResult() {
   const xf = xfState();
   const o = xf.out;
@@ -443,9 +642,10 @@ function xfRecruitResult() {
   return `
   <div class="xf-back"><button class="btn btn-ghost btn-sm" data-action="xfReset">${ICON("chevron-left")} 重新选择</button></div>
   <div class="xf-theme"><span class="xf-theme-lbl">本次核心传播主题</span><b>${esc((xf.master || {}).mainTheme || "")}</b></div>
+  ${xfStyleBar(xf)}
   ${xfPlatTabs(xf.platTab, "recruit")}
   <div class="xf-plat-body">
-    ${xf.platTab === "gzh" ? xfGzhPanel(o.gzh, xf.layout) : ""}
+    ${xf.platTab === "gzh" ? xfGzhPanel(o.gzh, xf) : ""}
     ${xf.platTab === "xhs" ? xfXhsPanel(o.xhs) : ""}
     ${xf.platTab === "moments" ? xfMomentsPanel(o.moments) : ""}
     ${xf.platTab === "wechat" ? xfWechatPanel(o.wechat) : ""}
@@ -454,16 +654,14 @@ function xfRecruitResult() {
   </div>`;
 }
 
-function xfGzhPanel(gzh, layout) {
-  const xf = xfState();
-  const layouts = [["diary", "山野日记型"], ["magazine", "户外杂志型"], ["youth", "年轻潮流型"], ["family", "亲子自然型"], ["challenge", "挑战运动型"], ["longform", "招募长图文"]];
+function xfGzhPanel(gzh, xf) {
+  const base = XF_FAMILY_LAYOUT[xf.family] || "diary";
   return `
   <div class="xf-gzh-head">
-    <div class="xf-layouts">${layouts.map(([k, l]) => `<button class="xf-layout ${layout === k ? "active" : ""}" data-action="xfSwitchLayout" data-l="${k}">${l}</button>`).join("")}</div>
     <button class="btn btn-primary btn-sm" data-action="xfCopyGzhHtml">${ICON("copy")} 复制公众号（HTML）</button>
   </div>
-  ${layout === "diary" ? xfGzhDiaryHtml(gzh, xf, false) : xfGzhClassicHtml(gzh, xf, layout, false)}
-  <p class="tiny muted">正文可直接点击修改（contenteditable），改完点「复制公众号（HTML）」粘贴到微信后台；换版式只改视觉风格，不改内容。</p>`;
+  ${base === "diary" ? xfGzhDiaryHtml(gzh, xf, false) : xfGzhClassicHtml(gzh, xf, base, false)}
+  <p class="tiny muted">正文可直接点击修改（contenteditable）；换版式/换家族只改视觉，换风格才重生成文案。</p>`;
 }
 function xfPhotoForSection(h) {
   if (/为什么|值得去|风景|景|地点|路线|地貌/.test(h || "")) return "scenic";
@@ -597,7 +795,7 @@ function xfGzhDiaryHtml(gzh, xf, isRecap) {
 
   const cta = gzh.cta || (isRecap && gzh.next) ? `<div class="gzh-diary-cta">${esc(gzh.cta || gzh.next || "")}</div>` : "";
 
-  return `<div class="gzh-article gzh-diary" id="xfGzhArticle" contenteditable="true" spellcheck="false">
+  return `<div class="gzh-article gzh-diary gzh-var-${xf.variant}" id="xfGzhArticle" contenteditable="true" spellcheck="false">
     ${hero}
     ${lead}
     ${sections}
@@ -644,7 +842,7 @@ function xfGzhClassicHtml(gzh, xf, layout, isRecap) {
       </div>`;
     }).join("");
     const tags = xfTags(a).slice(0, 6).map((t) => `<span class="gzh-youth-tag">#${esc(t)}</span>`).join("");
-    return `<div class="gzh-article gzh-youth" id="xfGzhArticle" contenteditable="true" spellcheck="false">
+    return `<div class="gzh-article gzh-youth gzh-var-${xf.variant}" id="xfGzhArticle" contenteditable="true" spellcheck="false">
       <div class="gzh-youth-hero">
         <div class="gzh-youth-eyebrow">${esc(eyebrow)}</div>
         <h1 class="gzh-youth-title">${esc(gzh.title)}</h1>
@@ -674,7 +872,7 @@ function xfGzhClassicHtml(gzh, xf, layout, isRecap) {
         ${ph && ph.src ? `<div class="gzh-family-step-img" style="background-image:url('${ph.src}')"><span class="gzh-img-cap">${esc(ph.cat || "")}</span></div>` : ""}
       </div>`;
     }).join("");
-    return `<div class="gzh-article gzh-family" id="xfGzhArticle" contenteditable="true" spellcheck="false">
+    return `<div class="gzh-article gzh-family gzh-var-${xf.variant}" id="xfGzhArticle" contenteditable="true" spellcheck="false">
       <div class="gzh-family-hero">
         <div class="gzh-family-cover" ${cover.src ? `style="background-image:url('${cover.src}')"` : ""}>
           <div class="gzh-family-cover-mask"></div>
@@ -716,7 +914,7 @@ function xfGzhClassicHtml(gzh, xf, layout, isRecap) {
         </div>
       </section>`;
     }).join("");
-    return `<div class="gzh-article gzh-challenge" id="xfGzhArticle" contenteditable="true" spellcheck="false">
+    return `<div class="gzh-article gzh-challenge gzh-var-${xf.variant}" id="xfGzhArticle" contenteditable="true" spellcheck="false">
       <div class="gzh-challenge-hero">
         <div class="gzh-challenge-eyebrow">${esc(eyebrow)}</div>
         <h1 class="gzh-challenge-title">${esc(gzh.title)}</h1>
@@ -755,7 +953,7 @@ function xfGzhClassicHtml(gzh, xf, layout, isRecap) {
         </div>
       </section>`;
     }).join("");
-    return `<div class="gzh-article gzh-longform" id="xfGzhArticle" contenteditable="true" spellcheck="false">
+    return `<div class="gzh-article gzh-longform gzh-var-${xf.variant}" id="xfGzhArticle" contenteditable="true" spellcheck="false">
       <div class="gzh-longform-hero">
         ${cover.src ? `<div class="gzh-longform-cover" style="background-image:url('${cover.src}')"><div class="gzh-longform-cover-mask"></div></div>` : ""}
         <div class="gzh-longform-hero-txt">
@@ -792,7 +990,7 @@ function xfGzhClassicHtml(gzh, xf, layout, isRecap) {
   const gallery = photos.length > 1
     ? `<div class="gzh-gallery-classic"><h2>本期画面</h2><div class="gzh-gallery-grid">${photos.slice(0, 4).map((p) => `<div class="gzh-gallery-item" style="background-image:url('${p.src}')"><span class="gzh-img-cap">${esc(p.cat || "")}</span></div>`).join("")}</div></div>`
     : "";
-  return `<div class="gzh-article gzh-magazine" id="xfGzhArticle" contenteditable="true" spellcheck="false">
+  return `<div class="gzh-article gzh-magazine gzh-var-${xf.variant}" id="xfGzhArticle" contenteditable="true" spellcheck="false">
     <div class="gzh-cover" ${cover.src ? `style="background-image:url('${cover.src}')"` : ""}><div class="gzh-cover-mask"><div class="gzh-cover-cap">${esc(cover.cat ? "封面建议：" + cover.cat : (xf.photos && xf.photos.length ? "可换一张更具张力的大图作封面" : "未上传照片，建议补 1 张封面大图"))}</div></div></div>
     <div class="gzh-mag-head">
       <div class="gzh-mag-eyebrow">${esc(eyebrow)}</div>
@@ -859,9 +1057,10 @@ function xfRecapResult() {
   return `
   <div class="xf-back"><button class="btn btn-ghost btn-sm" data-action="xfReset">${ICON("chevron-left")} 重新选择</button></div>
   <div class="xf-theme"><span class="xf-theme-lbl">本次活动回顾主题</span><b>${esc(xf.recapType)}</b></div>
+  ${xfStyleBar(xf)}
   ${xfPlatTabs(xf.platTab, "recap")}
   <div class="xf-plat-body">
-    ${xf.platTab === "gzh" ? xfRecapGzhPanel(o.gzh, xf.layout) : ""}
+    ${xf.platTab === "gzh" ? xfRecapGzhPanel(o.gzh, xf) : ""}
     ${xf.platTab === "xhs" ? xfXhsPanel(o.xhs) : ""}
     ${xf.platTab === "moments" ? `<div class="xf-text-card"><div class="xf-field"><label>朋友圈回顾</label><div class="xf-pre">${esc(o.moments)}</div><button class="copy-btn" data-action="xfCopyText" data-text="${esc(o.moments)}">复制</button></div></div>` : ""}
     ${xf.platTab === "wechat" ? `<div class="xf-text-card"><div class="xf-field"><label>微信群感谢</label><div class="xf-pre">${esc(o.wechat)}</div><button class="copy-btn" data-action="xfCopyText" data-text="${esc(o.wechat)}">复制</button></div></div>` : ""}
@@ -870,15 +1069,13 @@ function xfRecapResult() {
   </div>`;
 }
 
-function xfRecapGzhPanel(gzh, layout) {
-  const xf = xfState();
-  const layouts = [["diary", "山野日记型"], ["magazine", "户外杂志型"], ["youth", "年轻潮流型"], ["family", "亲子自然型"], ["challenge", "挑战运动型"], ["longform", "招募长图文"]];
+function xfRecapGzhPanel(gzh, xf) {
+  const base = XF_FAMILY_LAYOUT[xf.family] || "diary";
   return `
   <div class="xf-gzh-head">
-    <div class="xf-layouts">${layouts.map(([k, l]) => `<button class="xf-layout ${layout === k ? "active" : ""}" data-action="xfSwitchLayout" data-l="${k}">${l}</button>`).join("")}</div>
     <button class="btn btn-primary btn-sm" data-action="xfCopyGzhHtml">${ICON("copy")} 复制公众号（HTML）</button>
   </div>
-  ${layout === "diary" ? xfGzhDiaryHtml(gzh, xf, true) : xfGzhClassicHtml(gzh, xf, layout, true)}
+  ${base === "diary" ? xfGzhDiaryHtml(gzh, xf, true) : xfGzhClassicHtml(gzh, xf, base, true)}
   <p class="tiny muted">回顾正文可直接点击修改；禁止虚构现场细节，所有事实须来自上传资料。改完点「复制公众号（HTML）」。</p>`;
 }
 
