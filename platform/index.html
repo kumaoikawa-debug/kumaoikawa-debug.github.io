@@ -28,7 +28,9 @@
       if (j && typeof j.ver === "number") ver = j.ver;
     }
   } catch(e){}
-  if (ver !== APP_VER) hardReload(ver);
+  var _reloaded = false;
+  try { _reloaded = sessionStorage.getItem("_clubos_ver_reloaded") === String(ver); } catch(e){}
+  if (ver !== APP_VER && !_reloaded) hardReload(ver);
 })();
 </script>
 

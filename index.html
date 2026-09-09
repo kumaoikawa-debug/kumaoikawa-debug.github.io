@@ -3,7 +3,7 @@
 <head>
 <script>
 (function(){
-  var APP_VER = 131; /* 权威版本：与 version.json + HTML ?v= 同步，每次发版 +1 */
+  var APP_VER = 133; /* 权威版本：与 version.json + HTML ?v= 同步，每次发版 +1 */
   function hardReload(ver){
     try {
       var cur = JSON.parse(localStorage.getItem("clubos_v1") || "{}");
@@ -28,7 +28,9 @@
       if (j && typeof j.ver === "number") ver = j.ver;
     }
   } catch(e){}
-  if (ver !== APP_VER) hardReload(ver);
+  var _reloaded = false;
+  try { _reloaded = sessionStorage.getItem("_clubos_ver_reloaded") === String(ver); } catch(e){}
+  if (ver !== APP_VER && !_reloaded) hardReload(ver);
 })();
 </script>
 
