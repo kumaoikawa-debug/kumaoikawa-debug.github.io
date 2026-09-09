@@ -4727,3 +4727,76 @@ body{
 .gzh-sec-cell-body h3{font-size:15px;margin:0 0 6px;color:var(--brand-700)}
 .gzh-sec-cell-body p{font-size:13px;line-height:1.6;margin:0;color:var(--ink-2)}
 @media (max-width:560px){ .gzh-sec-grid{grid-template-columns:1fr} }
+
+/* ============ 公众号版式 · 全局去卡片化 / 图片主导净化（v134） ============ */
+/* 图片标签：去掉黑药丸，改成左上角极淡文字，不遮挡画面 */
+.gzh-img-cap{position:absolute;left:10px;top:10px;right:auto;bottom:auto;background:none;padding:0;font-size:10px;color:rgba(255,255,255,.78);letter-spacing:.06em;text-shadow:0 1px 3px rgba(0,0,0,.35);text-transform:uppercase;border-radius:0}
+.gzh-img-cap:before{content:"· ";opacity:.7}
+
+/* 摘要块去盒化 */
+.gzh-sum{background:none !important;padding:14px 0 !important;font-size:14px;line-height:1.85;color:var(--ink-2);border-top:1px solid var(--line);border-bottom:1px solid var(--line);border-radius:0 !important}
+
+/* 信息网格去硬白 */
+.gzh-info-cell{background:var(--surface-2) !important;border-radius:10px}
+.gzh-info-v{color:var(--ink) !important}
+
+/* ============ 长图文 longform 去盒化 ============ */
+.gzh-longform{background:var(--bg);color:var(--ink);border-radius:0}
+.gzh-longform-sec{padding:28px 24px;border-top:none;align-items:flex-start}
+.gzh-longform-img{height:280px;border-radius:14px}
+.gzh-longform-sec-num{font-size:11px;color:var(--brand);margin-bottom:8px}
+.gzh-longform-text h2{font-size:20px;color:var(--brand-700);margin-bottom:10px}
+.gzh-longform-text p{font-size:14px;line-height:1.85;color:var(--ink-2)}
+.gzh-longform .gzh-info,.gzh-longform .gzh-block{background:none !important;border-radius:0 !important;padding:18px 24px;border-top:1px solid var(--line);margin:0}
+.gzh-longform .gzh-info h2,.gzh-longform .gzh-block h2{color:var(--brand-700);font-size:16px}
+
+/* ============ 杂志 magazine 更舒展 ============ */
+.gzh-mag-sec{padding:22px 24px;align-items:flex-start;gap:22px}
+.gzh-mag-img{height:260px;border-radius:14px}
+.gzh-mag-text h2{font-size:20px;margin-bottom:10px}
+.gzh-mag-text p{font-size:14px;line-height:1.85}
+.gzh-mag-sec-num{font-size:11px;margin-bottom:8px}
+
+/* ============ 年轻 youth 去卡片（桌面横排，移动端竖排） ============ */
+.gzh-youth-cards{gap:0}
+.gzh-youth-card{background:none !important;border:none !important;border-radius:0 !important;display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:center;padding:20px 0;border-bottom:1px solid var(--line)}
+.gzh-youth-card:last-child{border-bottom:none}
+.gzh-youth-card-img{height:200px;border-radius:14px;order:1}
+.gzh-youth-card-body{padding:0;order:2}
+.gzh-youth-card-num{font-size:11px;color:var(--brand);margin-bottom:6px}
+.gzh-youth-card-body h3{font-size:18px;color:var(--ink);margin-bottom:8px}
+.gzh-youth-card-body p{font-size:14px;line-height:1.8;color:var(--ink-2)}
+@media(max-width:560px){.gzh-youth-card{grid-template-columns:1fr;border-bottom:none;padding:18px 0}.gzh-youth-card-img{height:220px;order:1}.gzh-youth-card-body{order:2}}
+
+/* ============ 亲子 family 去卡片 ============ */
+.gzh-family-steps{gap:0}
+.gzh-family-step{background:none !important;border:none !important;border-radius:0 !important;padding:18px 0;border-bottom:1px solid var(--line);align-items:flex-start}
+.gzh-family-step:last-child{border-bottom:none}
+.gzh-family-step-num{width:26px;height:26px;font-size:12px;background:var(--brand-tint);color:var(--brand-700)}
+.gzh-family-step-body h3{font-size:17px;color:var(--brand-700)}
+.gzh-family-step-body p{font-size:14px;line-height:1.8;color:var(--ink-2)}
+.gzh-family-step-img{width:110px;height:110px;border-radius:12px;align-self:flex-start}
+
+/* ============ 挑战 challenge 去盒化 ============ */
+.gzh-challenge-sec{border-top:none !important;padding:22px 24px}
+.gzh-challenge-img{height:260px;border-radius:14px}
+.gzh-challenge-sec-num{font-size:11px;color:var(--brand)}
+.gzh-challenge-sec-head h2{font-size:20px}
+.gzh-challenge-sec-body p{font-size:14px;line-height:1.85}
+
+/* ============ 日记 diary split/full/img 更干净 ============ */
+.gzh-sec-split{grid-template-columns:1fr 1fr;gap:22px;align-items:flex-start;padding:18px 0}
+.gzh-split-img{min-height:280px;border-radius:14px}
+.gzh-split-text h2{font-size:20px;margin-bottom:10px}
+.gzh-split-text p{font-size:14px;line-height:1.85;color:var(--ink-2)}
+.gzh-sec-img .gzh-wide-img{height:320px;border-radius:14px}
+.gzh-sec-full .gzh-sec-imgbox{height:280px;border-radius:14px}
+.gzh-sec-full h2{font-size:20px}
+
+/* ============ 版式变体 2（紧致网格）去卡片 ============ */
+.gzh-sec-grid{grid-template-columns:1fr 1fr;gap:18px;margin:24px 0}
+.gzh-sec-cell{background:none !important;border:none !important;border-radius:0 !important;overflow:visible}
+.gzh-sec-cell-img{height:180px;border-radius:12px}
+.gzh-sec-cell-body{padding:10px 0 0}
+.gzh-sec-cell-body h3{font-size:16px;color:var(--brand-700);margin-bottom:6px}
+.gzh-sec-cell-body p{font-size:13px;line-height:1.75;color:var(--ink-2)}
