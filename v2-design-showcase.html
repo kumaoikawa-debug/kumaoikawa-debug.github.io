@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script>
+(function(){
+  var APP_VER = 131; /* 权威版本：与 version.json + HTML ?v= 同步，每次发版 +1 */
+  function hardReload(ver){
+    try {
+      var cur = JSON.parse(localStorage.getItem("clubos_v1") || "{}");
+      if (cur && typeof cur === "object") { delete cur.xf; }
+      localStorage.setItem("clubos_v1", JSON.stringify(cur));
+    } catch(e){}
+    try { sessionStorage.setItem("_clubos_ver_reloaded", String(ver)); } catch(e2){}
+    var u = location.href.replace(/[?&]_=\d+/g, "");
+    u += (u.indexOf("?") === -1 ? "?" : "&") + "_=" + Date.now();
+    location.replace(u);
+  }
+  /* 以 version.json 为唯一权威源（带时间戳强刷，边缘/浏览器均不缓存）。
+     旧方案比对 localStorage：浏览器一旦记录旧版本号就永不跳转，
+     从而持续加载被缓存的旧 publish.js —— 这正是“AI宣发打不开”的根因。 */
+  var ver = APP_VER;
+  try {
+    var x = new XMLHttpRequest();
+    x.open("GET", "version.json?_=" + Date.now(), false);
+    x.send();
+    if (x.status === 200) {
+      var j = JSON.parse(x.responseText);
+      if (j && typeof j.ver === "number") ver = j.ver;
+    }
+  } catch(e){}
+  if (ver !== APP_VER) hardReload(ver);
+})();
+</script>
+
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ClubOS V2.0 · 新界面设计稿（松赞风）</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --cream:#F4F1EA; --paper:#FBF9F4; --green:#2F5D50; --green-d:#234740;
+    --red:#C0492F; --gold:#B98A2E; --ink:#2B2722; --muted:#8A8276;
+    --line:#E6DFD2; --card:#FFFFFF; --serif:"Noto Serif SC",serif;
+    --sans:"Noto Sans SC",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--cream);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;padding:32px 20px 64px}
+  .top{text-align:center;max-width:1100px;margin:0 auto 28px}
+  .top .kicker{font-size:12px;letter-spacing:.32em;color:var(--gold);font-weight:700}
+  .top h1{font-family:var(--serif);font-size:30px;margin:8px 0 6px;color:var(--green)}
+  .top p{color:var(--muted);font-size:13px;max-width:680px;margin:0 auto;line-height:1.7}
+  .stage{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:380px 1fr;gap:32px;align-items:start}
+  @media(max-width:860px){.stage{grid-template-columns:1fr}}
+  .screen-h{font-family:var(--serif);font-size:18px;color:var(--green-d);margin:0 0 14px;display:flex;align-items:center;gap:8px}
+  .screen-h .num{width:24px;height:24px;border-radius:50%;background:var(--green);color:#fff;font-size:12px;display:grid;place-items:center;font-family:var(--sans);font-weight:700}
+  /* phone */
+  .phone{background:var(--paper);border:1px solid var(--line);border-radius:28px;overflow:hidden;box-shadow:0 18px 50px rgba(47,93,80,.14)}
+  .ph-hero{height:188px;background:linear-gradient(160deg,#3a6f60,#234740 70%);position:relative;color:#fff;padding:18px}
+  .ph-hero .tag{font-size:11px;background:rgba(255,255,255,.18);padding:3px 9px;border-radius:20px;display:inline-block}
+  .ph-hero h2{font-family:var(--serif);font-size:21px;margin-top:auto;position:absolute;bottom:16px;left:18px;right:18px;line-height:1.4}
+  .ph-hero .meta{position:absolute;top:16px;right:18px;font-size:11px;opacity:.85;text-align:right;line-height:1.6}
+  .ph-body{padding:16px}
+  .sec{bargin:0}
+  .sec-h{display:flex;align-items:center;gap:7px;font-family:var(--serif);font-size:15px;color:var(--green-d);margin:4px 0 12px}
+  .sec-h svg{width:15px;height:15px}
+  .gear-list{display:flex;flex-direction:column;gap:9px;margin-bottom:14px}
+  .gear{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+  .gear .ic{width:30px;height:30px;border-radius:8px;background:#eef3f0;color:var(--green);display:grid;place-items:center;flex:none}
+  .gear .ic svg{width:15px;height:15px}
+  .gear .nm{font-size:13px;font-weight:500;flex:1}
+  .gear .must{font-size:10px;color:var(--red);font-weight:700}
+  .gear .link{font-size:11px;color:var(--green);background:#eaf1ee;padding:4px 9px;border-radius:20px;white-space:nowrap}
+  .mall-note{font-size:11px;color:var(--muted);background:#f3efe7;border-radius:10px;padding:9px 11px;line-height:1.6;margin-bottom:12px}
+  .mall-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+  .mc{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--card)}
+  .mc .ph{height:78px;background:linear-gradient(135deg,#cdd8d2,#9fb6ac)}
+  .mc .bd{padding:9px 10px 11px}
+  .mc .tt{font-size:12.5px;font-weight:600;line-height:1.35;height:34px;overflow:hidden}
+  .mc .mt{display:flex;gap:5px;align-items:center;margin:6px 0;flex-wrap:wrap}
+  .pill{font-size:10px;padding:2px 6px;border-radius:6px;font-weight:600}
+  .r-L2{background:#fbeee6;color:var(--red)} .r-L1{background:#eef1ec;color:#6a7a6f}
+  .rate{font-size:10px;color:var(--gold);font-weight:700}
+  .match{background:var(--green);color:#fff}
+  .mc .ft{display:flex;align-items:center;justify-content:space-between;margin-top:4px}
+  .mc .pr{font-family:var(--serif);font-size:15px;color:var(--red);font-weight:700}
+  .mc .go{font-size:11px;color:var(--green);display:flex;align-items:center;gap:2px}
+  /* dashboard */
+  .dash{background:var(--paper);border:1px solid var(--line);border-radius:20px;padding:20px;box-shadow:0 18px 50px rgba(47,93,80,.10)}
+  .dh{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:6px}
+  .dh h3{font-family:var(--serif);font-size:18px;color:var(--green-d)}
+  .dh .sub{font-size:11px;color:var(--muted)}
+  .hero{background:linear-gradient(135deg,var(--green),var(--green-d));color:#fff;border-radius:16px;padding:18px 20px;margin-bottom:16px;position:relative;overflow:hidden}
+  .hero .lbl{font-size:12px;opacity:.82;letter-spacing:.04em}
+  .hero .big{font-family:var(--serif);font-size:34px;margin-top:6px;font-weight:700}
+  .hero .big b{color:#f0c674}
+  .hero .desc{font-size:11.5px;opacity:.8;margin-top:8px;max-width:520px;line-height:1.6}
+  .hero .star{position:absolute;right:14px;top:14px;opacity:.18}
+  .hero .star svg{width:60px;height:60px}
+  .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px}
+  @media(max-width:560px){.cards{grid-template-columns:repeat(2,1fr)}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:13px 14px}
+  .card .cl{font-size:11px;color:var(--muted)}
+  .card .cv{font-family:var(--serif);font-size:22px;font-weight:700;color:var(--green-d);margin-top:5px}
+  .card .cv small{font-size:12px;color:var(--muted);font-weight:400;font-family:var(--sans)}
+  .rank{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:560px){.rank{grid-template-columns:1fr}}
+  .rk-h{font-family:var(--serif);font-size:14px;color:var(--green-d);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
+  .rk-h span{font-size:10px;color:var(--muted);font-weight:400;font-family:var(--sans)}
+  .rk-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px dashed var(--line)}
+  .rk-row:last-child{border-bottom:0}
+  .rk-row .pos{width:18px;font-family:var(--serif);color:var(--gold);font-weight:700;font-size:14px}
+  .rk-row .nm{flex:1;font-size:13px;font-weight:500}
+  .rk-row .me{font-size:9px;background:var(--red);color:#fff;padding:1px 5px;border-radius:5px;margin-left:5px}
+  .rk-row .bar{height:6px;border-radius:4px;background:#eef1ee;overflow:hidden;flex:1.4;max-width:140px}
+  .rk-row .bar i{display:block;height:100%;background:var(--green)}
+  .rk-row .val{font-size:12px;font-weight:700;color:var(--green-d);width:74px;text-align:right}
+  .legend{font-size:10.5px;color:var(--muted);margin-top:14px;line-height:1.7;background:#f3efe7;border-radius:10px;padding:10px 12px}
+  .foot{max-width:1100px;margin:28px auto 0;font-size:11px;color:var(--muted);text-align:center;line-height:1.8}
+</style>
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
+</head>
+<body>
+  <div class="top">
+    <div class="kicker">CLUBOS V2.0 · 单俱乐部版</div>
+    <h1>新版界面设计稿 · 松赞风</h1>
+    <p>本稿对应 V2.0 两个核心新增界面：活动详情的「装备建议 × 商城融合」（核心产品点），以及「数据运营」后台（北极星指标）。配色沿用米白 #F4F1EA / 深绿 #2F5D50 / 红 #C0492F / 金 #B98A2E，衬线标题。</p>
+  </div>
+
+  <div class="stage">
+    <!-- Screen A: 活动详情 × 装备融合 -->
+    <div>
+      <div class="screen-h"><span class="num">A</span> 活动详情 · 装备融合</div>
+      <div class="phone">
+        <div class="ph-hero">
+          <span class="tag">徒步 · 雪山转山</span>
+          <div class="meta">9/14 周六<br>雨崩 · 神瀑<br>¥ 1,280 / 人</div>
+          <h2>雨崩徒步 · 神瀑转山</h2>
+        </div>
+        <div class="ph-body">
+          <div class="sec-h">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+            装备建议
+          </div>
+          <div class="gear-list">
+            <div class="gear"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg></div><div class="nm">防滑徒步鞋 <span class="must">必备</span></div><div class="link">商城同款 ›</div></div>
+            <div class="gear"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/></svg></div><div class="nm">登山杖 <span class="must">必备</span></div><div class="link">商城同款 ›</div></div>
+            <div class="gear"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7z"/></svg></div><div class="nm">1.5L 以上饮水及路餐</div><div class="link">商城同款 ›</div></div>
+            <div class="gear"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></div><div class="nm">防晒与防风外套</div><div class="link">商城同款 ›</div></div>
+          </div>
+          <div class="mall-note">可在商城一站式备齐 · 按「安全 &gt; 评价 &gt; 价格」推荐（佣金绝不参与排序），平台统一发货，佣金归本俱乐部。</div>
+          <div class="mall-grid">
+            <div class="mc">
+              <div class="ph"></div>
+              <div class="bd">
+                <div class="tt">中帮防水登山鞋</div>
+                <div class="mt"><span class="pill r-L2">L2 一般户外</span><span class="rate">★ 4.9</span><span class="pill match">清单匹配</span></div>
+                <div class="ft"><span class="pr">¥899</span><span class="go">查看 ›</span></div>
+              </div>
+            </div>
+            <div class="mc">
+              <div class="ph"></div>
+              <div class="bd">
+                <div class="tt">碳纤登山杖</div>
+                <div class="mt"><span class="pill r-L2">L2 一般户外</span><span class="rate">★ 4.8</span><span class="pill match">清单匹配</span></div>
+                <div class="ft"><span class="pr">¥199</span><span class="go">查看 ›</span></div>
+              </div>
+            </div>
+            <div class="mc">
+              <div class="ph"></div>
+              <div class="bd">
+                <div class="tt">户外活动水壶 750ml</div>
+                <div class="mt"><span class="pill r-L1">L1 普通</span><span class="rate">★ 4.7</span></div>
+                <div class="ft"><span class="pr">¥59</span><span class="go">查看 ›</span></div>
+              </div>
+            </div>
+            <div class="mc">
+              <div class="ph"></div>
+              <div class="bd">
+                <div class="tt">防晒速干渔夫帽</div>
+                <div class="mt"><span class="pill r-L1">L1 普通</span><span class="rate">★ 4.6</span></div>
+                <div class="ft"><span class="pr">¥49</span><span class="go">查看 ›</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Screen B: 数据运营后台 -->
+    <div>
+      <div class="screen-h"><span class="num">B</span> 数据运营后台</div>
+      <div class="dash">
+        <div class="dh"><h3>数据运营</h3><div class="sub">北极星：每 100 报名带来多少商城 GMV</div></div>
+        <div class="hero">
+          <div class="star"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 9.2 8.6 2 9.3l5.5 4.7L5.8 21 12 17.3 18.2 21l-1.7-7 5.5-4.7-7.2-.7z"/></svg></div>
+          <div class="lbl">每 100 报名 → 商城 GMV（北极星指标）</div>
+          <div class="big">¥ <b>53,940</b></div>
+          <div class="desc">活动流量越能转化为装备销售，平台与俱乐部共赢。口径：商城 GMV ÷ 报名人次 × 100，已排除退款冲销（reversed）订单。</div>
+        </div>
+        <div class="cards">
+          <div class="card"><div class="cl">报名人次</div><div class="cv">1,260 <small>人</small></div></div>
+          <div class="card"><div class="cl">商城 GMV</div><div class="cv">¥ 67,960</div></div>
+          <div class="card"><div class="cl">装备转化率</div><div class="cv">21.4 <small>%</small></div></div>
+          <div class="card"><div class="cl">累计佣金</div><div class="cv">¥ 8,320</div></div>
+          <div class="card"><div class="cl">AI 积分消耗</div><div class="cv">12,300</div></div>
+          <div class="card"><div class="cl">活动场次</div><div class="cv">38 <small>场</small></div></div>
+        </div>
+        <div class="rank">
+          <div>
+            <div class="rk-h">俱乐部排行 · 每 100 报名 GMV <span>含模拟俱乐部</span></div>
+            <div class="rk-row"><div class="pos">1</div><div class="nm">野径行<span class="me">本俱乐部</span></div><div class="bar"><i style="width:100%"></i></div><div class="val">¥53,940</div></div>
+            <div class="rk-row"><div class="pos">2</div><div class="nm">山野小队</div><div class="bar"><i style="width:71%"></i></div><div class="val">¥38,600</div></div>
+            <div class="rk-row"><div class="pos">3</div><div class="nm">峰行户外</div><div class="bar"><i style="width:46%"></i></div><div class="val">¥24,800</div></div>
+            <div class="rk-row"><div class="pos">4</div><div class="nm">远山计划</div><div class="bar"><i style="width:33%"></i></div><div class="val">¥17,900</div></div>
+          </div>
+          <div>
+            <div class="rk-h">商品排行 · 按成交额 <span>18 个 SKU</span></div>
+            <div class="rk-row"><div class="pos">1</div><div class="nm">中帮防水登山鞋</div><div class="bar"><i style="width:100%"></i></div><div class="val">¥21,576</div></div>
+            <div class="rk-row"><div class="pos">2</div><div class="nm">碳纤登山杖</div><div class="bar"><i style="width:64%"></i></div><div class="val">¥13,930</div></div>
+            <div class="rk-row"><div class="pos">3</div><div class="nm">户外水壶 750ml</div><div class="bar"><i style="width:38%"></i></div><div class="val">¥8,260</div></div>
+            <div class="rk-row"><div class="pos">4</div><div class="nm">防晒速干渔夫帽</div><div class="bar"><i style="width:23%"></i></div><div class="val">¥4,900</div></div>
+          </div>
+        </div>
+        <div class="legend">口径说明：北极星 = GMV ÷ 报名人次 × 100；转化率 = 商城订单数 ÷ 报名人次；佣金 = 待确认 + 冻结 + 可结算 + 已结算（已冲销不计入）；俱乐部/商品排行均排除 reversed 订单。Demo 数据由 localStorage 驱动，后端 /api/analytics/overview 口径一致。</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    ClubOS V2.0 单俱乐部版 · 设计稿（松赞风）｜ 对应已部署 Demo：https://5513304b79204b4b9149ed5882330b3a.app.workbuddy.link<br>
+    注：本稿为 ardot 画布未连接时的等效 HTML 设计替代物；接入 ardot MCP 后可一键迁移至画布做精细走查。
+  </div>
+</body>
+</html>

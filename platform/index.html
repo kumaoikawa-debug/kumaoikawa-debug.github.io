@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<script>
+(function(){
+  var APP_VER = 85; /* 权威版本：与 version.json + HTML ?v= 同步，每次发版 +1 */
+  function hardReload(ver){
+    try {
+      var cur = JSON.parse(localStorage.getItem("clubos_v1") || "{}");
+      if (cur && typeof cur === "object") { delete cur.xf; }
+      localStorage.setItem("clubos_v1", JSON.stringify(cur));
+    } catch(e){}
+    try { sessionStorage.setItem("_clubos_ver_reloaded", String(ver)); } catch(e2){}
+    var u = location.href.replace(/[?&]_=\d+/g, "");
+    u += (u.indexOf("?") === -1 ? "?" : "&") + "_=" + Date.now();
+    location.replace(u);
+  }
+  /* 以 version.json 为唯一权威源（带时间戳强刷，边缘/浏览器均不缓存）。
+     旧方案比对 localStorage：浏览器一旦记录旧版本号就永不跳转，
+     从而持续加载被缓存的旧 publish.js —— 这正是“AI宣发打不开”的根因。 */
+  var ver = APP_VER;
+  try {
+    var x = new XMLHttpRequest();
+    x.open("GET", "version.json?_=" + Date.now(), false);
+    x.send();
+    if (x.status === 200) {
+      var j = JSON.parse(x.responseText);
+      if (j && typeof j.ver === "number") ver = j.ver;
+    }
+  } catch(e){}
+  if (ver !== APP_VER) hardReload(ver);
+})();
+</script>
+
+
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ClubOS 总平台 · 统管入驻 · 权限 · AI额度 · 商城</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=85" />
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
+</head>
+<body>
+  <div id="app"></div>
+  <input type="file" id="photoInput" accept="image/*" multiple hidden />
+  <input type="file" id="logoInput" accept="image/*" hidden />
+  <div id="toast" class="toast"></div>
+  <script src="src/core.js?v=85"></script>
+  <script src="src/activities.js?v=85"></script>
+  <script src="src/gear.js?v=85"></script>
+  <script src="src/blocks.js?v=85"></script>
+  <script src="src/platform.js?v=85"></script>
+  <script src="src/data.js?v=85"></script>
+  <script src="src/shell.js?v=85"></script>
+  <script src="src/settings.js?v=85"></script>
+  <script src="src/boot.js?v=85"></script>
+</body>
+</html>

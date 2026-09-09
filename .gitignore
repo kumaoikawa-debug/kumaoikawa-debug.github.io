@@ -1,0 +1,16 @@
+# ===== ClubOS 静态站 Git 忽略规则 =====
+# 版本备份（本地保留即可，不进仓库，体积大）
+versions/
+
+# 依赖 / 构建产物
+node_modules/
+dist/
+.DS_Store
+Thumbs.db
+*.log
+
+# 工具/IDE 残留
+.impeccable/
+
+# 旧规划草稿（非站点资源）
+styles.css-clubos-v57-plan-free.css
