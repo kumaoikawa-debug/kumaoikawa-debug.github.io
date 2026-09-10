@@ -36,3 +36,5 @@
   if (isFrontMode()) showView("frontHome");
   else if (isAdminMode()) showView("dashboard"); // skip login for the backend link
   else showView("login");
+/* 角标动态跟随 APP_VER，避免发版忘改静态文本 */
+try{var _vt=document.getElementById("verTag");if(_vt&&typeof APP_VER!=="undefined")_vt.textContent="v"+APP_VER;}catch(e){}
