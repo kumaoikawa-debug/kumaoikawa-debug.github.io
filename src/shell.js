@@ -1232,6 +1232,8 @@
       case "xfPickActivity": {
         const xf = xfState();
         xf.aid = d.aid; xf.step = "pick";
+        const a = (state.activities || []).find((x) => x.id === xf.aid);
+        if (a) toast(`已选择：${a.title || "未命名活动"}`);
         showView(state.view);
         break;
       }

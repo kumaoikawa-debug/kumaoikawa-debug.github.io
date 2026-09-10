@@ -819,26 +819,31 @@ function xfScenarioHtml() {
 }
 
 function xfActivityPicker(filterFn, label, emptyMsg) {
+  const xf = xfState();
   const acts = (state.activities || []).filter(filterFn);
   return `
   <div class="xf-pick">
     <button class="btn btn-ghost btn-sm" data-action="xfGoScenario" data-s="back">${ICON("chevron-left")} 返回</button>
     <h3>${label}</h3>
-    ${acts.length ? `<div class="xf-act-list">${acts.map((a) => `
-      <div class="xf-act">
+    ${acts.length ? `<div class="xf-act-list">${acts.map((a) => {
+      const selected = xf.aid === a.id;
+      return `
+      <div class="xf-act ${selected ? "active" : ""}">
         <div class="xf-act-thumb" style="background-image:url('${(a.photos && a.photos[a.coverIndex || 0]) || ""}')"></div>
         <div class="xf-act-info">
           <b>${esc(a.title || "未命名活动")}</b>
           <span class="muted small">${(a.dateMD || a.date || "时间待定")} · ${esc(a.place || "")} · ${esc(a.status || "")}</span>
         </div>
-        <button class="btn btn-primary btn-sm" data-action="xfPickActivity" data-aid="${a.id}">选择</button>
-      </div>`).join("")}</div>` : `<div class="empty"><div class="e-ic">📭</div><div>${esc(emptyMsg || "没有符合条件的活动，先去「活动内容」创建一场吧。")}</div></div>`}
+        <button class="btn btn-sm ${selected ? "btn-ghost active" : "btn-primary"}" data-action="xfPickActivity" data-aid="${a.id}">${selected ? `${ICON("check")} 已选` : "选择"}</button>
+      </div>`;
+    }).join("")}</div>` : `<div class="empty"><div class="e-ic">📭</div><div>${esc(emptyMsg || "没有符合条件的活动，先去「活动内容」创建一场吧。")}</div></div>`}
   </div>`;
 }
 
 function xfRecruitPicker() {
   const xf = xfState();
   return xfActivityPicker((a) => a.status === "recruiting" || a.status === "draft" || a.status === "full" || !a.status, "选择要招募的活动") +
+    (xf.genState === "loading" ? `<div class="xf-loading-overlay"><div class="xf-spinner"></div><div class="xf-loading-title">正在生成宣传内容</div><div class="xf-loading-tip">理解活动 → 分析照片 → 撰写文案 → 多平台排版</div></div>` : "") +
     `<div class="xf-supp">
       <div class="panel"><div class="panel-head"><h3>补充资料（可选）</h3><span class="tiny muted">粘贴旧文案 / 备注，帮助 AI 更准</span></div>
         <div class="panel-body"><textarea class="textarea" data-xf="note" placeholder="例如：往年这篇活动阅读很高、客户最关心亲子安全、这次新增了溯溪环节…">${esc(xf.notes || "")}</textarea></div></div>
@@ -846,7 +851,7 @@ function xfRecruitPicker() {
         <div class="panel-body">
           <div class="xf-photos">${(xf.photos || []).map((p, i) => `<div class="xf-ph" style="background-image:url('${p}')"><button class="x" data-action="xfDelPhoto" data-i="${i}">${ICON("x")}</button></div>`).join("")}
             <label class="xf-ph-add">${ICON("upload")}<input type="file" id="xfPhotoInput" accept="image/*" multiple hidden></label></div>
-          <button class="btn btn-primary btn-sm" data-action="xfRecruitGen" style="margin-top:10px">${ICON("sparkles")} 生成宣传内容</button>
+          <button class="btn btn-primary btn-sm" data-action="xfRecruitGen" style="margin-top:10px" ${xf.genState === "loading" ? "disabled" : ""}>${ICON("sparkles")} ${xf.genState === "loading" ? "生成中…" : "生成宣传内容"}</button>
         </div></div>
     </div>`;
 }
@@ -857,6 +862,7 @@ function xfRecapPicker() {
   const selected = xf.aid ? (state.activities || []).find((a) => a.id === xf.aid) : null;
   return xfActivityPicker((a) => a.status === "ended", "选择已结束的活动", "没有已结束活动，可直接填写下方信息生成回顾") +
     (selected ? `<div class="xf-supp"><div class="panel"><div class="panel-head"><h3>已选择活动</h3></div><div class="panel-body"><div class="xf-act" style="margin:0"><div class="xf-act-info"><b>${esc(selected.title || "未命名活动")}</b><span class="muted small">${(selected.dateMD || selected.date || "时间待定")} · ${esc(selected.place || "")}</span></div><button class="btn btn-ghost btn-sm" data-action="xfPickActivity" data-aid="">清除选择</button></div></div></div></div>` : "") +
+    (xf.genState === "loading" ? `<div class="xf-loading-overlay"><div class="xf-spinner"></div><div class="xf-loading-title">正在生成活动回顾</div><div class="xf-loading-tip">理解活动 → 分析照片 → 撰写回顾 → 多平台排版</div></div>` : "") +
     `<div class="xf-supp">
       <div class="panel"><div class="panel-head"><h3>或直接填写活动信息生成回顾</h3><span class="tiny muted">不绑定已有活动时使用这些信息</span></div>
         <div class="panel-body">
@@ -875,7 +881,7 @@ function xfRecapPicker() {
         </div></div>
       <div class="panel"><div class="panel-head"><h3>补充资料（可选）</h3><span class="tiny muted">领队备注 / 用户反馈 / 特别瞬间 / 实际天气</span></div>
         <div class="panel-body"><textarea class="textarea" data-xf="recapNotes" placeholder="例如：当天其实放晴了、小朋友第一次自己爬上来、大家最满意的是晚餐…">${esc(xf.recapNotes || "")}</textarea>
-          <button class="btn btn-primary btn-sm" data-action="xfRecapGen" style="margin-top:10px">${ICON("sparkles")} 生成活动回顾</button>
+          <button class="btn btn-primary btn-sm" data-action="xfRecapGen" style="margin-top:10px" ${xf.genState === "loading" ? "disabled" : ""}>${ICON("sparkles")} ${xf.genState === "loading" ? "生成中…" : "生成活动回顾"}</button>
         </div></div>
     </div>`;
 }
