@@ -674,7 +674,7 @@
       const r = await fetch(url + "/api/pay/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ adminCode: code, merchant_id: mid }),
+        body: JSON.stringify({ code: code, merchant_id: mid }),
       });
       if (!r.ok) return null;
       const d = await r.json().catch(() => ({}));
