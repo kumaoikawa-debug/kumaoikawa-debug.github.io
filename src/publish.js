@@ -780,6 +780,7 @@ function renderFabu() {
     <div class="section-title">AI 宣发中心</div>
     <div class="section-sub">上传活动资料和照片，ClubOS 自动理解内容、提炼传播主题、生成并排版微信公众号图文，同步生成小红书等内容。活动结束还能一键生成活动回顾。</div>
   </div>
+  ${aiAuthMode() === "backend" ? "" : `<div class="xf-banner">未配置总平台后端：当前 AI 走本地演示直连（仅本机 Key）。<button class="xf-banner-btn" data-action="nav" data-view="settings">去「设置 → AI 设置」接入</button></div>`}
   ${xfFlow()}
   ${xfLegacySection()}
   `;

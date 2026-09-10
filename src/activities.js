@@ -964,11 +964,11 @@ function channelMeta(ch) {
         </div>
       </div>
 
-      <details class="fr-section">
-        <summary class="fr-section-h" style="cursor:pointer"><h3>AI 设置</h3><span class="more">展开</span></summary>
+      <details class="fr-section" open>
+        <summary class="fr-section-h" style="cursor:pointer"><h3>AI 设置</h3><span class="more">收起</span></summary>
         <div class="mem-ai">
           <p class="muted small" style="margin:0 0 10px">生产环境由<b>总平台统一持有 AI Key</b>并按 AI 积分计量，俱乐部只需填下方「后端地址 + 管理员口令 + 商家ID」，无需任何 Key。未接后端时，可填「本地演示 Key」临时直连（仅存本机浏览器）。</p>
-          <div class="field"><label>总平台后端地址</label><input class="input" id="backendUrl" placeholder="https://your-backend.com/api/pay" value="${esc(getBackendURL())}" autocomplete="off"><div class="hint">留空则走本地演示直连；填写后所有 AI 调用经后端代理（Key 不在前端）。</div></div>
+          <div class="field"><label>总平台后端地址</label><input class="input" id="backendUrl" placeholder="https://your-backend.com（根地址，不要带 /api/pay）" value="${esc(getBackendURL())}" autocomplete="off"><div class="hint">填总平台后端<b>根地址</b>（如 https://api.example.com），<b>不要带 /api/pay 后缀</b>；留空走本地演示直连，填写后所有 AI 调用经后端代理（Key 不在前端）。</div></div>
           <div class="field"><label>管理员口令</label><input class="input" id="backendAdminCode" type="password" placeholder="与后端 ADMIN_CODE 一致" value="${esc(getBackendAdminCode())}" autocomplete="off"></div>
           <div class="field"><label>商家ID</label><input class="input" id="backendMerchantId" placeholder="1" value="${esc(getBackendMerchantId())}" autocomplete="off"><div class="hint">后端数据库中的商家数字 ID，用于 AI 积分计量。</div></div>
           <div class="row gap-10"><button class="btn btn-ghost btn-sm" data-action="testBackend">${ICON("sparkles")} 测试后端连接</button></div>

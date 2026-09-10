@@ -4822,3 +4822,8 @@ body{
 
 /* 版本角标：一眼确认是否加载最新版（根治“AI宣发打不开”类缓存问题） */
 #verTag{position:fixed;right:10px;bottom:10px;z-index:9999;font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#9a958a;background:rgba(255,255,255,.85);border:1px solid var(--line);border-radius:8px;padding:3px 8px;pointer-events:none;letter-spacing:.3px;box-shadow:0 1px 4px rgba(0,0,0,.05)}
+
+/* AI 宣发中心：未配置总平台后端的引导横幅 */
+.xf-banner { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:0 0 14px; padding:10px 14px; border-radius:12px; background:var(--brand-soft, #fdeee6); border:1px solid var(--brand, #DD6B33); color:#7a3b1c; font-size:13px; line-height:1.5; }
+.xf-banner-btn { margin-left:auto; background:var(--brand, #DD6B33); color:#fff; border:none; border-radius:9px; padding:6px 12px; font-size:12px; cursor:pointer; white-space:nowrap; }
+.xf-banner-btn:hover { opacity:.9; }
