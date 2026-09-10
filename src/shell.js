@@ -609,21 +609,6 @@
         openAiCredit();
         break;
       }
-      // 总平台已独立为 clubos-platform 工程（/platform/），此处不再需要平台入口跳转
-      case "platformApproveClub": { const pc = (state.platformClubs || []).find((x) => x.id === d.id); if (pc) { pc.status = "approved"; pc.mallEnabled = true; saveState(); toast("已通过入驻审核，已开通商城权限与基础 Token 额度（Demo）"); } showView("platformAudit"); break; }
-      case "platformRejectClub": { const pc = (state.platformClubs || []).find((x) => x.id === d.id); if (pc) { pc.status = "rejected"; pc.mallEnabled = false; saveState(); toast("已拒绝入驻申请（Demo）"); } showView("platformAudit"); break; }
-      case "platformClubDetail": { state.platformClubDetailId = d.id; showView("platformClubs"); break; }
-      case "platformClubBack": { state.platformClubDetailId = null; showView("platformClubs"); break; }
-      case "platformTokenFocus": { state.platformClubDetailId = null; showView("platformToken"); break; }
-      case "platformTogglePerm": { const pc = (state.platformClubs || []).find((x) => x.id === d.id); if (pc) { pc.permissions[d.perm] = !pc.permissions[d.perm]; saveState(); toast((pc.permissions[d.perm] ? "已开通" : "已关闭") + "：" + ((PLATFORM_PERMS.find((p) => p.key === d.perm)) || {}).label); } showView("platformClubs"); break; }
-      case "platformToggleMall": { const pc = (state.platformClubs || []).find((x) => x.id === d.id); if (pc) { pc.mallEnabled = !pc.mallEnabled; saveState(); toast(pc.mallEnabled ? "已开通该俱乐部商城权限" : "已关闭该俱乐部商城权限"); } showView("platformClubs"); break; }
-      case "platformTokenAdd": { const pc = (state.platformClubs || []).find((x) => x.id === d.id); if (pc) { const amt = +d.amt; if (amt === -1) { pc.aiCredit.gift = 0; if (pc.id === "club_demo") state.aiCredit.gift = 0; } else { pc.aiCredit[d.kind] = (pc.aiCredit[d.kind] || 0) + amt; if (pc.id === "club_demo") { state.aiCredit[d.kind] = (state.aiCredit[d.kind] || 0) + amt; } } saveState(); toast("已调整 " + pc.name + " 的 Token 额度"); } showView(state.view === "platformClubs" ? "platformClubs" : "platformToken"); break; }
-      case "platformTokenBatch": { const amt = parseInt(((document.getElementById("platformTokenBatch") || {}).value || "0"), 10); if (amt > 0) { (state.platformClubs || []).filter((c) => c.status === "approved").forEach((c) => { c.aiCredit.base = (c.aiCredit.base || 0) + amt; if (c.id === "club_demo") state.aiCredit.base = (state.aiCredit.base || 0) + amt; }); saveState(); toast("已为全部已开通俱乐部补充基础额度 " + amt); } else toast("请输入有效额度"); showView("platformToken"); break; }
-      case "platformMallTab": { state.platformMallTab = d.tab; showView("platformMall"); break; }
-      case "platformSyncSupplier": { const sp = (state.suppliers || []).find((x) => x.id === d.id); if (sp) { sp.syncStatus = "synced"; sp.lastSync = Date.now(); saveState(); toast("已同步 " + sp.name + " 的商品与库存（Demo）"); } showView("platformMall"); break; }
-      case "platformPauseSupplier": { const sp = (state.suppliers || []).find((x) => x.id === d.id); if (sp) { sp.syncStatus = "paused"; saveState(); toast("已暂停对接 " + sp.name); } showView("platformMall"); break; }
-      case "platformShipOrder": { const o = (state.mallOrders || []).find((x) => x.id === d.id); if (o) { o.logistics = "shipped"; o.trackingNo = "SF" + String(Date.now()).slice(-10); saveState(); toast("已发货，运单 " + o.trackingNo); } showView("platformMall"); break; }
-      case "platformSignOrder": { const o = (state.mallOrders || []).find((x) => x.id === d.id); if (o) { o.logistics = "signed"; saveState(); toast("已签收"); } showView("platformMall"); break; }
       case "openMall": { state.mallView = "browse"; state.mallCtx = "store"; showView("mall"); window.scrollTo(0, 0); break; }
       case "mallConsole": { state.mallView = "browse"; state.mallCtx = "console"; showView("mallConsole"); window.scrollTo(0, 0); break; }
       case "mallAdmin": { state.mallView = "admin"; state.mallCtx = "admin"; state.mallEditId = null; showView(isPlatformView(state.view) ? "platformMall" : "mallAdmin"); break; }
@@ -1099,6 +1084,16 @@
       }
       /* ---------- 会员管理后台（v92） ---------- */
       case "membershipAdminTab": { state.membershipAdminTab = d.tab; showView("membershipAdmin"); break; }
+      case "membershipBasicChange": {
+        const cfg = state.membershipSettings || (state.membershipSettings = JSON.parse(JSON.stringify(DEFAULT_MEMBERSHIP_SETTINGS)));
+        if (d.field === "requireProfile") cfg.requireProfile = (el.value === "yes");
+        else cfg[d.field] = el.value;
+        saveState(); break;
+      }
+      case "membershipBasicSelect": {
+        const cfg = state.membershipSettings || (state.membershipSettings = JSON.parse(JSON.stringify(DEFAULT_MEMBERSHIP_SETTINGS)));
+        cfg[d.field] = el.value; saveState(); break;
+      }
       case "saveMembershipBasic": {
         const cfg = state.membershipSettings;
         const getRadio = (name) => { const el = document.querySelector(`input[name="${name}"]:checked`); return el ? el.value : cfg[name]; };
@@ -1111,7 +1106,7 @@
       }
       case "membershipCondToggle": {
         const cfg = state.membershipSettings;
-        const c = cfg.conditions[d.key]; if (c) { c.enabled = el.checked; }
+        const c = cfg.conditions[d.key]; if (c) { c.enabled = el.checked; saveState(); }
         break;
       }
       case "membershipTierSelect": { state._membershipTierEdit = d.id; showView("membershipAdmin"); break; }
@@ -2428,7 +2423,7 @@
     const mcv = e.target.closest("[data-action=\"membershipCondValue\"]");
     if (mcv) {
       const cfg = state.membershipSettings;
-      const c = cfg.conditions[mcv.dataset.key]; if (c) c.value = +mcv.value || 0;
+      const c = cfg.conditions[mcv.dataset.key]; if (c) { c.value = +mcv.value || 0; saveState(); }
       return;
     }
   });

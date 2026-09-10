@@ -1461,7 +1461,7 @@ function channelMeta(ch) {
       </div>
       <div class="vis-sec">
         <h4>海报</h4>
-        <button class="btn btn-primary btn-sm" data-action="openShare" data-id="${a.id}">生成分享海报</button>
+        <button class="btn btn-primary btn-sm" data-action="share" data-id="${a.id}">生成分享海报</button>
       </div>
     </div>`;
   }
