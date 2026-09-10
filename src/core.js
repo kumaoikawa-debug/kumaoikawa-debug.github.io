@@ -579,8 +579,27 @@
      aiAuthMode() 返回当前可用模式：'backend' | 'key' | false，供需要「未配置则提示」的入口判断。 */
   const AI_LS_KEY = "clubos_ai_key";
   const AI_PROVIDER_KEY = "clubos_ai_provider";
-  function getAIKey() { try { return (localStorage.getItem(AI_LS_KEY) || "").trim(); } catch (e) { return ""; } }
-  function setAIKey(v) { try { localStorage.setItem(AI_LS_KEY, (v || "").trim()); } catch (e) {} }
+  function getAIKey() {
+    try {
+      var k = (localStorage.getItem(AI_LS_KEY) || "").trim();
+      if (k) return k;
+      /* 兜底：从主状态 clubos_v1.aiKey 恢复（更新后单独键若丢失可找回；boot.js 仅清 .xf，不动 aiKey） */
+      var st = JSON.parse(localStorage.getItem("clubos_v1") || "{}");
+      if (st && st.aiKey) return st.aiKey;
+    } catch (e) {}
+    return "";
+  }
+  function setAIKey(v) {
+    try {
+      v = (v || "").trim();
+      if (v) localStorage.setItem(AI_LS_KEY, v);
+      /* 同时镜像进主状态，随 clubos_v1 持久化，避免更新/误清后丢失 */
+      var st = JSON.parse(localStorage.getItem("clubos_v1") || "{}");
+      if (!st || typeof st !== "object") st = {};
+      if (v) st.aiKey = v; else delete st.aiKey;
+      localStorage.setItem("clubos_v1", JSON.stringify(st));
+    } catch (e) {}
+  }
   function getAIProvider() { try { return (localStorage.getItem(AI_PROVIDER_KEY) || "deepseek").trim(); } catch (e) { return "deepseek"; } }
   function setAIProvider(v) { try { localStorage.setItem(AI_PROVIDER_KEY, v || "deepseek"); } catch (e) {} }
 

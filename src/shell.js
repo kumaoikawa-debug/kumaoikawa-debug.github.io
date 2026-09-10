@@ -1505,7 +1505,8 @@
   }
   function saveAISettings() {
     const keyEl = $("#aiKey"); const provEl = $("#aiProvider");
-    if (keyEl) setAIKey(keyEl.value.trim());
+    /* 仅当输入框非空时才写 Key：防止配后端时顺手保存、而 Key 框为空，把已有 Key 覆盖成空 */
+    if (keyEl && keyEl.value.trim()) setAIKey(keyEl.value.trim());
     if (provEl) setAIProvider(provEl.value);
     const bu = $("#backendUrl"); if (bu) setBackendURL(bu.value.trim());
     const bac = $("#backendAdminCode"); if (bac) setBackendAdminCode(bac.value.trim());
