@@ -1172,6 +1172,11 @@ function channelMeta(ch) {
   function renderEditor() {
     const a = state.draft;
     if (!a) { showView("create"); return ""; }
+    // 难度自动匹配：未手动设置时，按活动类型 / 路线距离 / 海拔给一个初始难度
+    if (!a.difficulty && !a.difficultyManual && typeof inferDifficulty === "function") {
+      const _d = inferDifficulty(a);
+      if (_d) { a.difficulty = _d; a.difficultyInferred = true; }
+    }
     const tab = state.editorTab || "content";
     const servChips = [["includeLeader", "领队"], ["includeMeal", "午餐"], ["includeInsurance", "保险"], ["includeTransport", "交通"], ["includeGear", "装备"]];
     return `
@@ -1183,20 +1188,14 @@ function channelMeta(ch) {
           <button class="btn btn-primary btn-sm" data-action="publish">${ICON("check")} 发布活动</button>
         </div>
       </div>
-      <div class="editor-steps">
-        <div class="estep ${tab==="content"?"on":""}"><span class="es-no">1</span>确认事实 · 微调内容</div>
-        <div class="estep ${tab==="price"?"on":""}"><span class="es-no">2</span>价格与团期</div>
-        <div class="estep ${tab==="visual"?"on":""}"><span class="es-no">3</span>视觉呈现</div>
-        <div class="estep ${tab==="publish"?"on":""}"><span class="es-no">4</span>预览并发布</div>
+      <div class="editor-steps" role="tablist">
+        <button type="button" class="estep ${tab==="content"?"on":""}" data-action="switchTab" data-tab="content"><span class="es-no">1</span>确认事实 · 微调内容</button>
+        <button type="button" class="estep ${tab==="price"?"on":""}" data-action="switchTab" data-tab="price"><span class="es-no">2</span>价格与团期</button>
+        <button type="button" class="estep ${tab==="visual"?"on":""}" data-action="switchTab" data-tab="visual"><span class="es-no">3</span>视觉呈现</button>
+        <button type="button" class="estep ${tab==="publish"?"on":""}" data-action="switchTab" data-tab="publish"><span class="es-no">4</span>预览并发布</button>
       </div>
       <div class="editor">
       <div class="editor-main">
-        <div class="editor-tabs">
-          <button class="etab ${tab==="content"?"active":""}" data-action="switchTab" data-tab="content">内容</button>
-          <button class="etab ${tab==="price"?"active":""}" data-action="switchTab" data-tab="price">价格与团期</button>
-          <button class="etab ${tab==="visual"?"active":""}" data-action="switchTab" data-tab="visual">视觉</button>
-          <button class="etab ${tab==="publish"?"active":""}" data-action="switchTab" data-tab="publish">发布</button>
-        </div>
         <div class="etab-panel" data-panel="content" ${tab!=="content"?"hidden":""}>
           ${factConfirmHtml(a)}
           <div class="strategy-inline">
@@ -1217,6 +1216,11 @@ function channelMeta(ch) {
                 <div class="field"><label>活动价格（元）</label><input class="input" type="number" data-bind="price" value="${a.price || ""}"></div>
                 <div class="field"><label>活动天数</label><input class="input" type="number" min="1" max="7" data-bind="days" value="${a.days || 1}"></div>
                 <div class="field"><label>招募上限</label><div class="limit-field"><input class="input" type="number" data-bind="limit" value="${a.limit || ""}" placeholder="数量"><select class="select" data-bind="limitUnit"><option ${a.limitUnit === "组家庭" ? "selected" : ""}>组家庭</option><option ${a.limitUnit === "人" ? "selected" : ""}>人</option></select></div></div>
+                <div class="field"><label>活动难度 <span class="auto-tag">${a.difficultyManual ? "已手动设置" : "AI 按类型/距离/海拔预填"}</span></label><select class="select" data-bind="difficulty">${["", "轻松", "中等", "挑战", "入门", "进阶", "专业级"].map((d) => `<option value="${esc(d)}" ${(a.difficulty || "") === d ? "selected" : ""}>${d ? esc(d) : "待选择"}</option>`).join("")}</select></div>
+                <div class="field"><label>参与人群 <span class="auto-tag">多个用顿号分隔</span></label><input class="input" data-bind="audience" value="${esc((a.audience || []).join("、"))}" placeholder="如：亲子、成人、团建"></div>
+                <div class="field"><label>路线距离（公里）</label><input class="input" type="number" data-bind="distance" value="${esc(a.distance || "")}" placeholder="如：12"></div>
+                <div class="field"><label>返回时间</label><input class="input" data-bind="returnTime" value="${esc(a.returnTime || "")}" placeholder="如：18:00 返回成都"></div>
+                <div class="field"><label>联系方式 <span class="auto-tag">手机号</span></label><input class="input" data-bind="contact" value="${esc(a.contact || "")}" placeholder="如：13800000000"></div>
 
               </div>
 

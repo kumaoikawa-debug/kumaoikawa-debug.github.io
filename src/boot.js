@@ -1,7 +1,7 @@
 /* ---------------- 版本自检：自动刷新，绕过边缘/浏览器缓存 (v126+) ---------------- */
 (function () {
   try {
-    var APP_VER = 143; // 与 version.json + HTML ?v= 同步，每次发版 +1 // 与 version.json + HTML ?v= 同步，每次发版 +1
+    var APP_VER = 144; // 与 version.json + HTML ?v= 同步，每次发版 +1 // 与 version.json + HTML ?v= 同步，每次发版 +1
     function checkVer() {
       if (sessionStorage.getItem("__clubos_ver_reloaded") === "skip") return;
       fetch("version.json?_=" + Date.now(), { cache: "no-store" })

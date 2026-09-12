@@ -375,6 +375,9 @@ a { color: inherit; }
 .estep .es-no { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: var(--line-2); color: var(--muted); font-size: 11px; font-weight: 800; transition: background .15s ease, color .15s ease; }
 .estep.on { color: var(--ink); background: rgba(47,93,80,.08); }
 .estep.on .es-no { background: var(--brand); color: #fff; }
+.editor-steps .estep { font: inherit; background: none; border: none; cursor: pointer; text-align: left; }
+.editor-steps .estep:hover { color: var(--ink); background: rgba(47,93,80,.06); }
+.editor-steps .estep.on:hover { background: rgba(47,93,80,.1); }
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
 .panel-head { padding: 16px 20px; border-bottom: 1px solid var(--line-2); display: flex; align-items: center; justify-content: space-between; }
 .panel-head h3 { margin: 0; font-size: 15px; font-weight: 700; }

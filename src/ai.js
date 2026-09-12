@@ -914,12 +914,24 @@
   /* ===== V2.0 事实层：规则引擎负责事实，每个字段记录来源状态 =====
      status: confirmed(老板输入/确认) / inferred(规则推断，发布前须确认) / missing(缺失) / not_applicable(不适用)
      source: owner_input / owner_confirmed / rule_inferred / ""                                */
+  /* 活动难度自动匹配：按活动类型 / 路线距离 / 海拔推断一个初始难度（老板可在编辑页手动改） */
+  function inferDifficulty(a) {
+    const t = (a.type || "") + " " + (a.title || "");
+    const dist = parseFloat(a.distance) || 0;
+    const elev = parseFloat(a.elevation) || 0;
+    if (/亲子|研学|自然|儿童|露营|营地|古镇|休闲|采摘|夜游|公园/.test(t)) return "轻松";
+    if (/高海拔|雪山|越野|重装|穿越|攀冰|攀岩|登顶/.test(t) || elev >= 3500 || dist >= 20) return "挑战";
+    if (/登山|徒步|溯溪|漂流|水上|骑行/.test(t)) return (dist >= 15 || elev >= 2500) ? "挑战" : "中等";
+    if (dist >= 15) return "挑战";
+    if (dist >= 8) return "中等";
+    return "中等";
+  }
   const FACT_SPECS = [
     { key: "place", label: "活动地点", required: true, val: (a) => a.place, test: (raw) => /[\u4e00-\u9fa5]{2,8}?(?:山|湖|谷|林|公园|峰|岭|沟|塬|垭口|草原|梯田|古镇|古城|寺庙)/.test(raw) || CITY_NAMES.some((k) => raw.includes(k)) },
     { key: "date", label: "活动日期", required: true, val: (a) => a.date || a.dateMD, test: (raw) => /\d{1,2}\s*月\s*\d{1,2}\s*日|本周|下周|本周末|下周末|周末|国庆|元旦|春节|中秋|端午|清明|五一/.test(raw) },
     { key: "days", label: "活动天数", val: (a) => a.days, test: (raw) => /\d+\s*天|两日|三日|多天|多日|过夜/.test(raw) },
     { key: "type", label: "活动类型", val: (a) => a.type, test: (raw) => TYPE_RULES.some((r) => r.kw.some((k) => raw.includes(k))) },
-    { key: "difficulty", label: "活动难度", required: (a) => a.type === "高海拔登山", val: (a) => a.difficulty, test: (raw) => /难度|轻松|中等|挑战|入门|进阶|专业级/.test(raw) },
+    { key: "difficulty", label: "活动难度", required: (a) => a.type === "高海拔登山", val: (a) => a.difficulty || inferDifficulty(a), test: (raw) => /难度|轻松|中等|挑战|入门|进阶|专业级/.test(raw) },
     { key: "audience", label: "参与人群", val: (a) => (a.audience || []).join("/"), test: (raw) => /亲子|儿童|孩子|家庭|成人|团建|企业|研学|青少年|少年/.test(raw) },
     { key: "age", label: "适合年龄", required: (a) => isFamilyActivity(a), val: (a) => a.ageRange, test: (raw) => /\d{1,2}\s*[-—~至到]\s*\d{1,2}\s*岁|\d{1,2}\s*岁以上/.test(raw) },
     { key: "price", label: "活动价格", required: true, val: (a) => (a.price != null ? "¥" + a.price + "/" + a.limitUnit : (a.priceTBD ? "待定" : "")), test: (raw) => /\d{2,4}\s*元|\d{2,4}\s*\/\s*人|价格待定|费用待定|\d{2,4}\s*每人/.test(raw) },

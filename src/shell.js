@@ -918,7 +918,7 @@
       case "switchTab": { state.editorTab = d.tab; rerenderEditor(); if (state.draft && (state.draft.photos || []).length) state.draft.photos.forEach((s) => scheduleSmartFocus(s)); break; }
       case "confirmInfer": { if (state.draft) { confirmFact(state.draft, d.key); rerenderEditor(); } break; }
       case "confirmAllInferred": { if (state.draft) { inferredFacts(state.draft).forEach((f) => confirmFact(state.draft, f.key)); rerenderEditor(); toast("已确认全部推断事实"); } break; }
-      case "focusField": { if (state.draft) { state.editorTab = "content"; state.draft._focusField = d.key; rerenderEditor(); setTimeout(() => { const el = document.querySelector(`[data-bind="${d.key}"]`); if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); el.focus(); } }, 50); } break; }
+      case "focusField": { if (state.draft) { state.editorTab = "content"; state.draft._focusField = d.key; rerenderEditor(); setTimeout(() => { const el = document.querySelector(`[data-bind="${d.key}"]`) || document.querySelector(`[data-bind-list="${d.key}"]`) || document.querySelector(`[data-bind-section-title="${d.key}"]`); if (el) { const det = el.closest("details"); if (det) det.open = true; el.scrollIntoView({ behavior: "smooth", block: "center" }); el.focus(); if (typeof el.select === "function" && el.tagName === "INPUT") el.select(); } else { toast("该字段可能在「价格与团期」或「视觉」步骤里，请切换对应步骤查看"); } }, 60); } break; }
       case "setCover": { if (state.draft) { state.draft.coverIndex = +d.i; state.draft._coverManual = true; rerenderEditor(); } break; }
       case "copyDraft": { const t = d.type; const key = "share" + t.charAt(0).toUpperCase() + t.slice(1); const txt = (state.draft && state.draft[key]) || ""; if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(() => toast("已复制" + t + "文案"), () => toast("复制失败")); else toast("当前环境不支持复制"); break; }
       case "mySignups": showView("mySignups"); window.scrollTo(0, 0); break;
@@ -2307,8 +2307,15 @@
     const el = e.target.closest("[data-bind]");
     if (el && state.draft) {
       const key = el.dataset.bind;
+      if (key === "audience") {
+        state.draft.audience = String(el.value).split(/[、,，\/]+/).map((s) => s.trim()).filter(Boolean);
+        if (state.draft.audience.length) confirmFact(state.draft, "audience");
+        refreshPreview();
+        return;
+      }
       state.draft[key] = el.value;
-      const factKey = ({ date: "date", meeting: "meeting", meetTime: "meetTime", ageRange: "age", price: "price", days: "days", limit: "limit", type: "type", leaderName: "leaderInfo" })[key];
+      if (key === "difficulty") { state.draft.difficultyManual = true; state.draft.difficultyInferred = false; }
+      const factKey = ({ date: "date", meeting: "meeting", meetTime: "meetTime", ageRange: "age", price: "price", days: "days", limit: "limit", type: "type", leaderName: "leaderInfo", distance: "distance", returnTime: "returnTime", contact: "contact", difficulty: "difficulty" })[key];
       if (factKey && String(el.value).trim()) confirmFact(state.draft, factKey);
       if (key === "type") {
         state.draft.type = normalizeType(state.draft.type);
