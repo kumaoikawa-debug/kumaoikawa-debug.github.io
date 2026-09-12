@@ -1258,6 +1258,18 @@
         showView(state.view);
         break;
       }
+      case "xfNextVariant": {
+        // P1-2「换一种版式」：只切换 Layout Variant，不改文案 / 家族 / 风格
+        const xf = xfState();
+        const vs = (XF_FAMILIES[xf.family] && XF_FAMILIES[xf.family].variants) || [""];
+        xf.variant = ((xf.variant || 0) + 1) % vs.length;
+        if (xf.strategy && xf.strategy.editorialDirection) xf.strategy.editorialDirection.variant = xf.variant;
+        xf._styleHistory = xf._styleHistory || [];
+        xf._styleHistory.push({ family: xf.family, variant: xf.variant });
+        toast("已换一种版式");
+        showView(state.view);
+        break;
+      }
       case "xfQuickStyle": { xfQuickStyle(d.k); break; }
       case "xfSwitchStyle": {
         const xf = xfState();

@@ -4704,6 +4704,14 @@ body{
 .xf-dir b{color:var(--brand-700)}
 .xf-q{font-size:11px;color:var(--muted);padding-top:2px}
 .xf-q:before{content:"● ";color:var(--ok,#2e9e5b)}
+.xf-stylebar-main{gap:10px}
+.xf-style-name{font-size:13px;color:var(--ink);margin-right:6px}
+.xf-adv{margin-top:2px}
+.xf-adv>summary{list-style:none;cursor:pointer;font-size:11px;font-weight:800;letter-spacing:.08em;color:var(--muted);padding:6px 0;border-top:1px dashed var(--line)}
+.xf-adv>summary::-webkit-details-marker{display:none}
+.xf-adv>summary:before{content:"⚙ "}
+.xf-adv[open]>summary{margin-bottom:8px}
+.xf-adv .xf-stylebar-row{margin-bottom:6px}
 
 /* ============ 版式变体（18 式：家族×变体，第三视觉维度） ============ */
 /* 变体 0：经典版（默认） */
