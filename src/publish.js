@@ -446,7 +446,7 @@ function xfSectionBody(h, a, m) {
   if (/体验|玩|挑战|探索|运动|做/.test(h || "")) return `${m.experienceValue}。${f.days > 1 ? "两天一夜" : "一天"}的节奏里，你会暂时忘记待办清单，只剩下脚下的路和身边的人。`;
   if (/收获|得到|适合|谁|陪伴|成长/.test(h || "")) return `${m.participationValue}。比起又刷了一天手机，这种踏实感更耐放。`;
   if (/适合|谁|门槛/.test(h || "")) { const age = f.ageRange ? `适合 ${f.ageRange}` : "门槛友好"; return `${age}。${m.targetAudience}。这场有${f.leader || "专业领队"}带队，路线成熟，按自己的节奏走就好。`; }
-  if (/信息|报名|费用|详情/.test(h || "")) return `${f.date || "近期"} 出发，${f.price != null ? "费用 ¥" + f.price + "/" + (f.limitUnit || "人") : "费用详询"}，${f.difficulty ? "强度" + f.difficulty : "强度友好"}。${m.cta}`;
+  if (/信息|报名|费用|详情/.test(h || "")) return `${f.date || "近期"} 出发，${f.price != null ? "费用 ¥" + f.price + "/" + (f.limitUnit || "人") : "费用详询"}${f.difficulty ? "，强度" + f.difficulty : ""}。${m.cta}`;
   if (/预告|下一期|集结/.test(h || "")) return `咱们还会继续进山，下一期路线正在安排，留意群里接龙就能占位。`;
   return `${m.scenicValue} ${m.experienceValue}`;
 }
@@ -469,7 +469,7 @@ function xfFallbackRecruit(a, m, dir) {
     },
     xhs: {
       titles: [xfXhsTitle(a, m, 1, dir), xfXhsTitle(a, m, 2, dir), xfXhsTitle(a, m, 3, dir)],
-      body: `谁懂啊😭 ${angle}这么玩也太舒服了\n\n📍 ${f.place ? "在" + f.place + "的" : ""}${f.season || ""}这一程，不是手机壁纸能替代的——得自己走一趟才装得下。\n\n✅ 为什么值得去\n${m.scenicValue}。呼吸、流汗、和朋友边走边聊，比刷一天手机耐放多了。\n\n🎒 怎么玩\n${m.experienceValue}。${f.days > 1 ? "两天一夜" : "一天"}的节奏，不用赶景点，时间全是自己的。\n\n💡 真心话\n${m.participationValue}。真实去一次，比收藏一百篇攻略都管用。\n\n📌 实用信息\n· 时间：${f.date || "近期"}\n· ${f.price != null ? "费用：¥" + f.price + "/" + (f.limitUnit || "人") : "费用详询"}\n· ${f.difficulty ? "强度：" + f.difficulty : "强度友好"}\n· 装备：${(f.gear && f.gear.length) ? f.gear.slice(0, 4).join("、") : "轻装即可"}\n\n码住这篇，周末约起来👀 评论区扣 1 我拉你进群～`,
+      body: `谁懂啊😭 ${angle}这么玩也太舒服了\n\n📍 ${f.place ? "在" + f.place + "的" : ""}${f.season || ""}这一程，不是手机壁纸能替代的——得自己走一趟才装得下。\n\n✅ 为什么值得去\n${m.scenicValue}。呼吸、流汗、和朋友边走边聊，比刷一天手机耐放多了。\n\n🎒 怎么玩\n${m.experienceValue}。${f.days > 1 ? "两天一夜" : "一天"}的节奏，不用赶景点，时间全是自己的。\n\n💡 真心话\n${m.participationValue}。真实去一次，比收藏一百篇攻略都管用。\n\n📌 实用信息\n· 时间：${f.date || "近期"}\n· ${f.price != null ? "费用：¥" + f.price + "/" + (f.limitUnit || "人") : "费用详询"}\n· ${f.difficulty ? "强度：" + f.difficulty : ""}\n· 装备：${(f.gear && f.gear.length) ? f.gear.slice(0, 4).join("、") : "轻装即可"}\n\n码住这篇，周末约起来👀 评论区扣 1 我拉你进群～`,
       coverText: `${f.place || "山里"}·${xfSeason(a) || ""}封神`,
       hashtags: xfTags(a),
       imageOrder: ["cover", "scenic", "people", "action", "detail"],
@@ -484,8 +484,8 @@ function xfFallbackRecruit(a, m, dir) {
       brief: `【一句话】${f.activityName || "活动"} ${f.date || ""} 出发｜${angle}｜名额有限，戳我报名👇`,
     },
     voice: {
-      s30: `大家好，这周末咱们去${f.place || "山里"}，主题是${angle}。${f.price != null ? "费用" + f.price + "一人" : "费用详询"}，强度${f.difficulty || "适中"}，新手也能跟上。想一起的朋友私信我报名哈。`,
-      s60: `大家好，给大伙说个周末的好去处。咱们${f.date || "这周末"}去${f.place || "山里"}，这场活动的主题是${angle}。${m.experienceValue}，参加完${m.participationValue}。${f.price != null ? "费用" + f.price + "一人" : "费用详询"}，含${f.includedServices && f.includedServices.length ? f.includedServices.join("、") : "领队陪同"}，强度${f.difficulty || "适中"}，不用担心跟不上。名额不多，想一起的朋友现在就可以私信我报名。`,
+      s30: `大家好，这周末咱们去${f.place || "山里"}，主题是${angle}。${f.price != null ? "费用" + f.price + "一人" : "费用详询"}，强度${f.difficulty || "适中"}。想一起的朋友私信我报名哈。`,
+      s60: `大家好，给大伙说个周末的好去处。咱们${f.date || "这周末"}去${f.place || "山里"}，这场活动的主题是${angle}。${m.experienceValue}，参加完${m.participationValue}。${f.price != null ? "费用" + f.price + "一人" : "费用详询"}，含${f.includedServices && f.includedServices.length ? f.includedServices.join("、") : "领队陪同"}，强度${f.difficulty || "适中"}。名额不多，想一起的朋友现在就可以私信我报名。`,
     },
     poster: {
       title: f.activityName || "户外活动",
@@ -555,7 +555,7 @@ function xfFallbackRecap(a, m, dir, photos, notes, type) {
   const angle = dir.angle || (type + "的一天");
   return {
     gzh: {
-      title: `回顾｜${f.activityName || "这场活动"}，${type === "完成挑战型" ? "我们登顶了" : "我们一起走过"}`,
+      title: `回顾｜${f.activityName || "这场活动"}，${type === "完成挑战型" ? "我们走完了全程" : "我们一起走过"}`,
       summary: `${f.date || "这场活动"}，${signN ? signN + " 位伙伴" : "一群伙伴"}在${f.place || "山野"}${angle}。`,
       sections: sections,
       next: xfNextText(a),
@@ -567,7 +567,7 @@ function xfFallbackRecap(a, m, dir, photos, notes, type) {
       hashtags: xfTags(a).concat(["活动回顾"]),
       imageOrder: ["cover", "people", "team", "scenic", "action"],
     },
-    moments: `【活动回顾】${f.activityName || "本周活动"}顺利收官🎉 ${signN ? signN + " 位伙伴" : "大家"}一起${type === "完成挑战型" ? "把山踩在了脚下" : "度过了超舒服的一天"}。最开心的不是到达，是路上有人一起走。下一期${xfNextText(a)}`,
+    moments: `【活动回顾】${f.activityName || "本周活动"}顺利收官🎉 ${signN ? signN + " 位伙伴" : "大家"}一起${type === "完成挑战型" ? "把这条线走完了" : "度过了超舒服的一天"}。最开心的不是到达，是路上有人一起走。下一期${xfNextText(a)}`,
     wechat: `各位群友，咱们的${f.activityName || "活动"}圆满收官啦🌿 ${signN ? "共 " + signN + " 位伙伴参加" : "大家玩得超尽兴"}。\n\n特别感谢每一位准时出发、互相照应的伙伴——下次还跟你走。照片已整理在相册，记得自取📷\n\n错过这一次的别慌，${xfNextText(a)}想一起的下期提前占位，我帮你留着～`,
     next: xfNextText(a),
   };
@@ -652,7 +652,7 @@ function xfContentQuality(out, dir, scenario) {
   const T = xfTextOf(out);
   const flags = [];
   let score = 100;
-  const FORBID = ["万里无云", "阳光明媚", "下起了雨", "突然放晴", "领队说", "大家纷纷表示", "据说", "据说当时", "不得不说", "说实话", "我们都很", "大家都说", "很多人都说"];
+  const FORBID = ["万里无云", "阳光明媚", "下起了雨", "突然放晴", "领队说", "大家纷纷表示", "据说", "据说当时", "不得不说", "说实话", "我们都很", "大家都说", "很多人都说", "风景绝好", "风景绝佳", "新手友好", "新手也能跟上", "不用担心跟不上", "强度友好", "我们登顶了", "把山踩在了脚下", "绝对值得", "必去", "guaranteed"];
   let fiction = 0; FORBID.forEach((w) => { if (T.indexOf(w) >= 0) { fiction++; if (flags.indexOf("fiction:" + w) < 0) flags.push("fiction:" + w); } });
   if (fiction > 0) score -= Math.min(45, fiction * 14);
   const TEMPLATE = ["大家好，", "大家好！", "今天给大家", "一起来看看", "不仅如此", "总而言之", "总的来说", "首先，", "其次，", "最后，"];

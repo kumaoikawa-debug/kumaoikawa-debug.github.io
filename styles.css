@@ -3290,6 +3290,11 @@ body {
 }
 .day-block > summary { list-style: none; cursor: pointer; }
 .day-block > summary::-webkit-details-marker { display: none; }
+.adv-collapse { margin-top: 6px; border: 1px dashed var(--page-line); border-radius: 10px; padding: 4px 12px; background: rgba(0,0,0,.015); }
+.adv-collapse > summary { list-style: none; cursor: pointer; padding: 8px 0; font-size: 13px; color: var(--muted); font-weight: 600; }
+.adv-collapse > summary::-webkit-details-marker { display: none; }
+.adv-collapse > summary::before { content: "▸ "; color: var(--accent); }
+.adv-collapse[open] > summary::before { content: "▾ "; }
 .day-header-sz {
   display: grid;
   grid-template-columns: 60px 1fr 34px;

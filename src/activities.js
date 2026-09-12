@@ -446,7 +446,7 @@
     const base = {
       wechat: `【${name}】${when} 出发，名额有限，欢迎报名参加～ 详情私聊或群里接龙。`,
       moments: `周末就去 ${name} 啦 🌿 还有少量名额，想一起的快来私信我。`,
-      xhs: `#户外 #周末去哪儿 ${name} 招募中｜${when} 出发，风景绝好，新手友好，戳我报名～`,
+      xhs: `#户外 #周末去哪儿 ${name} 招募中｜${when} 出发，详情私聊或群里接龙报名～`,
       gzh: `${name} 将于 ${when} 出发。本文介绍线路亮点、装备与注意事项，欢迎阅读并报名。`,
       voice: `大家好，这周末咱们去 ${name}，现在还有名额，想一起的朋友私信我报名哈。`
     };
@@ -1244,6 +1244,7 @@ function channelMeta(ch) {
           <div class="panel" style="margin-bottom:18px">
             <div class="panel-head"><h3>详情页文案结构</h3><span class="tiny muted">由 AI 根据活动事实生成 · 可手动修改</span></div>
             <div class="panel-body">
+              <details class="adv-collapse"><summary>高级编辑 · AI 已生成，需要微调再展开</summary>
               <div class="grid-2">
                 <div class="field"><label class="fl"><span>故事区小标题</span><button class="mini-regen" data-action="regenField" data-field="editorialTitle" type="button">${ICON("refresh")}换一句</button></label><input class="input" data-bind="editorialTitle" value="${esc(a.editorialTitle || "")}" placeholder="如：在3200米处，看见幺妹峰的另一面"></div>
                 <div class="field"><label class="fl"><span>记忆句 / 金句</span><button class="mini-regen" data-action="regenField" data-field="pullQuote" type="button">${ICON("refresh")}换一句</button></label><input class="input" data-bind="pullQuote" value="${esc(a.pullQuote || "")}" placeholder="如：不是征服海拔，是完整经历一天"></div>
@@ -1255,6 +1256,7 @@ function channelMeta(ch) {
               <div class="field" style="margin-top:10px"><label class="fl"><span>开场钩子</span><button class="mini-regen" data-action="regenField" data-field="hook" type="button">${ICON("refresh")}换一句</button></label><input class="input" data-bind="hook" value="${esc(a.hook || "")}" placeholder="详情页正文第一句，用本场才有的事实/悬念开头"></div>
               <div class="field" style="margin-top:10px"><label class="fl"><span>正文段落 <span class="auto-tag">每段一行</span></span><button class="mini-regen" data-action="regenField" data-field="body" type="button">${ICON("refresh")}换一组</button></label><textarea class="textarea" data-bind-list="body" rows="6" placeholder="每段写一段具体场景或体验，每行一段">${esc((a.body || []).join("\n"))}</textarea></div>
 
+              </details>
               <div class="panel-subhead" style="margin-top:18px"><h4>消费者价值叙事 <span class="auto-tag">新架构 · 优先渲染</span></h4><span class="tiny muted">按“为什么值得去 → 体验 → 收获 → 适合谁”组织详情页主线</span></div>
               <div class="field" style="margin-top:10px">
                 <label class="fl narr-title-line"><span>为什么值得去</span><input class="input input-xs" data-bind-section-title="whyGo" value="${esc((a.sectionTitles && a.sectionTitles.whyGo) || "")}" placeholder="章节标题，如：在成都的黄昏里，登一座可以呼吸的山" style="flex:1;margin:0 10px"><button class="mini-regen" data-action="regenField" data-field="whyGo" type="button">${ICON("refresh")}换一段</button></label>
