@@ -77,7 +77,15 @@
       : "活动介绍将在事实确认后生成。";
 
     const blocks = {
-      timeline: `<div class="dsec itinerary-editorial"><div class="dsec-h"><h3>详细行程${a.days > 1 ? ` · 共 ${a.days} 天` : ""}</h3></div>${(a.itineraryDays || []).map((day, idx) => { const items = (day.items || []).filter((t) => t && (t.time || t.text)); return `<details class="day-block"><summary class="day-header-sz"><div class="day-no"><span>DAY</span><b>${idx + 1}</b></div><div class="day-route-block"><p class="day-route">${esc(day.label)}</p>${day.sub ? `<p class="day-subtitle">${esc(day.sub)}</p>` : ""}</div><span class="day-expand">${ICON("chevron-down")}</span></summary><div class="day-body">${items.length ? `<div class="timeline">${items.map((t) => `<div class="tl-item"><div class="tl-node"></div><div class="t">${esc(t.time)}</div><div class="d">${esc(t.text)}</div></div>`).join("")}</div>` : `<div class="tl-empty">本日行程待机构补充。</div>`}</div></details>`; }).join("") || `<div class="pending-section"><b>真实行程待补充</b><span>补充后才会进入客户页面和发布检查。</span></div>`}</div>`,
+      timeline: (() => {
+        // P0-5：结构型时间表（事实层） + 内容型叙事（表达层）双层并存
+        const itin = (typeof structureItinerary === "function") ? structureItinerary(a) : { narrative: { title: "", paras: [] } };
+        const nar = (itin.narrative && itin.narrative.paras.length)
+          ? `<div class="itin-narrative"><div class="itin-narrative-t">${esc(itin.narrative.title || "")}</div>${itin.narrative.paras.map((p) => `<p>${esc(p)}</p>`).join("")}</div>`
+          : "";
+        const dayBlocks = (a.itineraryDays || []).map((day, idx) => { const items = (day.items || []).filter((t) => t && (t.time || t.text)); return `<details class="day-block"><summary class="day-header-sz"><div class="day-no"><span>DAY</span><b>${idx + 1}</b></div><div class="day-route-block"><p class="day-route">${esc(day.label)}</p>${day.sub ? `<p class="day-subtitle">${esc(day.sub)}</p>` : ""}</div><span class="day-expand">${ICON("chevron-down")}</span></summary><div class="day-body">${items.length ? `<div class="timeline">${items.map((t) => `<div class="tl-item"><div class="tl-node"></div><div class="t">${esc(t.time)}</div><div class="d">${esc(t.text)}</div></div>`).join("")}</div>` : `<div class="tl-empty">本日行程待机构补充。</div>`}</div></details>`; }).join("");
+        return `<div class="dsec itinerary-editorial"><div class="dsec-h"><h3>详细行程${a.days > 1 ? ` · 共 ${a.days} 天` : ""}</h3></div>${nar}${dayBlocks || `<div class="pending-section"><b>真实行程待补充</b><span>补充后才会进入客户页面和发布检查。</span></div>`}</div>`;
+      })(),
       highlights: hl.length ? `<div class="dsec"><div class="dsec-h"><h3>为什么值得参加</h3></div>${hl.map((h) => `<div class="hl"><div class="ic">${ICON(h[1] || "star")}</div><div class="txt">${esc(h[0])}</div></div>`).join("")}</div>` : "",
       gear: (() => {
         const gm = matchGearProducts(a);

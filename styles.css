@@ -4917,3 +4917,9 @@ body{
 .mc-rec-t { font-size: 13px; font-weight: 700; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mc-rec-p { font-size: 13px; color: var(--brand, #DD6B33); font-weight: 700; margin-top: 2px; }
 .mc-rec-go { flex: 0 0 auto; color: var(--muted); }
+
+/* ============ P0-5 行程：内容型叙事（结构型时间表沿用原样式） ============ */
+.itin-narrative { margin: 2px 0 16px; padding: 14px 16px; border-left: 3px solid var(--brand, #DD6B33); background: #faf7f2; border-radius: 0 12px 12px 0; }
+.itin-narrative-t { font-family: var(--serif); font-size: 15px; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+.itin-narrative p { font-size: 13.5px; line-height: 1.85; color: var(--ink-2, #4a463f); margin: 0 0 8px; }
+.itin-narrative p:last-child { margin-bottom: 0; }

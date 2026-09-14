@@ -646,6 +646,7 @@
     if (a.includeTransport) inc.push("往返交通");
     if (a.includeGear) inc.push("活动装备");
     a.feeInclude = inc;
+    a.activityDNA = buildActivityDNA(a); // P0-2：活动基因随派生同步刷新
   }
 
   function openAISettings() { showView("ai"); }
@@ -926,6 +927,193 @@
     if (dist >= 8) return "中等";
     return "中等";
   }
+  /* ===== P0-2 Activity DNA（活动基因） =====
+     由「事实 + 抽象启发式」派生的活动画像，驱动内容角度 / 视觉 / 章节结构 / 图片策略。
+     每位带 evidence（依据）；只输出抽象方向，不创造具体景观、天气或现场事件。 */
+  const DNA_ENV_RULES = [
+    { key: "snow", label: "雪山地貌", kw: ["雪山", "冰川", "高海拔", "雪线", "雪场", "垭口", "登顶", "冲顶"] },
+    { key: "canyon", label: "峡谷沟壑", kw: ["峡谷", "大峡谷", "沟", "塬", "峡", "崖"] },
+    { key: "water", label: "溪流水域", kw: ["溪", "溯溪", "漂流", "水上", "桨板", "湖", "水库", "河", "瀑布", "皮划艇", "冲浪", "海岸"] },
+    { key: "meadow", label: "草甸花野", kw: ["草原", "草甸", "花海", "花田", "梯田", "牧场", "牧"] },
+    { key: "forest", label: "森林林间", kw: ["林", "森林", "松", "竹", "杉", "银杏", "红叶", "彩林", "叶"] },
+    { key: "coast", label: "海岸海岛", kw: ["海", "岛", "沙滩", "礁"] },
+    { key: "urban", label: "城郊人文", kw: ["古镇", "古城", "公园", "城市", "街区", "夜市", "博物馆", "寺庙", "村"] },
+    { key: "mountain", label: "山脊山地", kw: ["山", "峰", "岭", "脊", "垭口"] },
+  ];
+  const DNA_FORM_LABELS = { hike: "徒步行走", mountain: "山地挑战", water: "水上玩乐", camp: "营地露营", family: "亲子自然", ride: "骑行", photo: "风光摄影", culture: "城郊人文", explore: "户外探索" };
+  const DNA_MOTIVATION_LABELS = { scenery: "看风景", sport: "运动舒展", social: "社交相聚", family: "亲子陪伴", healing: "放松治愈", challenge: "挑战自我", photo: "摄影出片", release: "清凉释放" };
+  function xfSeasonOf(a) {
+    const ds = ((a && (a.dateMD || a.date)) || "").trim();
+    if (!ds) return "";
+    let mo = 0, m;
+    m = ds.match(/(\d{4})\s*[-/年]\s*(\d{1,2})/);          // 2026-10-20 / 2026年10月
+    if (m) mo = +m[2];
+    else { m = ds.match(/(\d{1,2})\s*月/); if (m) mo = +m[1]; } // 10月20日
+    if (!mo) { m = ds.match(/^(\d{1,2})\s*[-/]\s*\d{1,2}$/); if (m) mo = +m[1]; } // 10/20
+    if (!mo || mo < 1 || mo > 12) return "";
+    if (mo >= 3 && mo <= 5) return "春季";
+    if (mo >= 6 && mo <= 8) return "夏季";
+    if (mo >= 9 && mo <= 11) return "秋季";
+    return "冬季";
+  }
+  function buildActivityDNA(a, photos) {
+    a = a || {};
+    const t = ((a.type || "") + " " + (a.title || "") + " " + (a.raw || "") + " " + ((a.gear || []).map((g) => g && (g.name || g)).join(" ")) + " " + (a.audience || []).join("")).toLowerCase();
+    const placeText = (a.place || "") + " " + (a.title || "") + " " + (a.raw || "");
+    const facts = (typeof factRegistry === "function") ? factRegistry(a) : [];
+    const evidence = {};
+
+    // activityForm 活动形式（弱先验）
+    let activityForm = "explore";
+    if (/亲子|研学|儿童|少儿|自然教育|家庭/.test(t)) activityForm = "family";
+    else if (/桨板|皮划艇|冲浪|漂流|溯溪|溪降|水上|独木舟|kayak/.test(t)) activityForm = "water";
+    else if (/露营|营地|星空|篝火|音乐节|派对/.test(t)) activityForm = "camp";
+    else if (/雪山|高海拔|越野|重装|穿越|攀冰|攀岩|登顶|冲顶|技术型/.test(t)) activityForm = "mountain";
+    else if (/骑行|单车|公路车|摩托/.test(t)) activityForm = "ride";
+    else if (/摄影|出片|风光|银河|星轨/.test(t)) activityForm = "photo";
+    else if (/古镇|人文|寺庙|citywalk|博物馆|城市|采摘|公园/.test(t)) activityForm = "culture";
+    else if (/徒步|登山|穿越|行走|健行/.test(t)) activityForm = "hike";
+    evidence.activityForm = /亲子|桨板|露营|雪山|骑行|摄影|古镇|徒步/.test(t) ? "类型/标题关键词" : "默认（未识别具体形式）";
+
+    // environment 环境地貌（仅取地点/标题线索，不臆造）
+    let environment = "unspecified", environmentLabel = "";
+    for (const r of DNA_ENV_RULES) { if (r.kw.some((k) => placeText.includes(k))) { environment = r.key; environmentLabel = r.label; break; } }
+    evidence.environment = environment === "unspecified" ? "地点/标题无可用地貌线索" : "地点/标题关键词";
+
+    // intensity 强度
+    const dist = parseFloat(a.distance) || 0, elev = parseFloat(a.elevation) || 0;
+    const diff = a.difficulty || "";
+    let intensity;
+    if (/挑战|专业|高强度/.test(diff) || dist >= 15 || elev >= 2500) intensity = "challenge";
+    else if (/中等|进阶/.test(diff) || dist >= 8 || elev >= 800) intensity = "medium";
+    else if (/轻松|入门|休闲|亲子/.test(diff)) intensity = "light";
+    else intensity = (activityForm === "family" || activityForm === "camp" || activityForm === "culture") ? "light" : "medium";
+    evidence.intensity = (a.difficulty ? "难度=" + a.difficulty : "无难度字段") + (dist ? " / 距离=" + dist + "km" : "") + (elev ? " / 海拔=" + elev + "m" : "");
+
+    // season 季节
+    const season = xfSeasonOf(a);
+    evidence.season = (a.date || a.dateMD) ? "活动日期" : "无日期";
+
+    // coreMotivation 核心动机
+    let coreMotivation = "scenery";
+    if (activityForm === "family") coreMotivation = "family";
+    else if (activityForm === "mountain" || intensity === "challenge") coreMotivation = "challenge";
+    else if (activityForm === "camp") coreMotivation = "social";
+    else if (activityForm === "photo") coreMotivation = "photo";
+    else if (activityForm === "water") coreMotivation = "release";
+    else if (/治愈|放松|冥想|减压|慢生活|疗愈/.test(t)) coreMotivation = "healing";
+    else if (/社交|交友|团建|脱单|聚会/.test(t)) coreMotivation = "social";
+    else if (/运动|健身|拉练|体能/.test(t)) coreMotivation = "sport";
+    evidence.coreMotivation = "由活动形式 + 强度 + 关键词派生";
+
+    // socialLevel 社交形态
+    const aud = (a.audience || []).join("");
+    let socialLevel = "small";
+    if (activityForm === "family" || /亲子|家庭|儿童/.test(aud + t)) socialLevel = "family";
+    else if (/团建|企业|团体|班级/.test(t)) socialLevel = "group";
+    else if (/独行|单人|solo/.test(t)) socialLevel = "solo";
+    else if (/社交|交友|脱单/.test(t)) socialLevel = "social";
+    evidence.socialLevel = aud ? "参与人群=" + aud : "由类型关键词派生";
+
+    // challengeLevel / professionalLevel
+    const challengeLevel = intensity === "challenge" ? "high" : (intensity === "medium" ? "mid" : "low");
+    let professionalLevel = "casual";
+    const gearRisk = (a.gear || []).map((g) => (g && g.riskLevel) || "").join("");
+    if (/L3/.test(gearRisk) || /攀岩|攀冰|雪山|技术型|绳索|头盔|安全带/.test(t)) professionalLevel = "technical";
+    else if (intensity !== "light" || /登山|徒步|溯溪/.test(t)) professionalLevel = "standard";
+    evidence.professionalLevel = gearRisk ? "装备等级=" + gearRisk : "由活动形式/强度派生";
+
+    // visualPotential 视觉潜能（不臆造景观）
+    let visualPotential = "medium";
+    if (["snow", "canyon", "water", "meadow", "forest", "coast", "mountain"].includes(environment)) visualPotential = "high";
+    else if (environment === "unspecified") visualPotential = "medium";
+    evidence.visualPotential = environment === "unspecified" ? "无地貌线索，保守给 medium" : "由地貌推断";
+
+    // targetAudience
+    const ageTxt = a.ageRange || "";
+    let targetAudience;
+    if (activityForm === "family") targetAudience = (ageTxt ? ageTxt + " 孩子的家庭" : "亲子家庭");
+    else if (intensity === "challenge") targetAudience = "有训练基础的户外爱好者";
+    else if (activityForm === "camp") targetAudience = "想松弛社交的年轻都市人";
+    else if (activityForm === "water") targetAudience = "想痛快玩水的户外新人";
+    else if (/老驴|进阶|专业级/.test(t)) targetAudience = "有经验的户外玩家";
+    else targetAudience = "城市通勤人群";
+    evidence.targetAudience = (aud || a.ageRange) ? "参与人群/年龄字段" : "由活动形式派生";
+
+    // tripRhythm 行程节奏
+    const days = +a.days || 1;
+    const itinDays = (a.itineraryDays || []).filter((d) => (d.items || []).some((x) => x && (x.time || x.text))).length;
+    const tripRhythm = days >= 3 ? "multi_day" : (days === 2 ? "overnight" : "single_day");
+    evidence.tripRhythm = "天数=" + days + (itinDays ? " / 已填行程=" + itinDays + "天" : "");
+
+    // commercialAngle 商业角度
+    const price = a.price;
+    let commercialAngle = "experience_value";
+    if (price != null && price <= 120 && tripRhythm === "single_day") commercialAngle = "low_decision";
+    else if (price != null && price >= 600) commercialAngle = "premium";
+    else if (activityForm === "family") commercialAngle = "family_value";
+    evidence.commercialAngle = price != null ? "价格=¥" + price + " / 天数=" + days : "无价格，按默认体验价值";
+
+    return {
+      activityForm, activityFormLabel: DNA_FORM_LABELS[activityForm] || "户外活动",
+      intensity, environment, environmentLabel, season,
+      coreMotivation, coreMotivationLabel: DNA_MOTIVATION_LABELS[coreMotivation] || "户外体验",
+      socialLevel, challengeLevel, professionalLevel,
+      visualPotential, targetAudience, tripRhythm, commercialAngle,
+      _evidence: evidence,
+    };
+  }
+  function activityDNAOf(a, photos) { return (a && a.activityDNA) || buildActivityDNA(a, photos); }
+
+  /* ===== P0-5 行程结构化：结构型时间表（事实层）+ 内容型叙事（表达层）=====
+     原则：时间表只搬运真实行程；叙事只做表达，不新增事件、不臆造天气/感受。 */
+  const ITIN_ROLE_RULES = [
+    { role: "opening", kw: ["集合", "出发", "前往", "签到", "上车"] },
+    { role: "arrival", kw: ["到达", "抵达", "入园", "进山", "下车"] },
+    { role: "warmup", kw: ["热身", "讲解", "说明", "培训", "教学", "装备检查", "安全"] },
+    { role: "meal", kw: ["午餐", "中餐", "用餐", "吃饭", "野餐", "补给", "下午茶", "早餐", "晚餐"] },
+    { role: "core", kw: ["徒步", "登山", "溯溪", "漂流", "桨板", "攀岩", "骑行", "穿越", "探索", "游玩", "活动", "行走", "登顶", "下水", "体验"] },
+    { role: "rest", kw: ["休息", "自由", "拍照", "合影", "观景"] },
+    { role: "closing", kw: ["返程", "返回", "解散", "结束", "回程", "总结", "回城"] },
+  ];
+  function itineraryContentRole(text) {
+    const s = String(text || "");
+    for (const r of ITIN_ROLE_RULES) if (r.kw.some((k) => s.includes(k))) return r.role;
+    return "core";
+  }
+  function buildItineraryNarrative(a, timeline) {
+    if (!timeline || !timeline.length) return { title: "", paras: [] };
+    a = a || {};
+    const dna = activityDNAOf(a);
+    const pick = (r) => timeline.filter((t) => t.contentRole === r);
+    const open = pick("opening")[0] || timeline[0];
+    const core = pick("core");
+    const meal = pick("meal");
+    const close = pick("closing")[0] || timeline[timeline.length - 1];
+    const place = a.place || "";
+    const mood = ({ scenery: "把节奏放慢，看清一路的季节", sport: "让身体舒展开来", family: "陪孩子一起走进自然", challenge: "一步一步把这段路走完", healing: "暂时放下待办，只专注脚下", social: "和同频的人边走边聊", photo: "等光、构图，把此刻装进相册", release: "彻底松开身心的那口气" })[dna.coreMotivation] || "走进户外，换一种节奏";
+    const paras = [];
+    if (open && open.fact) paras.push(`${open.time ? open.time + "，" : ""}${open.fact}。这一程从这里开始，${mood}。`);
+    if (core.length) {
+      const spine = core.map((c) => c.fact).filter(Boolean).slice(0, 3).join("；");
+      paras.push(`${spine}${place ? "（" + place + "）" : ""}，是整段行程最值得沉浸的部分。${a.distance ? "全程约 " + a.distance + " 公里，" : ""}按自己的节奏走就好。`);
+    }
+    if (meal.length && meal[0].fact) paras.push(`${meal[0].time ? meal[0].time + "，" : ""}${meal[0].fact}，找个舒服的地方用餐、补给，也是难得的松弛时刻。`);
+    if (close && close.fact) paras.push(`${close.time ? close.time + "，" : ""}${close.fact}。带着这一程的疲惫与满足，为这次出发收尾。`);
+    return { title: "这一程，这样走过", paras: paras };
+  }
+  function structureItinerary(a) {
+    const days = (a && a.itineraryDays) || [];
+    const timeline = [];
+    days.forEach((d, di) => {
+      (d.items || []).forEach((it) => {
+        if (!it || (!it.time && !it.text)) return;
+        timeline.push({ day: di + 1, time: it.time || "", fact: it.text || "", contentRole: itineraryContentRole((it.time || "") + " " + (it.text || "")) });
+      });
+    });
+    return { timeline: timeline, hasReal: timeline.length > 0, days: days.length, narrative: buildItineraryNarrative(a, timeline) };
+  }
+
   const FACT_SPECS = [
     { key: "place", label: "活动地点", required: true, val: (a) => a.place, test: (raw) => /[\u4e00-\u9fa5]{2,8}?(?:山|湖|谷|林|公园|峰|岭|沟|塬|垭口|草原|梯田|古镇|古城|寺庙)/.test(raw) || CITY_NAMES.some((k) => raw.includes(k)) },
     { key: "date", label: "活动日期", required: true, val: (a) => a.date || a.dateMD, test: (raw) => /\d{1,2}\s*月\s*\d{1,2}\s*日|本周|下周|本周末|下周末|周末|国庆|元旦|春节|中秋|端午|清明|五一/.test(raw) },

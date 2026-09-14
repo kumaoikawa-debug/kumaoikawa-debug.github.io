@@ -110,14 +110,9 @@ function xfState() {
 
 /* ---------- 工具 ---------- */
 function xfSeason(a) {
-  const ds = a.dateMD || a.date || "";
-  const m = ds.match(/(\d{4})[-/](\d{1,2})/) || ds.match(/(\d{1,2})[-/](\d{1,2})/);
-  if (!m) return "";
-  const mo = +m[2];
-  if (mo >= 3 && mo <= 5) return "春季";
-  if (mo >= 6 && mo <= 8) return "夏季";
-  if (mo >= 9 && mo <= 11) return "秋季";
-  return "冬季";
+  // 统一委托 ai.js 的 xfSeasonOf（修复原「10月20日」被误解析为 月=20 的问题，见 v147）
+  if (typeof xfSeasonOf === "function") return xfSeasonOf(a);
+  return "";
 }
 function xfTargetUser(a) {
   const t = (a.type || "") + (a.audience || []).join("") + (a.title || "");
@@ -398,6 +393,21 @@ function xfPickFamily(a, photos, scenario) {
       if (pp.hasDetail && lr < 0.5 && pr < 0.4) weight.brand_journal += 2;
     }
   }
+  // P0-2 Activity DNA 参与家族权重：把「季节/场景/动机/人群」从原始活动类型里解耦出来
+  const dna = (typeof activityDNAOf === "function") ? activityDNAOf(a, photos) : null;
+  if (dna) {
+    if (scenario === "recruit") {
+      if (dna.visualPotential === "high") weight.route_editorial += 2;
+      if (dna.coreMotivation === "challenge") weight.challenge_editorial += 2;
+      if (dna.coreMotivation === "family") weight.visual_campaign += 2;
+      if (dna.activityForm === "water" || dna.activityForm === "camp") weight.visual_campaign += 1;
+      if (dna.professionalLevel === "technical") weight.challenge_editorial += 1;
+    } else {
+      if (dna.coreMotivation === "family") weight.photo_documentary += 3;
+      if (dna.visualPotential === "high") weight.outdoor_lookbook += 2;
+      if (dna.coreMotivation === "challenge") weight.brand_journal += 1;
+    }
+  }
   return xfWeightedPick(allowed, weight, xfStyleSeed() * 1.7 + 3);
 }
 function xfPickVariant(family, scenario, seed) {
@@ -455,6 +465,7 @@ async function genStrategy(a, photos, notes, scenario) {
   const facts = xfConfirmedFacts(a, photos);
   const photoProfile = await xfPhotoProfile(a, photos, scenario);
   const p = xfTypeProfile(a);
+  const dna = (typeof activityDNAOf === "function") ? activityDNAOf(a, photos) : null;
   const family = xfPickFamily(a, photos, scenario);
   const styleSeed = xfStyleSeed();
   const variant = xfPickVariant(family, scenario, styleSeed);
@@ -478,6 +489,7 @@ async function genStrategy(a, photos, notes, scenario) {
 事实：${JSON.stringify(facts)}
 照片画像：${JSON.stringify(photoProfile)}
 活动类型画像：${JSON.stringify({ kind: p.kind, themeA: p.themeA, tone: p.tone })}
+活动基因(Activity DNA)：${JSON.stringify(dna)}
 补充资料：${notes || "无"}
 指定编辑家族：${family}（${XF_FAMILIES[family].label}），变体序号：${variant}`;
     dir = await xfLLM(sys, user, true);
@@ -490,7 +502,9 @@ async function genStrategy(a, photos, notes, scenario) {
       mainSellingPoint: p.themeA, audienceInsight: xfTargetUser(a),
       tone: p.tone, angle: dir.angle, hook: dir.hook, scenario: scenario,
     },
+    activityDNA: dna,
     photoProfile: photoProfile,
+    photoIntel: (typeof buildPhotoIntelligence === "function") ? buildPhotoIntelligence(photos, a, (dir.structure || []), scenario) : null,
     editorialDirection: dir,
   };
 }
@@ -1096,17 +1110,32 @@ function xfBrandPill(a) {
 }
 function xfGzhCover(xf) {
   const gzh = xf.out && xf.out.gzh ? xf.out.gzh : {};
-  let cover = gzh.cover && gzh.cover.src ? gzh.cover : (xf.master ? matchPhoto(xf.master, "cover", 0) : null);
-  if (!cover || !cover.src) {
-    const list = xf.master && xf.master.keyImages ? xf.master.keyImages : [];
-    if (list.length) cover = list[0];
+  let cover = gzh.cover && gzh.cover.src ? gzh.cover : null;
+  if (!cover) {
+    // P0-8：封面优先使用图片智能判定的 HeroImage（横图 + 风景优先、且规避高风险裁切）
+    const intel = (xf.strategy && xf.strategy.photoIntel) || null;
+    const heroUsed = (intel && intel.heroId) ? intel.used.find((u) => u.imageId === intel.heroId) : null;
+    const list = (xf.master && xf.master.keyImages) || [];
+    if (heroUsed) cover = list.find((p) => p.src === heroUsed.src) || null;
+    if (!cover && xf.master) cover = matchPhoto(xf.master, "cover", 0);
+    if (!cover || !cover.src) { if (list.length) cover = list[0]; }
   }
   return cover || {};
 }
 function xfPhotoSet(xf, prefer, count) {
   const list = [];
   const used = new Set();
-  const imgs = (xf.master && xf.master.keyImages) || [];
+  // P0-7/P0-8：若有图片智能结果，先用「自动筛图 + 角色」排序后的池子（Hero 优先，弃用图不参与）
+  const intel = (xf.strategy && xf.strategy.photoIntel) || null;
+  let imgs = (xf.master && xf.master.keyImages) || [];
+  if (intel && intel.used && intel.used.length) {
+    const rank = {};
+    intel.used.forEach((u, i) => { rank[u.src] = i; });
+    const roleOrder = { HeroImage: 0, SectionLeadImage: 1, SupportImage: 2, GalleryImage: 3, DetailImage: 4 };
+    const filtered = imgs.filter((p) => p && p.src && rank[p.src] != null)
+      .sort((p1, p2) => (roleOrder[intel.roles[intel.used[rank[p1.src]].imageId]] || 9) - (roleOrder[intel.roles[intel.used[rank[p2.src]].imageId]] || 9) || rank[p1.src] - rank[p2.src]);
+    if (filtered.length) imgs = filtered; // 全被筛掉时回退原集合，避免无图
+  }
   const order = Array.isArray(prefer) ? prefer : [prefer];
   for (const cat of order) {
     for (const p of imgs) {
