@@ -411,6 +411,11 @@ function xfPickFamily(a, photos, scenario) {
       if (dna.coreMotivation === "challenge") weight.brand_journal += 1;
     }
   }
+  // P2-5 风格去重：最近几次生成用过的家族降权，避免连续几版过于相似（最近一次降得最狠）
+  const histAll = (state.xf && state.xf._styleHistory) || [];
+  const recentFams = histAll.slice(-3).map((h) => h.family).reverse();
+  const decay = [0.38, 0.6, 0.82];
+  recentFams.forEach((fam, i) => { if (weight[fam] != null) weight[fam] *= (decay[i] || 1); });
   return xfWeightedPick(allowed, weight, xfStyleSeed() * 1.7 + 3);
 }
 function xfPickVariant(family, scenario, seed) {
@@ -1089,6 +1094,12 @@ function xfStyleBar(xf) {
       ? [["magazine", "更杂志"], ["visual", "更视觉"], ["pro", "更专业"], ["young", "更年轻"], ["challenge", "更有挑战感"]]
       : [["doc", "更纪实"], ["warm", "更温暖"], ["album", "更像画册"], ["people", "更有人物感"], ["nature", "更自然"]]
     ).map(([k, l]) => `<button class="xf-chip xf-chip-soft" data-action="xfQuickStyle" data-k="${k}">${l}</button>`).join("")}</div>
+    <div class="xf-stylebar-row xf-stylebar-local"><span class="xf-stylebar-lbl">局部重生成</span>
+      <button class="xf-chip" data-action="xfRegenTitle">${ICON("refresh")} 只改标题</button>
+      <button class="xf-chip" data-action="xfRegenCta">${ICON("refresh")} 只改结尾</button>
+      <button class="xf-chip" data-action="xfShufflePhotos">${ICON("refresh")} 只换图片安排</button>
+      <button class="xf-chip" data-action="xfNextVariant">${ICON("refresh")} 只换布局</button>
+    </div>
     <details class="xf-adv"><summary>高级信息（内部版式参数）</summary>
       <div class="xf-stylebar-row"><span class="xf-stylebar-lbl">编辑家族</span>${fams.map((f) => `<button class="xf-chip ${xf.family === f ? "active" : ""}" data-action="xfSwitchFamily" data-f="${f}">${XF_FAMILIES[f].label}</button>`).join("")}</div>
       <div class="xf-stylebar-row"><span class="xf-stylebar-lbl">版式变体</span>${vs.map((v, i) => `<button class="xf-chip ${xf.variant === i ? "active" : ""}" data-action="xfSwitchVariant" data-v="${i}">${v}</button>`).join("")}</div>
@@ -1134,6 +1145,71 @@ function xfQuickStyle(kind) {
   if (cfg.imagePriority) dir.imagePriority = cfg.imagePriority;
   xf._styleHistory.push({ family: xf.family, variant: xf.variant });
   toast("已应用风格");
+  showView(state.view);
+}
+
+/* ---------- P2-1 局部重生成：只改标题 / 只改结尾 / 只换图片安排（不动其他内容与事实） ---------- */
+function xfBumpSeed(xf) { xf.regenSeed = ((xf.regenSeed || 0) + 1); return xf.regenSeed; }
+function xfTitleCandidates(a, m, dir, scenario) {
+  const f = (m && m.confirmedFacts) || {};
+  const dna = (typeof activityDNAOf === "function") ? activityDNAOf(a) : null;
+  const place = f.place || "";
+  const season = f.season || (dna && dna.season) || "";
+  const dist = f.distance || "";
+  const kind = (dna && dna.coreMotivationLabel) || "";
+  const name = f.activityName || "这场活动";
+  const theme = (m && m.mainTheme) || (dir && dir.angle) || "这一程";
+  const t = [];
+  if (scenario === "recap") {
+    t.push(`回顾｜${name}`);
+    t.push(`${season ? season + "，" : ""}我们在${place || "山野"}的这一程`);
+    t.push(`记一次${f.activityType || "户外"}｜${place || "山野"}`);
+    t.push(`${name} · 现场记录`);
+  } else {
+    t.push(`${name}｜${theme}`);
+    if (place) t.push(`${season ? season + "的" : ""}${place}，${dist ? "约" + dist + "公里" : "值得走一趟"}`);
+    if (kind) t.push(`${kind}${season ? "｜" + season : ""}${place ? " · " + place : ""}`);
+    t.push(`${theme}${dist ? "｜约 " + dist + " 公里" : ""}`);
+  }
+  return t.filter(Boolean);
+}
+function xfRegenTitle() {
+  const xf = xfState();
+  if (!xf.out || !xf.out.gzh) { toast("请先生成内容"); return; }
+  const cands = xfTitleCandidates(xf._a, xf.master, xf.strategy && xf.strategy.editorialDirection, xf.scenario);
+  if (!cands.length) return;
+  const seed = xfBumpSeed(xf);
+  const pick = cands[seed % cands.length];
+  xf.out.gzh.title = pick;
+  if (xf.out.poster) xf.out.poster.title = pick;
+  if (xf.out.xhs && Array.isArray(xf.out.xhs.titles) && xf.out.xhs.titles.length) xf.out.xhs.titles[0] = pick;
+  toast("已换一版标题");
+  showView(state.view);
+}
+function xfRegenCta() {
+  const xf = xfState();
+  if (!xf.out || !xf.out.gzh) { toast("请先生成内容"); return; }
+  const f = (xf.master && xf.master.confirmedFacts) || {};
+  const seed = xfBumpSeed(xf);
+  const when = f.date || "近期";
+  const price = f.price != null ? "¥" + f.price + "/" + (f.limitUnit || "人") : "详询";
+  const opts = xf.scenario === "recap"
+    ? ["下一期正在安排，留意群里接龙就能占位。", "想去的先加群，路线一确定就发通知。", "老地方见，下一程继续一起走。"]
+    : [`${when} 出发，${price}${f.limit ? "，限 " + f.limit + (f.limitUnit || "人") : ""}，先到先得。`,
+      `名额有限，私信或群里接龙占位，${when} 见。`,
+      `${price}，含已确认服务；报名从本页提交即可。`];
+  const pick = opts[seed % opts.length];
+  if (xf.scenario === "recap") xf.out.gzh.next = pick; else xf.out.gzh.cta = pick;
+  toast("已换一版结尾");
+  showView(state.view);
+}
+function xfShufflePhotos() {
+  const xf = xfState();
+  const ki = xf.master && xf.master.keyImages;
+  if (!ki || ki.length < 2) { toast("图片不足，无法调整安排"); return; }
+  ki.push(ki.shift()); // 轮转一位：改变图文配图顺序，不动文案与事实
+  if (xf.photoOverrides) xf.photoOverrides.cover = null;
+  toast("已换一种图片安排");
   showView(state.view);
 }
 

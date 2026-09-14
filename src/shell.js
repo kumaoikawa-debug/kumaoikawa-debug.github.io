@@ -1368,6 +1368,10 @@
         break;
       }
       case "xfQuickStyle": { xfQuickStyle(d.k); break; }
+      /* P2-1 局部重生成：只动被点的那一处，其余文案与事实保持不变 */
+      case "xfRegenTitle": { xfRegenTitle(); break; }
+      case "xfRegenCta": { xfRegenCta(); break; }
+      case "xfShufflePhotos": { xfShufflePhotos(); break; }
       case "xfSwitchStyle": {
         const xf = xfState();
         const a = xf._a || (state.activities || []).find((x) => x.id === xf.aid);

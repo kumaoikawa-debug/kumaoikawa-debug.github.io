@@ -28,8 +28,9 @@ function piAnalyzeOne(src, i) {
   const quality = (m && m.quality_score != null) ? m.quality_score : Number((0.56 + piRand(h + 2) * 0.38).toFixed(2));
   const cat = (m && m.category) || "未分析";
   const scene = PI_SCENE_BY_CAT[cat] || "detail";
-  const people = scene === "people" ? 1 + (h % 4) : (piRand(h + 3) < 0.3 ? 1 : 0);
-  const action = (h % 5 === 0 && scene !== "sky") ? "动态" : "";
+  // P2-3：若已接入真实视觉模型，优先采用其 people_count / action（见 piApplyVision）
+  const people = (m && m.people_count != null) ? m.people_count : (scene === "people" ? 1 + (h % 4) : (piRand(h + 3) < 0.3 ? 1 : 0));
+  const action = (m && m.action) ? m.action : ((h % 5 === 0 && scene !== "sky") ? "动态" : "");
   const subject = scene === "people" ? "人物" : (scene === "scenic" ? "环境" : (scene === "sky" ? "天空" : "细节"));
   const emotion = (m && m.emotion) || (piRand(h + 4) < 0.5 ? "明快" : "沉静");
   const safeTextArea = (m && m.safe_text_area) || "top-right";
@@ -155,12 +156,17 @@ function piAdaptiveLayout(used) {
   const port = used.filter((p) => p.orientation === "portrait").length;
   const sq = used.filter((p) => p.orientation === "square").length;
   const plan = [];
-  if (n === 0) return { mode: "empty", components: [], hint: "无图：使用纯文字克制版式" };
-  if (n <= 3) {
-    plan.push(n >= 2 ? "FullBleedImage" : "FullBleedImage");
-    if (n === 3) plan.push("AspectPreservedImage");
-    if (n >= 2) plan.push(port >= 1 ? "AspectPreservedImage" : "TwoImageGrid");
-    return { mode: "minimal", components: plan, hint: "少图：大图 + 留白，不重复用图" };
+  // P2-4 少图降级：0/1/2/3/4-5 各自独立布局逻辑，绝不强行套复杂大图文
+  if (n === 0) return { mode: "empty", components: [], hint: "0 图：纯文字克制版式" };
+  if (n === 1) return { mode: "single", components: ["FullBleedImage"], hint: "1 图：单张大图 + 留白" };
+  if (n === 2) return { mode: "pair", components: ["FullBleedImage", port >= 1 ? "AspectPreservedImage" : "TwoImageGrid"], hint: "2 图：一大一插图，不重复用图" };
+  if (n === 3) return { mode: "trio", components: ["FullBleedImage", port >= 2 ? "PortraitPair" : "ThreeImageGrid"], hint: "3 图：大图 + 双/三图" };
+  if (n <= 5) {
+    plan.push("FullBleedImage");
+    if (land >= 2) plan.push("TwoImageGrid");
+    if (port >= 2) plan.push("PortraitPair");
+    if (n >= 5) plan.push("ThreeImageGrid");
+    return { mode: "hero_pairs", components: plan, hint: "4-5 图：Hero + 双图 / 三图穿插" };
   }
   if (n <= 8) {
     plan.push("FullBleedImage");
@@ -232,4 +238,25 @@ function buildPhotoIntelligence(photos, a, sections, scenario) {
     simulated: analysis.some((p) => p.simulated),
     summary: `${analysis.length} 张 → 建议使用 ${used.length} 张（弃用 ${selection.discarded.length}）`,
   };
+}
+
+/* ---------- P2-3：真实视觉模型接口预留 ----------
+   本项目当前的 scene / subject / people / action / emotion 为规则启发式推断（simulated=true）。
+   接入真实视觉模型时，只需把模型结果写回缓存，无需改动任何版式/渲染代码：
+     piApplyVision(src, { orientation, quality_score, category, emotion, subjects,
+                          people_count, action, safe_text_area, focal_point, recommended_use })
+   —— piAnalyze() 会自动采用（并把该图的 simulated 置为 false）。 */
+function piVisionEnabled() { return (typeof window !== "undefined" && !!window.CLUBOS_VISION_API); }
+function piApplyVision(src, data) {
+  if (!src || !data || typeof PHOTO_FOCUS_CACHE === "undefined") return false;
+  try {
+    const prev = PHOTO_FOCUS_CACHE.get(src) || {};
+    PHOTO_FOCUS_CACHE.set(src, Object.assign({}, prev, data, { simulated: false }));
+    return true;
+  } catch (e) { return false; }
+}
+function piApplyVisionBatch(map) {
+  let n = 0;
+  Object.keys(map || {}).forEach((src) => { if (piApplyVision(src, map[src])) n++; });
+  return n;
 }
