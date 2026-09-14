@@ -421,6 +421,20 @@
         } else {
           (s.mallOrders || []).forEach((o) => { if (!o.logistics) o.logistics = "pending"; if ((o.logistics === "shipped" || o.logistics === "signed") && !o.trackingNo) o.trackingNo = "SF" + String(Date.now()).slice(-10); });
         }
+        /* v157 自愈：独立键还在但主状态缺镜像时补回来（老用户无需重新输入 Key；
+           补上后下一次 saveState 即持久化，往后独立键丢失也能恢复）。 */
+        try {
+          if (!s.aiKey) { var _ak = (localStorage.getItem(AI_LS_KEY) || "").trim(); if (_ak) s.aiKey = _ak; }
+          /* v157 自愈：视觉独立键还在但主状态缺镜像时补回（与 aiKey 同理；
+             独立键是用户录入的源，镜像为备份，读时 visionGet 优先独立键、丢失再回退镜像） */
+          var _vc = s.visionCfg || {};
+          if (typeof VISION_LS !== "undefined" && VISION_LS) {
+            ["provider", "key", "model", "baseUrl"].forEach(function (kk) {
+              if (!_vc[kk]) { var _vk = (localStorage.getItem(VISION_LS[kk]) || "").trim(); if (_vk) _vc[kk] = _vk; }
+            });
+          }
+          s.visionCfg = _vc;
+        } catch (e) {}
         return s;
       }
     } catch (e) {}
@@ -562,6 +576,11 @@
       mmTab: "tiers",
       homeLayout: JSON.parse(JSON.stringify(DEFAULT_HOME_LAYOUT)),
       decorateEdit: null,
+      /* v157：AI Key 与视觉配置的「主状态镜像」。
+         必须在这里声明默认值 —— saveState() 是把内存 state 整个序列化写回，
+         若字段不在 state 里，任何一次普通 saveState 都会把镜像抹掉（v141 的兜底因此实测失效）。 */
+      aiKey: "",
+      visionCfg: {},
     };
     s.platformClubs = PLATFORM_CLUBS.map((c) => ({ ...c, permissions: { aiCreate: true, gearFusion: true, membership: true, marketing: true, data: true }, mallEnabled: c.status === "approved", aiBaseQuota: 1000, aiCredit: { base: 1000, gift: 0, paid: 0, month: curYM() } })).concat([{ id: "club_demo", name: brand.name || "本俱乐部", region: brand.address || "本平台", contact: brand.wechat || "-", phone: brand.phone || "-", appliedAt: "2026-08-10", status: "approved", permissions: { aiCreate: true, gearFusion: true, membership: true, marketing: true, data: true }, mallEnabled: true, aiBaseQuota: 1000, aiCredit: { base: aiCredit.base, gift: aiCredit.gift, paid: aiCredit.paid, month: aiCredit.month } }]);
     s.mallProducts = JSON.parse(JSON.stringify(MOCK_PRODUCTS));
@@ -603,6 +622,10 @@
       if (!st || typeof st !== "object") st = {};
       if (v) st.aiKey = v; else delete st.aiKey;
       localStorage.setItem("clubos_v1", JSON.stringify(st));
+      /* v157：同步更新内存 state —— 否则紧随其后的 saveState() 会用不含 aiKey 的 state 覆盖掉上面的镜像 */
+      if (typeof state !== "undefined" && state && typeof state === "object") {
+        if (v) state.aiKey = v; else delete state.aiKey;
+      }
     } catch (e) {}
   }
   function getAIProvider() { try { return (localStorage.getItem(AI_PROVIDER_KEY) || "deepseek").trim(); } catch (e) { return "deepseek"; } }

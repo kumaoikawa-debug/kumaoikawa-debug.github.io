@@ -22,11 +22,35 @@ const VISION_PROVIDERS = {
   gemini: { label: "Google Gemini", defaultBase: "https://generativelanguage.googleapis.com/v1beta", defaultModel: "gemini-2.0-flash", kind: "gemini" },
 };
 
-function visionGet(k, def) { try { return (localStorage.getItem(VISION_LS[k]) || "").trim() || def; } catch (e) { return def; } }
+function visionGet(k, def) {
+  try {
+    var v = (localStorage.getItem(VISION_LS[k]) || "").trim();
+    if (v) return v;
+    /* v157 兜底：独立键丢失时从主状态 clubos_v1.visionCfg 恢复（更新/误清后可找回） */
+    if (typeof state !== "undefined" && state && state.visionCfg && state.visionCfg[k]) {
+      var m = String(state.visionCfg[k]).trim();
+      if (m) return m;
+    }
+  } catch (e) {}
+  return def;
+}
 function visionSet(k, v) {
   try {
-    if (v && String(v).trim()) localStorage.setItem(VISION_LS[k], String(v).trim());
+    v = (v == null) ? "" : String(v).trim();
+    if (v) localStorage.setItem(VISION_LS[k], v);
     else localStorage.removeItem(VISION_LS[k]);
+    /* v157 镜像进主状态，随 clubos_v1 持久化 —— 否则紧随其后的 saveState() 会用不含
+       visionCfg 的 state 覆盖掉配置（与 v141 的 aiKey 镜像失效是同一类 bug）。 */
+    if (typeof state !== "undefined" && state && state.visionCfg) {
+      if (v) state.visionCfg[k] = v; else delete state.visionCfg[k];
+    }
+    try {
+      var st = JSON.parse(localStorage.getItem("clubos_v1") || "{}");
+      if (!st || typeof st !== "object") st = {};
+      st.visionCfg = st.visionCfg || {};
+      if (v) st.visionCfg[k] = v; else delete st.visionCfg[k];
+      localStorage.setItem("clubos_v1", JSON.stringify(st));
+    } catch (e2) {}
   } catch (e) {}
 }
 function visionProvider() { return visionGet("provider", "openai"); }
