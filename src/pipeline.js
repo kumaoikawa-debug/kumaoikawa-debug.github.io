@@ -9,7 +9,7 @@
      ③ 事实边界不变 —— 本层绝不生成任何事实，只搬运已确认事实与既有推断结果。
 
    名称对照表（文档名 → 本项目实现）：
-     extractFacts            → xfConfirmedFacts / factRegistry
+     extractFacts            → xfConfirmedFacts（降级 consumerFactSnapshot，同字段名）
      detectMissingFacts      → missingRequiredFacts
      confidenceMap           → factRegistry 的 confirmed/inferred/missing
      buildActivityDNA        → buildActivityDNA（同名，已实现）
@@ -32,22 +32,39 @@
 
 /* ---------- §四 事实层 ---------- */
 
-/* extractFacts(a, photos) → 消费者视角的已确认事实快照
-   首选 publish.js 的 xfConfirmedFacts（字段命名与文档 confirmedFacts 一致）；
-   该模块未加载时（C 端/详情页）退回 ai.js 的 factRegistry，只取 status==="confirmed"。 */
+/* consumerFactSnapshot(a, photos) → 消费者事实快照（与 publish.js 的 xfConfirmedFacts 「同字段名」）
+   ⚠️ 这个函数必须与 publish.js 的 xfConfirmedFacts 保持一致！
+   原因：extractFacts 在 admin 页走 xfConfirmedFacts、在 C 端（无 publish.js）走本函数，
+        两条路径若字段名/语义不同，同一活动会得出「25 个事实」vs「0 个事实」的矛盾结果。
+   防漂移：冒烟测试里有一条断言 —— 在加载 publish.js 的模式下，比对两者的键集必须完全相等，
+          一旦 publish.js 改了字段，测试即失败（见 pipe epilogue 的 extractFacts_shapeMatches）。
+   本函数只做「取值」，不做置信度判断；置信度请用 confidenceMap()。 */
+function consumerFactSnapshot(a, photos) {
+  const s = a || {};
+  const season = (typeof xfSeasonOf === "function") ? xfSeasonOf(s) : ((typeof xfSeason === "function") ? xfSeason(s) : "");
+  return {
+    activityName: s.title || "", activityType: s.type || "", place: s.place || "",
+    date: s.dateMD || s.date || "", season: season,
+    price: s.price != null ? s.price : "", limit: s.limit || "", limitUnit: s.limitUnit || "人",
+    days: s.days || 1, ageRange: s.ageRange || "", audience: (s.audience || []).join("/"),
+    distance: s.distance || "", elevation: s.elevation || "", difficulty: s.difficulty || "",
+    meeting: s.meeting || "", meetTime: s.meetTime || "", returnTime: s.returnTime || "",
+    includedServices: s.feeInclude || [], gear: (s.gear || []).map((g) => (g && g.name) || g),
+    transport: s.transport || "", meal: s.meal || "", insurance: s.insurance || "",
+    leader: s.leaderName ? (s.leaderName + (s.leaderYears ? "（" + s.leaderYears + "）" : "")) : "",
+    itinerary: s.itineraryDays || [],
+    photosCount: (photos || []).length,
+  };
+}
+
+/* extractFacts(a, photos) → 消费者视角的事实快照（文档 §四 / §五 confirmedFacts）
+   首选 publish.js 的 xfConfirmedFacts —— 它就是 AI 生成实际使用的那份事实源；
+   该模块未加载时（C 端 / 详情页）用 consumerFactSnapshot 产出「同字段名」的快照，保证两路径可比。 */
 function extractFacts(a, photos) {
   if (typeof xfConfirmedFacts === "function") {
-    try { return xfConfirmedFacts(a, photos) || {}; } catch (e) { /* 继续降级 */ }
+    try { return xfConfirmedFacts(a, photos) || consumerFactSnapshot(a, photos); } catch (e) { /* 降级 */ }
   }
-  const out = {};
-  if (typeof factRegistry === "function") {
-    try {
-      factRegistry(a).forEach((f) => {
-        if (f.status === "confirmed") out[f.key] = f.value;
-      });
-    } catch (e) { /* 空快照 */ }
-  }
-  return out;
+  return consumerFactSnapshot(a, photos);
 }
 
 /* detectMissingFacts(a) → 阻塞发布的必填缺失事实（[{key,label}]） */
@@ -330,6 +347,7 @@ if (typeof window !== "undefined") {
     version: PIPELINE_VER,
     pipelineVersion: pipelineVersion, // 供测试与排查
     extractFacts: extractFacts,
+    consumerFactSnapshot: consumerFactSnapshot, // 降级实现（供防漂移比对）
     detectMissingFacts: detectMissingFacts,
     confidenceMap: confidenceMap,
     publishCheck: publishCheck,
