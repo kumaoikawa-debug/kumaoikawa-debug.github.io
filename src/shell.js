@@ -1397,6 +1397,7 @@
       case "xfRegenTitle": { xfRegenTitle(); break; }
       case "xfRegenCta": { xfRegenCta(); break; }
       case "xfShufflePhotos": { xfShufflePhotos(); break; }
+      case "xfRegenSection": { await xfRegenSection(+(d.i || 0)); break; }
       case "xfSwitchStyle": {
         const xf = xfState();
         const a = xf._a || (state.activities || []).find((x) => x.id === xf.aid);

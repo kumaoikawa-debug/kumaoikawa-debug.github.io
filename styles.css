@@ -4948,3 +4948,14 @@ body{
 /* v151 真实视觉模型：识别入口与状态 */
 .xpr-chip.ok { background: #e8f3ec; color: #2F7D4F; }
 .xpr-vision { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+
+/* ============ P0-3 双层详情页：内容打包层（先打动人）→ 报名决策层（再帮决策） ============ */
+.lead-sheet .layer-content .lead-highlights { margin-top: 10px; }
+.lead-sheet .layer-decision { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line, #ece7df); }
+
+/* ============ P0-9 行程段落配图（语义匹配：动作/人物/餐食…各归其段） ============ */
+.tl-photos { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.tl-photo { height: 96px; border-radius: 10px; background-size: cover; background-position: center; }
+
+/* ============ P2-1 只重写某一段 ============ */
+.xf-secregen { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 12px; }

@@ -81,11 +81,18 @@
     const blocks = {
       timeline: (() => {
         // P0-5：结构型时间表（事实层） + 内容型叙事（表达层）双层并存
+        // P0-9：每一天旁配「段落语义匹配」的图（core→动作/人物，meal→餐食…），而非随机配图
         const itin = (typeof structureItinerary === "function") ? structureItinerary(a) : { narrative: { title: "", paras: [] } };
         const nar = (itin.narrative && itin.narrative.paras.length)
           ? `<div class="itin-narrative"><div class="itin-narrative-t">${esc(itin.narrative.title || "")}</div>${itin.narrative.paras.map((p) => `<p>${esc(p)}</p>`).join("")}</div>`
           : "";
-        const dayBlocks = (a.itineraryDays || []).map((day, idx) => { const items = (day.items || []).filter((t) => t && (t.time || t.text)); return `<details class="day-block"><summary class="day-header-sz"><div class="day-no"><span>DAY</span><b>${idx + 1}</b></div><div class="day-route-block"><p class="day-route">${esc(day.label)}</p>${day.sub ? `<p class="day-subtitle">${esc(day.sub)}</p>` : ""}</div><span class="day-expand">${ICON("chevron-down")}</span></summary><div class="day-body">${items.length ? `<div class="timeline">${items.map((t) => `<div class="tl-item"><div class="tl-node"></div><div class="t">${esc(t.time)}</div><div class="d">${esc(t.text)}</div></div>`).join("")}</div>` : `<div class="tl-empty">本日行程待机构补充。</div>`}</div></details>`; }).join("");
+        const dayPh = (typeof pageItineraryPhotos === "function") ? pageItineraryPhotos(a) : null;
+        const dayPhotosHtml = (idx) => {
+          const list = (dayPh && dayPh.byDay && dayPh.byDay[idx + 1]) || [];
+          if (!list.length) return "";
+          return `<div class="tl-photos">${list.map((p) => `<div class="tl-photo" ${smartBg(p.src)}></div>`).join("")}</div>`;
+        };
+        const dayBlocks = (a.itineraryDays || []).map((day, idx) => { const items = (day.items || []).filter((t) => t && (t.time || t.text)); return `<details class="day-block"><summary class="day-header-sz"><div class="day-no"><span>DAY</span><b>${idx + 1}</b></div><div class="day-route-block"><p class="day-route">${esc(day.label)}</p>${day.sub ? `<p class="day-subtitle">${esc(day.sub)}</p>` : ""}</div><span class="day-expand">${ICON("chevron-down")}</span></summary><div class="day-body">${items.length ? `<div class="timeline">${items.map((t) => `<div class="tl-item"><div class="tl-node"></div><div class="t">${esc(t.time)}</div><div class="d">${esc(t.text)}</div></div>`).join("")}</div>` : `<div class="tl-empty">本日行程待机构补充。</div>`}${dayPhotosHtml(idx)}</div></details>`; }).join("");
         return `<div class="dsec itinerary-editorial"><div class="dsec-h"><h3>详细行程${a.days > 1 ? ` · 共 ${a.days} 天` : ""}</h3></div>${nar}${dayBlocks || `<div class="pending-section"><b>真实行程待补充</b><span>补充后才会进入客户页面和发布检查。</span></div>`}</div>`;
       })(),
       highlights: hl.length ? `<div class="dsec"><div class="dsec-h"><h3>为什么值得参加</h3></div>${hl.map((h) => `<div class="hl"><div class="ic">${ICON(h[1] || "star")}</div><div class="txt">${esc(h[0])}</div></div>`).join("")}</div>` : "",
@@ -195,22 +202,28 @@
 
       <div class="detail-body composition-${composition}">
         <div class="lead-sheet">
-          ${a.pullQuote ? `<div class="quote-card"><span class="quote-mark">“</span><p>${esc(a.pullQuote)}</p></div>` : ""}
-          <div class="lead-tags">
-            <span class="lead-tag-primary">${ICON("map-pin")}${esc(a.type)}</span>
-            ${core.map((t) => `<span class="lead-tag-secondary">${esc(t)}</span>`).join("")}
+          <!-- P0-3 双层详情页 · 第一层：内容包装层（先打动人） -->
+          <div class="layer-content">
+            ${a.pullQuote ? `<div class="quote-card"><span class="quote-mark">“</span><p>${esc(a.pullQuote)}</p></div>` : ""}
+            <div class="lead-tags">
+              <span class="lead-tag-primary">${ICON("map-pin")}${esc(a.type)}</span>
+              ${core.map((t) => `<span class="lead-tag-secondary">${esc(t)}</span>`).join("")}
+            </div>
+            <h1 class="lead-title">${esc(a.title)}</h1>
+            ${a.posterTagline || a.hook ? `<p class="lead-subtitle">${esc(a.posterTagline || a.hook)}</p>` : ""}
+            ${leadHl.length ? `<div class="lead-highlights">${leadHl.map((h) => `<div class="lhl"><span class="lhl-dot"></span><span>${esc(h[0])}</span></div>`).join("")}</div>` : ""}
           </div>
-          <h1 class="lead-title">${esc(a.title)}</h1>
-          ${a.posterTagline || a.hook ? `<p class="lead-subtitle">${esc(a.posterTagline || a.hook)}</p>` : ""}
-          <div class="lead-quick-meta">
-            <div class="lqm-item"><span class="lqm-ic">${ICON("calendar")}</span><div><span class="lqm-k">时间</span><span class="lqm-v">${esc(a.dateMD || a.date || "待定")}</span></div></div>
-            <div class="lqm-item"><span class="lqm-ic">${ICON("map-pin")}</span><div><span class="lqm-k">集合</span><span class="lqm-v">${esc(a.meeting || "待定")}</span></div></div>
-            <div class="lqm-item"><span class="lqm-ic">${ICON("activity")}</span><div><span class="lqm-k">强度</span><span class="lqm-v">${esc(routeDifficultyConflict ? "待机构确认" : ((a.difficulty && !/missing/i.test(a.difficulty)) ? a.difficulty : "待确认"))}</span></div></div>
-          </div>
-          ${leadHl.length ? `<div class="lead-highlights">${leadHl.map((h) => `<div class="lhl"><span class="lhl-dot"></span><span>${esc(h[0])}</span></div>`).join("")}</div>` : ""}
-          <div class="lead-price-card">
-            <div class="lead-price-main">${a.price ? `<b>¥${a.price}</b><small>/${esc(a.limitUnit)}</small>` : `<b>详询</b>`}${a.useMemberPrice && memberPriceRange(a) ? `<span class="lead-price-tag">${esc(formatMemberPriceNote(a))}</span>` : ""}</div>
-            <div class="lead-price-note">${a.days > 1 ? `${a.days} 天 · ` : ""}${a.limit ? `限 ${a.limit}${esc(a.limitUnit)}` : "名额不限"}</div>
+          <!-- 第二层：报名决策层（再帮决策；信息完整但不再抢占第一屏） -->
+          <div class="layer-decision">
+            <div class="lead-quick-meta">
+              <div class="lqm-item"><span class="lqm-ic">${ICON("calendar")}</span><div><span class="lqm-k">时间</span><span class="lqm-v">${esc(a.dateMD || a.date || "待定")}</span></div></div>
+              <div class="lqm-item"><span class="lqm-ic">${ICON("map-pin")}</span><div><span class="lqm-k">集合</span><span class="lqm-v">${esc(a.meeting || "待定")}</span></div></div>
+              <div class="lqm-item"><span class="lqm-ic">${ICON("activity")}</span><div><span class="lqm-k">强度</span><span class="lqm-v">${esc(routeDifficultyConflict ? "待机构确认" : ((a.difficulty && !/missing/i.test(a.difficulty)) ? a.difficulty : "待确认"))}</span></div></div>
+            </div>
+            <div class="lead-price-card">
+              <div class="lead-price-main">${a.price ? `<b>¥${a.price}</b><small>/${esc(a.limitUnit)}</small>` : `<b>详询</b>`}${a.useMemberPrice && memberPriceRange(a) ? `<span class="lead-price-tag">${esc(formatMemberPriceNote(a))}</span>` : ""}</div>
+              <div class="lead-price-note">${a.days > 1 ? `${a.days} 天 · ` : ""}${a.limit ? `限 ${a.limit}${esc(a.limitUnit)}` : "名额不限"}</div>
+            </div>
           </div>
         </div>
 

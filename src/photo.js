@@ -150,6 +150,45 @@ function piMatchSections(sections, used, roles) {
   });
 }
 
+/* ---------- P0-9：图片↔「行程段落」匹配（按 contentRole 语义绑定） ---------- */
+const PI_ROLE_SCENES = {
+  opening: ["route", "scenic", "sky", "detail"],
+  arrival: ["route", "scenic", "detail"],
+  warmup: ["people", "gear", "detail"],
+  core: ["action", "people", "water", "camp", "scenic"],
+  meal: ["meal", "detail", "people"],
+  rest: ["people", "scenic", "detail"],
+  closing: ["sky", "scenic", "people", "detail"],
+};
+/* 输入 structureItinerary() 的 timeline（含 contentRole/day），输出「每天 → 匹配到的图」
+   语义优先、不重复用图；某天匹配不足时不再强行凑图（宁缺毋滥） */
+function piMatchItinerary(timeline, used, roles) {
+  const avail = (used || []).slice();
+  const taken = {};
+  const pickFor = (role, n) => {
+    const prefer = PI_ROLE_SCENES[role] || ["scenic", "people", "detail"];
+    const out = [];
+    for (const want of prefer) {
+      for (const p of avail) {
+        if (out.length >= n) break;
+        if (!taken[p.imageId] && p.scene === want) { out.push(p); taken[p.imageId] = true; }
+      }
+      if (out.length >= n) break;
+    }
+    return out;
+  };
+  const byDayRoles = {};
+  (timeline || []).forEach((t) => { const d = t.day || 1; (byDayRoles[d] = byDayRoles[d] || []).push(t.contentRole); });
+  const byDay = {};
+  Object.keys(byDayRoles).forEach((d) => {
+    const cnt = {};
+    byDayRoles[d].forEach((r) => { cnt[r] = (cnt[r] || 0) + 1; });
+    const dominant = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a])[0] || "core";
+    byDay[d] = pickFor(dominant, 2);
+  });
+  return { byDay: byDay, note: "按行程段落语义匹配" };
+}
+
 /* ---------- P0-10：自适应排版（按数量 + 横竖比例选组件） ---------- */
 function piAdaptiveLayout(used) {
   const n = used.length;

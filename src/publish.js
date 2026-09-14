@@ -697,19 +697,19 @@ async function genRecap(a, m, strategy, photos, notes) {
     if (!out || !out.gzh || !out.gzh.sections || out.gzh.sections.length < 4) {
       out = await xfLLM(sys + "\n（请严格返回完整 JSON：gzh.sections 至少 5 段，moments/wechat/next 为字符串）", user, true);
     }
-    out = xfQualityCheck(out, dir, "recap", f) || out;
+    out = xfQualityCheck(out, dir, "recap", f, actual) || out;
     // 质量检查不达标 → 自动重生成一次（§41）
     if (aiAuthMode() && state.xf && state.xf.quality) {
       if (state.xf.quality.fictionRisk) {
         const retry = await xfLLM(sys + "\n⚠️ 上一版被质量检查判定含虚构表述。请严格只用事实与补充资料，禁止任何天气/事件/用户感受/领队行为描写。", user + "\n请基于事实重新生成，确保零虚构。", true);
         if (retry && retry.gzh && retry.gzh.sections && retry.gzh.sections.length >= 4) {
-          const rechk = xfQualityCheck(retry, dir, "recap", f);
+          const rechk = xfQualityCheck(retry, dir, "recap", f, actual);
           if (state.xf.quality && !state.xf.quality.fictionRisk) out = rechk || retry;
         }
       } else if (state.xf.quality.contentRisk) {
         const retry = await xfLLM(sys + "\n⚠️ 上一版文案质量分偏低（模板感/空洞词/段落重复）。请去掉套路化开头，确保每段基于真实事实，结尾有下一期预告。", user, true);
         if (retry && retry.gzh && retry.gzh.sections && retry.gzh.sections.length >= 4) {
-          const rechk = xfQualityCheck(retry, dir, "recap", f);
+          const rechk = xfQualityCheck(retry, dir, "recap", f, actual);
           if (state.xf.quality && !state.xf.quality.contentRisk && !state.xf.quality.fictionRisk) out = rechk || retry;
         }
       }
@@ -735,7 +735,7 @@ function xfTextOf(out) {
 }
 
 /* §39 ContentQualityCheck：虚构词 / 模板拼接感 / 空洞词 / 重复 / 主题统一 / 图文匹配 / 转化 / 纪实 */
-function xfContentQuality(out, dir, scenario, facts) {
+function xfContentQuality(out, dir, scenario, facts, adv) {
   const T = xfTextOf(out);
   const flags = [];
   let score = 100;
@@ -750,9 +750,23 @@ function xfContentQuality(out, dir, scenario, facts) {
       { k: /大巴|包车|专车|接送/, ok: !!facts.transport, w: "交通" },
       { k: /含餐|午餐|晚餐|早餐|团餐|正餐/, ok: !!facts.meal, w: "餐食" },
       { k: /(提供|配发|免费使用)[^。；\n]{0,6}(装备|登山杖|头盔|救生衣)/, ok: !!(facts.gear && facts.gear.length), w: "装备" },
-      { k: /住宿|客栈|民宿|入住|标间/, ok: false, w: "住宿" },
+      // 住宿：不再恒判无依据 —— 若费用包含里写了住宿/房，则视为已确认
+      { k: /住宿|客栈|民宿|入住|标间/, ok: !!(facts.lodging || (facts.includedServices || []).some((s) => /住宿|客栈|民宿|房/.test(String(s)))), w: "住宿" },
     ];
     claims.forEach((c) => { if (c.k.test(T) && !c.ok) { score -= 8; flags.push("unsupported:" + c.w); } });
+    // P2-2 更强 Claim→Fact：天气 / 实际人数 / 完成情况 / 用户反馈 / 路线成熟度 / 风景判断
+    // 全部依赖「已确认事实」或「回顾的实际活动数据」，无依据即标记（不给 AI 留想象空间）
+    const A = adv || {};
+    const hasList = (x) => (Array.isArray(x) ? x.filter(Boolean).length > 0 : !!x);
+    const extraClaims = [
+      { k: /(万里无云|阳光明媚|晴空万里|下起了雨|突然放晴|阴雨绵绵|艳阳高照|天气很(好|差))/, ok: !!A.actualWeather, w: "天气" },
+      { k: /(\d+)\s*(人|位|名)\s*(参加|到场|实到|出席)|共\s*\d+\s*人/, ok: A.actualParticipants != null, w: "实际人数" },
+      { k: /(走完|完成)(了)?(全程|整条|整段|路线)|全员登顶|我们登顶|一个不落/, ok: !!A.completionSummary, w: "完成情况" },
+      { k: /(有人说|大家(都)?(表示|说)|(队员|学员|家长|参与者)(们)?(都)?(表示|反馈|说)|好评如潮|纷纷点赞|大家一致)/, ok: hasList(A.actualFeedback), w: "用户反馈" },
+      { k: /(路线(很|非常)?成熟|成熟的?(路线|线路)|老少皆宜|男女皆宜|毫无难度|闭眼可走|零门槛)/, ok: !!(facts.routeMaturity), w: "路线成熟度" },
+      { k: /(风景(绝美|绝佳|美到)|美到窒息|人间仙境|宛如仙境|震撼人心|美得不像话|此生必去)/, ok: false, w: "风景判断" },
+    ];
+    extraClaims.forEach((c) => { if (c.k.test(T) && !c.ok) { score -= 8; flags.push("unsupported:" + c.w); } });
   }
   const TEMPLATE = ["大家好，", "大家好！", "今天给大家", "一起来看看", "不仅如此", "总而言之", "总的来说", "首先，", "其次，", "最后，"];
   let tpl = 0; TEMPLATE.forEach((w) => { if (T.indexOf(w) >= 0) tpl++; });
@@ -790,11 +804,11 @@ function xfEditorialQuality(dir, scenario, family, variant) {
   return { score: Math.max(0, score), flags: flags };
 }
 
-function xfQualityCheck(out, dir, scenario, facts) {
+function xfQualityCheck(out, dir, scenario, facts, adv) {
   if (!out) return out;
   const gzh = out.gzh;
   if (!gzh || !gzh.sections || gzh.sections.length < 3) return out;
-  const cq = xfContentQuality(out, dir, scenario, facts);
+  const cq = xfContentQuality(out, dir, scenario, facts, adv);
   const family = (dir && dir.family) || (state.xf && state.xf.family) || "";
   const eq = xfEditorialQuality(dir, scenario, family, (dir && dir.variant));
   const fictionRisk = cq.fiction > 0;
@@ -802,14 +816,17 @@ function xfQualityCheck(out, dir, scenario, facts) {
   const editorialRisk = eq.score < 60;
   if (state.xf) {
     const ficHits = cq.flags.filter((f) => f.indexOf("fiction:") >= 0).map((f) => f.split(":")[1]).slice(0, 3);
+    // P2-2：无事实依据的声明（保险/领队/天气/人数/完成情况/用户反馈/路线成熟度/风景判断…）
+    const unsupHits = cq.flags.filter((f) => f.indexOf("unsupported:") >= 0).map((f) => f.split(":")[1]).slice(0, 5);
     state.xf.quality = {
-      flag: fictionRisk ? "fiction_risk" : (contentRisk || editorialRisk ? "quality_risk" : "ok"),
-      content: cq, editorial: eq,
+      flag: fictionRisk ? "fiction_risk" : (unsupHits.length ? "unsupported_claim" : (contentRisk || editorialRisk ? "quality_risk" : "ok")),
+      content: cq, editorial: eq, unsupported: unsupHits,
       contentRisk: contentRisk, editorialRisk: editorialRisk, fictionRisk: fictionRisk,
       note: fictionRisk ? ("检测到可能的虚构表述，建议人工复核：" + ficHits.join("、"))
-        : (contentRisk ? "文案质量分偏低（" + cq.score + "），已尝试自动重生成"
-          : (editorialRisk ? "版式质量分偏低（" + eq.score + "），已尝试重选家族/变体"
-            : "文案基于已确认事实，质量达标（内容 " + cq.score + " / 版式 " + eq.score + "）")),
+        : (unsupHits.length ? ("以下说法缺少事实依据，建议修改或删除：" + unsupHits.join("、"))
+          : (contentRisk ? "文案质量分偏低（" + cq.score + "），已尝试自动重生成"
+            : (editorialRisk ? "版式质量分偏低（" + eq.score + "），已尝试重选家族/变体"
+              : "文案基于已确认事实，质量达标（内容 " + cq.score + " / 版式 " + eq.score + "）"))),
     };
   }
   return out;
@@ -1089,7 +1106,8 @@ function xfStyleBar(xf) {
   const q = xf.quality || {};
   // P1-8 质量信息用户化：普通用户只看到「是否已检查真实信息」，不再暴露分数
   const qText = q.fictionRisk ? ("⚠️ " + (q.note || "发现可能缺少事实依据的描述，请确认。"))
-    : ((q.content || q.editorial) ? "✓ 已检查真实信息，未发现明显事实冲突" : "");
+    : ((q.unsupported && q.unsupported.length) ? ("⚠️ 以下说法缺少事实依据，建议确认：" + q.unsupported.join("、"))
+      : ((q.content || q.editorial) ? "✓ 已检查真实信息，未发现明显事实冲突" : ""));
   return `<div class="xf-stylebar">
     <div class="xf-stylebar-row xf-stylebar-main">
       <span class="xf-stylebar-lbl">当前风格</span>
@@ -1219,6 +1237,75 @@ function xfShufflePhotos() {
   toast("已换一种图片安排");
   showView(state.view);
 }
+/* 无 Key 时的事实驱动「换一种说法」——只换表达，不新增任何事实 */
+function xfSectionAlt(h, m, a, seed) {
+  const f = (m && m.confirmedFacts) || {};
+  const dna = (typeof activityDNAOf === "function") ? activityDNAOf(a) : null;
+  const place = f.place || "";
+  const season = f.season || (dna && dna.season) || "";
+  const mood = (dna && dna.coreMotivationLabel) || "";
+  const H = String(h || "");
+  const opts = [];
+  if (/为什么|值得|风景|地点|路线|地貌|景/.test(H)) {
+    opts.push(`${season ? season + "，" : ""}${place || "这一程"}值得走一趟，不是因为多难，而是它刚好把${mood || "这一段心情"}接住了。`);
+    opts.push(`先去走一遍${place || "它"}。看得见的风景，比任何描述都可靠。`);
+    opts.push(`${place || "这里"}的好，不在攻略里，在你走进去的那几步。`);
+  } else if (/体验|玩|挑战|探索|运动|做/.test(H)) {
+    opts.push(`${season ? season + "的" : ""}节奏里，注意力会从待办清单挪到脚下——走、看、停一停。`);
+    opts.push(`不用急着打卡；${f.days > 1 ? "两天一夜" : "一天"}的工夫，够把节奏慢下来。`);
+    opts.push(`体验很具体：身体动起来，脑子空下来。`);
+  } else if (/收获|得到|适合|谁|陪伴|成长/.test(H)) {
+    opts.push(`${f.ageRange ? "适合 " + f.ageRange + "。" : ""}${m.targetAudience || "想换口气的人"}会喜欢这种踏实感。`);
+    opts.push(`带走的不是照片，是一个能反复回想的周末。`);
+  } else if (/预告|下一期|集结/.test(H)) {
+    opts.push(`下一程还在排，群里接龙就能占位。`);
+  } else {
+    return "";
+  }
+  return opts.length ? opts[(seed || 0) % opts.length] : "";
+}
+async function xfRegenSection(i) {
+  const xf = xfState();
+  const gzh = xf.out && xf.out.gzh;
+  if (!gzh || !gzh.sections || !gzh.sections[i]) { toast("没有可重写的段落"); return; }
+  const sec = gzh.sections[i];
+  if (/信息|报名|费用|详情|须知/.test(String(sec.h || ""))) {
+    // 决策信息段不参与改写，避免把事实改成表达
+    toast("「" + sec.h + "」是决策信息段，保持事实原样不改写");
+    return;
+  }
+  let html = null;
+  if (aiAuthMode() && xf.master) {
+    const f = xf.master.confirmedFacts || {};
+    const dir = (xf.strategy && xf.strategy.editorialDirection) || {};
+    const plain = String(sec.html || "").replace(/<[^>]+>/g, "").slice(0, 220);
+    const sys = `你是户外活动内容编辑。只重写「指定段落」，其余段落不动。
+原则：允许创造表达，禁止创造事件——不得新增任何未确认事实（天气 / 领队行为 / 具体人数 / 用户感受 / 完成情况 / 服务承诺 / 路线成熟度 / 风景判断）。
+输出 JSON：{ "html": "一段 HTML 正文，可用 <p> 分段，80-160 字，口语自然、有画面感但不虚构" }`;
+    const user = `已确认事实：${JSON.stringify(f)}
+编辑角度：${dir.angle || ""}（语气：${dir.tone || ""}）
+段落标题：${sec.h}
+现有内容：${plain}
+请只重写这一段，与标题一致、与事实一致。`;
+    const r = await xfLLM(sys, user, true);
+    if (r && r.html) html = String(r.html).replace(/<script[\s\S]*?<\/script>/gi, "");
+  }
+  if (!html) {
+    const seed = xfBumpSeed(xf);
+    html = xfSectionAlt(sec.h, xf.master || {}, xf._a || {}, seed) || xfSectionBody(sec.h, xf._a || {}, xf.master || {}) || sec.html;
+  }
+  sec.html = html;
+  toast("已重写「" + sec.h + "」");
+  showView(state.view);
+}
+function xfSectionRegen(xf) {
+  const gzh = xf.out && xf.out.gzh;
+  if (!gzh || !gzh.sections || gzh.sections.length < 2) return "";
+  return `<div class="xf-secregen">
+    <span class="xf-stylebar-lbl">只重写某一段</span>
+    ${gzh.sections.map((s, i) => `<button class="xf-chip" data-action="xfRegenSection" data-i="${i}">${ICON("refresh")} ${esc(s.h || ("第" + (i + 1) + "段"))}</button>`).join("")}
+  </div>`;
+}
 
 function xfRecruitResult() {
   const xf = xfState();
@@ -1245,6 +1332,7 @@ function xfGzhPanel(gzh, xf) {
   <div class="xf-gzh-head">
     <button class="btn btn-primary btn-sm" data-action="xfCopyGzhHtml">${ICON("copy")} 复制公众号（HTML）</button>
   </div>
+  ${xfSectionRegen(xf)}
   ${base === "diary" ? xfGzhDiaryHtml(gzh, xf, false) : xfGzhClassicHtml(gzh, xf, base, false)}
   <p class="tiny muted">正文可直接点击修改（contenteditable）；换版式/换家族只改视觉，换风格才重生成文案。</p>`;
 }

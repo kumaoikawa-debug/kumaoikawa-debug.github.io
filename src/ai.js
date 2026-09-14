@@ -2631,12 +2631,32 @@
     if (confirmed.has("services") && a.includeLeader) t.push("含领队");
     return t.slice(0, 4);
   }
-  /* P0-3/P0-11：页面级图片智能缓存（渲染期间由 renderActivityPhone 注入，同步渲染安全） */
+  /* P0-3/P0-9/P0-11：页面级图片智能缓存（渲染期间由 renderActivityPhone 注入，同步渲染安全） */
   let PAGE_PHOTO_INTEL = null;
+  /* P0-9：详情页的「内容段落」标准序（用于图片-段落语义匹配，而不是纯数量分组） */
+  function pagePhotoSections(a) {
+    const s = [];
+    if (!a) return s;
+    if (a.whyGo) s.push({ h: "为什么值得去", kind: "scenic" });
+    if (a.experience) s.push({ h: "来了会体验什么", kind: "experience" });
+    if (a.gain) s.push({ h: "参加完你能得到什么", kind: "people" });
+    if ((a.itineraryDays || []).length) s.push({ h: "详细行程", kind: "route" });
+    if ((a.gear || []).length) s.push({ h: "装备建议", kind: "gear" });
+    if (a.price != null) s.push({ h: "费用说明", kind: "info" });
+    return s;
+  }
   function setPagePhotoIntel(a) {
     PAGE_PHOTO_INTEL = (a && typeof buildPhotoIntelligence === "function")
-      ? buildPhotoIntelligence(a.photos || [], a, [], "recruit") : null;
+      ? buildPhotoIntelligence(a.photos || [], a, pagePhotoSections(a), "recruit") : null;
     return PAGE_PHOTO_INTEL;
+  }
+  function pagePhotoIntel() { return PAGE_PHOTO_INTEL; }
+  /* P0-9：行程段落 → 匹配图（供详情页「详细行程」在每一天旁配对应图片） */
+  function pageItineraryPhotos(a) {
+    if (!PAGE_PHOTO_INTEL || typeof piMatchItinerary !== "function") return null;
+    const itin = (typeof structureItinerary === "function") ? structureItinerary(a) : null;
+    if (!itin || !itin.timeline.length) return null;
+    return piMatchItinerary(itin.timeline, PAGE_PHOTO_INTEL.used, PAGE_PHOTO_INTEL.roles);
   }
   function pagePhotoRisk(src) {
     if (!PAGE_PHOTO_INTEL) return null;
@@ -3165,6 +3185,11 @@
     const allIdx = photos.map((src, i) => i).filter((i) => i !== cover);
     const keptIdx = allIdx.filter((i) => !hasKeep || keepSrc[photos[i]]);
     const useIdx = keptIdx.length >= 3 ? keptIdx : allIdx;
+    // P0-9：被「段落语义匹配」命中的图优先（越靠前的段落权重越高），详情页不再只按数量分组
+    const matchedRank = {};
+    if (intel && intel.matched) {
+      intel.matched.forEach((mm, si) => (mm.photos || []).forEach((p) => { if (matchedRank[p.src] == null) matchedRank[p.src] = si; }));
+    }
     const ranked = useIdx.map((i) => {
       const m = photoMeta(photos[i]);
       let score = m ? (m.quality_score || 0) * 100 : 50;
@@ -3172,6 +3197,8 @@
       const role = intel ? intel.roles[(intel.used.find((u) => u.src === photos[i]) || {}).imageId] : null;
       if (role === "HeroImage") score += 12;
       else if (role === "SectionLeadImage") score += 6;
+      const msi = matchedRank[photos[i]];
+      if (msi != null) score += Math.max(2, 8 - msi * 2);
       return { i, score };
     }).sort((x, y) => y.score - x.score || x.i - y.i).map((x) => x.i);
     let cursor = 0;
