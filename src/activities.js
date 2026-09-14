@@ -41,6 +41,8 @@
 
   function renderActivityPhone(a) {
     if (!a) return "";
+    // P0-3/P0-4：注入页面级图片智能（自动筛图 / 角色 / 安全裁切），供媒体块与编排层消费
+    if (typeof setPagePhotoIntel === "function") setPagePhotoIntel(a);
     const ac = styleAccent(a);
     const coverIdx = Math.max(0, Math.min(+(a.coverIndex || 0), Math.max(0, (a.photos || []).length - 1)));
     const coverSrc = (a.photos || [])[coverIdx];

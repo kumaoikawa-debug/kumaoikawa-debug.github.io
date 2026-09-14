@@ -12,12 +12,13 @@
               ② 换版式只改视觉、换风格才重生成方向+文案。 */
 
 /* Editorial 家族：3 招募 + 3 回顾，每族 ≥3 变体 = 18 版式（V2.0 §15/16/45） */
+/* 变体命名以「版式」为准（P1-3）：避免问答体/对话体/绘本体等文体套路名，改为可预期的视觉结构。 */
 var XF_FAMILIES = {
   route_editorial:    { label: "路线叙事", scenario: ["recruit"], variants: ["杂志专题", "大片跨页", "极简刊例"] },
-  visual_campaign:    { label: "视觉种草", scenario: ["recruit"], variants: ["潮流卡片", "清单体", "对话体"] },
-  challenge_editorial:{ label: "挑战叙事", scenario: ["recruit"], variants: ["数据战报", "登顶纪实", "勋章墙"] },
+  visual_campaign:    { label: "视觉种草", scenario: ["recruit"], variants: ["卡片流", "清单长图", "左右图文"] },
+  challenge_editorial:{ label: "挑战叙事", scenario: ["recruit"], variants: ["数据条版", "纪实长文", "勋章墙"] },
   brand_journal:      { label: "品牌手记", scenario: ["recap"],  variants: ["山野日记", "晨昏手札", "长线随记"] },
-  photo_documentary:  { label: "影像纪实", scenario: ["recap"],  variants: ["手账步骤", "问答体", "绘本体"] },
+  photo_documentary:  { label: "影像纪实", scenario: ["recap"],  variants: ["手账步骤", "图廊穿插", "轻画册"] },
   outdoor_lookbook:   { label: "户外型录", scenario: ["recap"],  variants: ["长图长廊", "九宫格", "胶片墙"] },
 };
 /* 家族 → 基础版式渲染器（变体在渲染器内做差异化） */

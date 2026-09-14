@@ -2631,9 +2631,33 @@
     if (confirmed.has("services") && a.includeLeader) t.push("含领队");
     return t.slice(0, 4);
   }
+  /* P0-3/P0-11：页面级图片智能缓存（渲染期间由 renderActivityPhone 注入，同步渲染安全） */
+  let PAGE_PHOTO_INTEL = null;
+  function setPagePhotoIntel(a) {
+    PAGE_PHOTO_INTEL = (a && typeof buildPhotoIntelligence === "function")
+      ? buildPhotoIntelligence(a.photos || [], a, [], "recruit") : null;
+    return PAGE_PHOTO_INTEL;
+  }
+  function pagePhotoRisk(src) {
+    if (!PAGE_PHOTO_INTEL) return null;
+    const p = PAGE_PHOTO_INTEL.analysis.find((x) => x.src === src);
+    if (!p) return null;
+    const c = PAGE_PHOTO_INTEL.cropSafety.byId[p.imageId];
+    return c ? c.level : null;
+  }
+  function pagePhotoRole(src) {
+    if (!PAGE_PHOTO_INTEL) return null;
+    const p = PAGE_PHOTO_INTEL.analysis.find((x) => x.src === src);
+    return p ? (PAGE_PHOTO_INTEL.roles[p.imageId] || null) : null;
+  }
   function mediaBlock(a, i, label) {
     const ph = (a.photos || []);
-    if (ph[i]) return `<div class="ph"><img class="ph-img" data-smart-img src="${ph[i]}" alt="" style="object-position:${smartPos(ph[i])};object-fit:cover"></div>`;
+    if (ph[i]) {
+      // P0-11 安全裁切：高风险图（多人/合影/竖图近边缘）改用原比例展示，宁可留白也不裁坏主体
+      const risk = pagePhotoRisk(ph[i]);
+      const contain = risk === "high";
+      return `<div class="ph ${contain ? "ph-safe" : ""}"><img class="ph-img" data-smart-img src="${ph[i]}" alt="" style="object-position:${smartPos(ph[i])};object-fit:${contain ? "contain" : "cover"}"></div>`;
+    }
     const ac = styleAccent(a);
     return `<div class="ph ph-ph" style="background:${ac.grad}"><span class="ph-ic">${ICON("camera")}</span><span class="ph-lab">${esc(label || "现场实拍")}</span></div>`;
   }
@@ -3133,13 +3157,23 @@
     if (a.includeGear) svc.push("装备");
 
     const cover = Math.max(0, Math.min(+(a.coverIndex || 0), Math.max(0, n - 1)));
-    const ranked = photos.map((src, i) => {
-      const m = photoMeta(src);
+    // P0-7/P0-8/P0-10：优先只用「自动筛图」保留的照片（弃用不进入页面）；不足 3 张时回退全部，避免少图页面崩
+    const intel = (typeof PAGE_PHOTO_INTEL !== "undefined" && PAGE_PHOTO_INTEL) ? PAGE_PHOTO_INTEL : null;
+    const keepSrc = {};
+    if (intel && intel.used && intel.used.length) intel.used.forEach((u) => { keepSrc[u.src] = true; });
+    const hasKeep = Object.keys(keepSrc).length > 0;
+    const allIdx = photos.map((src, i) => i).filter((i) => i !== cover);
+    const keptIdx = allIdx.filter((i) => !hasKeep || keepSrc[photos[i]]);
+    const useIdx = keptIdx.length >= 3 ? keptIdx : allIdx;
+    const ranked = useIdx.map((i) => {
+      const m = photoMeta(photos[i]);
       let score = m ? (m.quality_score || 0) * 100 : 50;
       if (m && m.orientation === "landscape") score += 8;
-      if (i === cover) score = -1;
+      const role = intel ? intel.roles[(intel.used.find((u) => u.src === photos[i]) || {}).imageId] : null;
+      if (role === "HeroImage") score += 12;
+      else if (role === "SectionLeadImage") score += 6;
       return { i, score };
-    }).filter((x) => x.i !== cover).sort((x, y) => y.score - x.score || x.i - y.i).map((x) => x.i);
+    }).sort((x, y) => y.score - x.score || x.i - y.i).map((x) => x.i);
     let cursor = 0;
     const take = (k) => {
       const result = ranked.slice(cursor, cursor + k);
@@ -3276,20 +3310,27 @@
   }
 
   function pageComposition(a) {
-    if (a.type === "高海拔登山") return "expedition";
-    if (a.type === "城市旅行" || a.type === "景区观光") return "city-guide";
-    if (isFamilyActivity(a)) return "family-journal";
-    if (a.type === "露营") return "camp-diary";
+    // P0-12：页面编排由 Activity DNA 驱动（活动形式/强度/人群），不只按粗类型——
+    // 同为「徒步」，秋季林间、夏日溪谷、雪山挑战、亲子自然会走不同版式。
+    const dna = (typeof activityDNAOf === "function") ? activityDNAOf(a) : null;
+    const form = dna ? dna.activityForm : "";
+    if (a.type === "高海拔登山" || (form === "mountain" && dna && dna.intensity === "challenge")) return "expedition";
+    if (a.type === "城市旅行" || a.type === "景区观光" || form === "culture") return "city-guide";
+    if (isFamilyActivity(a) || form === "family") return "family-journal";
+    if (a.type === "露营" || form === "camp") return "camp-diary";
     return "route-journal";
   }
 
   function editorialSectionTitle(a) {
     if (a.editorialTitle && String(a.editorialTitle).trim()) return String(a.editorialTitle).trim();
-    if (a.type === "高海拔登山") return "先看清强度，再决定是否出发";
-    if (a.type === "城市旅行" || a.type === "景区观光") return `把${a.days > 1 ? a.days + "天" : "这一天"}留给${a.place}`;
-    if (isFamilyActivity(a)) return a.distance ? `让孩子自己走完这${a.distance}公里` : "让孩子自己完成这一次";
+    const dna = (typeof activityDNAOf === "function") ? activityDNAOf(a) : null;
+    const form = dna ? dna.activityForm : "";
+    if (a.type === "高海拔登山" || (form === "mountain" && dna && dna.intensity === "challenge")) return "先看清强度，再决定是否出发";
+    if (a.type === "城市旅行" || a.type === "景区观光" || form === "culture") return `把${a.days > 1 ? a.days + "天" : "这一天"}留给${a.place}`;
+    if (isFamilyActivity(a) || form === "family") return a.distance ? `让孩子自己走完这${a.distance}公里` : "让孩子自己完成这一次";
+    if (form === "water") return (dna && dna.season) ? `${dna.season}最该做的事，是把自己交给水` : "这趟水，值得期待";
     if (a.distance) return `这${a.distance}公里，具体意味着什么`;
-    return `为什么是这次${a.place}${a.type}`;
+    return `${(dna && dna.season) ? dna.season + "，" : ""}为什么是这次${a.place}${a.type}`;
   }
 
   /* ============ V2.1 文案深度引擎：Prompt Enhancer + 去 AI 味 + 公式 + 多阶段管线 ============ */
