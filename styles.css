@@ -4945,3 +4945,6 @@ body{
 .xpr-ops { display: flex; gap: 4px; padding: 4px; }
 .xpr-btn { flex: 1; font-size: 10px; padding: 2px 4px; border-radius: 6px; border: 1px solid var(--line, #ece7df); background: #fff; color: var(--muted); cursor: pointer; white-space: nowrap; }
 .xpr-reset { margin-top: 10px; font-size: 12px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line, #ece7df); background: #fff; color: var(--ink); cursor: pointer; }
+/* v151 真实视觉模型：识别入口与状态 */
+.xpr-chip.ok { background: #e8f3ec; color: #2F7D4F; }
+.xpr-vision { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }

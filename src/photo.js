@@ -41,6 +41,7 @@ function piAnalyzeOne(src, i) {
     subject: subject, people: people, action: action, emotion: emotion, category: cat,
     safeTextArea: safeTextArea, recommendedUse: recommendedUse,
     focal: (m && m.focal_point) || { x: 0.5, y: 0.45 },
+    cropRisk: (m && m.crop_risk) || null, // P2-3：真实视觉模型给出的裁切风险（low/medium/high）
     simulated: !(m && m.simulated === false),
     dupKey: cat + "|" + orientation,
   };
@@ -187,6 +188,15 @@ function piAdaptiveLayout(used) {
 /* ---------- P0-11：安全裁切评估 ---------- */
 /* 风险来源：人物/合影主体位于画面边缘、画质低、竖图被强制横裁、焦点过于靠边 */
 function piCropSafety(p) {
+  // P2-3：若真实视觉模型已判定裁切风险，直接采用（优先级高于本地启发式）
+  if (p.cropRisk && ["low", "medium", "high"].indexOf(p.cropRisk) >= 0) {
+    const map = { high: 70, medium: 38, low: 8 };
+    return {
+      imageId: p.imageId, risk: map[p.cropRisk], level: p.cropRisk, reasons: ["视觉模型判定"],
+      prefer: p.cropRisk === "high" ? "aspect_preserved" : (p.cropRisk === "medium" ? "wide_safe_focus" : "any"),
+      fromModel: true,
+    };
+  }
   let risk = 0;
   const reasons = [];
   if (p.people > 1) { risk += 18; reasons.push("多人/合影主体"); }

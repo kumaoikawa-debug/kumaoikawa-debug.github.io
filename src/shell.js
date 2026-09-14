@@ -384,6 +384,9 @@
         testBackendConnection();
         break;
       }
+      /* ---------- 视觉模型设置（v151） ---------- */
+      case "saveVision": saveVisionSettings(); break;
+      case "testVision": { testVisionConnection(); break; }
       case "uploadLogo": { const li = $("#logoInput"); if (li) li.click(); break; }
       case "delLogo": { state.brand.logo = ""; saveState(); rerenderBrand(); break; }
       case "addGear": {
@@ -1340,6 +1343,28 @@
         showView(state.view);
         break;
       }
+      /* v151：真实视觉模型批量识别（结果写回缓存 → 筛图/角色/排版/裁切自动采用） */
+      case "xfVisionAnalyze": {
+        const xf = xfState();
+        if (typeof visionAvailable !== "function" || !visionAvailable()) { toast("请先在「设置 → AI 设置 → 视觉模型」配置"); break; }
+        if (xf._visionBusy) break;
+        if (!(xf.photos || []).length) { toast("请先上传照片"); break; }
+        xf._visionBusy = true; xf._visionNote = "正在识别照片…"; showView(state.view);
+        try {
+          const r = await visionAnalyzeBatch(xf.photos, {
+            concurrency: 2,
+            onProgress: (d, t) => { xf._visionNote = `识别中 ${d}/${t}`; showView(state.view); },
+          });
+          xf._visionNote = `识别完成：成功 ${r.analyzed} · 失败 ${r.failed} · 跳过 ${r.skipped}`;
+          toast(r.analyzed ? "视觉识别完成，已更新筛图结果" : "未获得有效识别结果（检查 Key / 模型 / 接口）");
+        } catch (e) {
+          xf._visionNote = "识别失败：" + (e && e.message ? e.message : e);
+          toast("视觉识别失败");
+        }
+        xf._visionBusy = false;
+        showView(state.view);
+        break;
+      }
       case "xfPlatTab": { xfState().platTab = d.k; showView(state.view); break; }
       case "xfSwitchFamily": {
         const xf = xfState();
@@ -1585,6 +1610,12 @@
   function renderAISettings() {
     const key = getAIKey();
     const provider = getAIProvider();
+    const vp = (typeof visionProvider === "function") ? visionProvider() : "openai";
+    const vk = (typeof visionKey === "function") ? visionKey() : "";
+    const vm = (typeof visionModel === "function") ? visionModel() : "";
+    const vb = (typeof visionBase === "function") ? visionBase() : "";
+    const vMode = (typeof visionAuthMode === "function") ? visionAuthMode() : false;
+    const vStatus = vMode === "backend" ? "经总平台后端代理（Key 不在前端）" : (vMode === "key" ? "本地演示直连（Key 仅存本机浏览器）" : "未配置 —— 照片分析走本地像素计算 + 规则推断");
     return `<div class="card card-pad" style="max-width:640px">
       <div class="eyebrow">AI 大模型</div>
       <h2 class="section-title" style="margin:8px 0 4px">AI 解析与文案设置</h2>
@@ -1616,6 +1647,28 @@
         <button class="btn btn-ghost" data-action="testAI">${ICON("sparkles")} 测试连接</button>
       </div>
       <div class="tiny muted" style="margin-top:14px">说明：接入总平台后端后，浏览器不再直连模型 API，也不受 CORS 跨域限制；Key 由平台在服务端统一持有。</div>
+
+      <hr style="border:none;border-top:1px solid var(--line,#eee);margin:20px 0 16px">
+      <div class="eyebrow">视觉模型</div>
+      <h3 class="section-title" style="margin:6px 0 4px;font-size:18px">照片识别设置（可选）</h3>
+      <p class="muted small" style="margin:0 0 14px">用于把照片的「场景 / 人数 / 动作 / 裁切风险 / 文字安全区」从规则推断升级为<b>真实视觉识别</b>。不配置也能用：系统会走本地像素分析 + 规则推断（结果标注为「模拟分析」）。</p>
+      <div class="field"><label>服务商</label>
+        <select class="input" id="visionProvider">
+          ${Object.keys(VISION_PROVIDERS).map((k) => `<option value="${k}" ${vp === k ? "selected" : ""}>${VISION_PROVIDERS[k].label}</option>`).join("")}
+        </select>
+      </div>
+      <div class="row gap-10" style="margin-top:6px">
+        <input class="input" id="visionModel" placeholder="模型名（如 gpt-4o-mini / qwen-vl-max / gemini-2.0-flash）" value="${esc(vm)}" style="flex:1">
+        <input class="input" id="visionBaseUrl" placeholder="Base URL（可选，默认按服务商）" value="${esc(vb)}" style="flex:1">
+      </div>
+      <div class="field" style="margin-top:10px"><label>视觉模型 Key</label>
+        <input class="input" id="visionKeyInput" type="password" placeholder="视觉模型 Key（仅未接后端时生效）" value="${esc(vk)}" autocomplete="off">
+      </div>
+      <div class="row gap-10" style="margin-top:6px">
+        <button class="btn btn-primary btn-lg" data-action="saveVision">${ICON("check")} 保存视觉设置</button>
+        <button class="btn btn-ghost" data-action="testVision">${ICON("sparkles")} 测试视觉识别</button>
+      </div>
+      <div class="tiny muted" style="margin-top:10px">当前状态：${esc(vStatus)}</div>
     </div>`;
   }
   function saveAISettings() {
@@ -1629,6 +1682,33 @@
     // 保存后端配置后清掉旧 JWT，下次调用会按新地址/口令重新登录
     clearBackendToken();
     toast("AI 设置已保存");
+  }
+  /* ---------- 视觉模型设置（v151） ---------- */
+  function saveVisionSettings() {
+    if (typeof visionSet !== "function") { toast("视觉模块未加载"); return; }
+    const pv = $("#visionProvider"); if (pv) visionSet("provider", pv.value);
+    const vm = $("#visionModel"); if (vm) visionSet("model", vm.value);
+    const vb = $("#visionBaseUrl"); if (vb) visionSet("baseUrl", vb.value);
+    /* 与 AI Key 同样的保护：空输入不覆盖已存 Key */
+    const vk = $("#visionKeyInput"); if (vk && vk.value.trim()) visionSet("key", vk.value.trim());
+    const mode = visionAuthMode();
+    toast(mode ? ("视觉设置已保存（" + (mode === "backend" ? "经后端代理" : "本地直连") + "）") : "视觉设置已保存（未配置 Key，仍走本地分析）");
+    showView(state.view);
+  }
+  async function testVisionConnection() {
+    if (typeof visionAvailable !== "function") { toast("视觉模块未加载"); return; }
+    saveVisionSettings();
+    if (!visionAvailable()) { toast("请先填写视觉模型 Key，或配置总平台后端地址"); return; }
+    toast("正在测试视觉识别…");
+    // 用一张公开测试图验证链路（不写入缓存）
+    const probe = "https://images.unsplash.com/photo-1551695113-8cb7e42aad8c?w=400&q=80";
+    const data = await visionAnalyzeOne(probe);
+    if (!data) { toast("视觉识别失败：请检查 Key / 模型名 / Base URL，或后端已启用 ai-vision 接口"); return; }
+    const bits = [];
+    if (data.scene) bits.push("场景 " + data.scene);
+    if (data.people_count != null) bits.push("人数 " + data.people_count);
+    if (data.crop_risk) bits.push("裁切风险 " + data.crop_risk);
+    toast("视觉识别成功：" + (bits.join(" · ") || "已返回结构化结果"));
   }
   async function testBackendConnection() {
     const url = getBackendURL();

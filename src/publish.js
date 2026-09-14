@@ -996,6 +996,13 @@ function xfPhotoReview(xf) {
       <span class="xpr-chip">图廊 ${(rc.GalleryImage || 0) + (rc.SupportImage || 0)}</span>
       <span class="xpr-chip">细节 ${rc.DetailImage || 0}</span>
       ${intel.cropSafety.highRiskIds.length ? `<span class="xpr-chip warn">${intel.cropSafety.highRiskIds.length} 张不宜大图（已按原比例保护）</span>` : ""}
+      <span class="xpr-chip ${intel.simulated ? "" : "ok"}">${intel.simulated ? "规则推断（模拟分析）" : "真实视觉识别"}</span>
+    </div>
+    <div class="xpr-vision">
+      ${(typeof visionAvailable === "function" && visionAvailable())
+        ? `<button class="btn btn-soft btn-sm" data-action="xfVisionAnalyze" ${xf._visionBusy ? "disabled" : ""}>${ICON("sparkles")} ${xf._visionBusy ? "识别中…" : "用视觉模型重新识别"}</button>`
+        : `<span class="tiny muted">未配置视觉模型 → 当前为本地像素分析 + 规则推断（可在「设置 → AI 设置 → 视觉模型」接入）</span>`}
+      ${xf._visionNote ? `<span class="tiny muted">${esc(xf._visionNote)}</span>` : ""}
     </div>
     <div class="xpr-grid">
       ${photos.map((p, i) => {
