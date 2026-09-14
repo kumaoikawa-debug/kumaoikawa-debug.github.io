@@ -1104,10 +1104,11 @@ function xfStyleBar(xf) {
   const vs = (XF_FAMILIES[xf.family] && XF_FAMILIES[xf.family].variants) || [""];
   const vName = vs[xf.variant || 0] || "";
   const q = xf.quality || {};
-  // P1-8 质量信息用户化：普通用户只看到「是否已检查真实信息」，不再暴露分数
-  const qText = q.fictionRisk ? ("⚠️ " + (q.note || "发现可能缺少事实依据的描述，请确认。"))
-    : ((q.unsupported && q.unsupported.length) ? ("⚠️ 以下说法缺少事实依据，建议确认：" + q.unsupported.join("、"))
-      : ((q.content || q.editorial) ? "✓ 已检查真实信息，未发现明显事实冲突" : ""));
+  // P1-8 质量信息用户化：**分数**属内部信息，留在「高级信息」内。
+  // 但「缺少事实依据」是合规警告（P2-2），必须默认可见 —— 折进折叠块里等于没提示。
+  const warnText = q.fictionRisk ? ("⚠️ " + (q.note || "发现可能缺少事实依据的描述，请确认。"))
+    : ((q.unsupported && q.unsupported.length) ? ("⚠️ 以下说法缺少事实依据，建议修改或删除：" + q.unsupported.join("、")) : "");
+  const qText = (q.content || q.editorial) ? "✓ 已检查真实信息，未发现明显事实冲突" : "";
   return `<div class="xf-stylebar">
     <div class="xf-stylebar-row xf-stylebar-main">
       <span class="xf-stylebar-lbl">当前风格</span>
@@ -1115,6 +1116,7 @@ function xfStyleBar(xf) {
       <button class="btn btn-ghost btn-sm" data-action="xfNextVariant">${ICON("refresh")} 换一种版式</button>
       <button class="btn btn-ghost btn-sm" data-action="xfSwitchStyle">${ICON("sparkles")} 换一种风格</button>
     </div>
+    ${warnText ? `<div class="xf-stylebar-row xf-warn">${esc(warnText)}</div>` : ""}
     <div class="xf-stylebar-row xf-quick"><span class="xf-stylebar-lbl">快速调整</span>${(sc === "recruit"
       ? [["magazine", "更杂志"], ["visual", "更视觉"], ["pro", "更专业"], ["young", "更年轻"], ["challenge", "更有挑战感"]]
       : [["doc", "更纪实"], ["warm", "更温暖"], ["album", "更像画册"], ["people", "更有人物感"], ["nature", "更自然"]]

@@ -3356,6 +3356,9 @@
     if (a.type === "城市旅行" || a.type === "景区观光" || form === "culture") return `把${a.days > 1 ? a.days + "天" : "这一天"}留给${a.place}`;
     if (isFamilyActivity(a) || form === "family") return a.distance ? `让孩子自己走完这${a.distance}公里` : "让孩子自己完成这一次";
     if (form === "water") return (dna && dna.season) ? `${dna.season}最该做的事，是把自己交给水` : "这趟水，值得期待";
+    // camp 必须在 distance 兜底之前：否则露营会被套上「这 N 公里」的徒步口吻（验收 2 要求同类型不同场景明显不同）
+    // 措辞只陈述「住一晚」这一活动形式本身，不引入星空/篝火/天气等未确认事实
+    if (form === "camp" || a.type === "露营") return (dna && dna.season) ? `${dna.season}，在户外住一晚` : "这一晚，换个地方睡";
     if (a.distance) return `这${a.distance}公里，具体意味着什么`;
     return `${(dna && dna.season) ? dna.season + "，" : ""}为什么是这次${a.place}${a.type}`;
   }

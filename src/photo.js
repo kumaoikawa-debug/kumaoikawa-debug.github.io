@@ -243,7 +243,13 @@ function piCropSafety(p) {
   const fx = p.focal ? p.focal.x : 0.5, fy = p.focal ? p.focal.y : 0.45;
   const edgeDist = Math.min(fx, 1 - fx, fy, 1 - fy);
   if (p.people > 0 && edgeDist < 0.18) { risk += 22; reasons.push("主体靠近画面边缘"); }
-  if (p.orientation === "portrait") { risk += 14; reasons.push("竖图，横裁风险高"); }
+  if (p.orientation === "portrait") {
+    risk += 14; reasons.push("竖图，横裁风险高");
+    // P0-11 安全裁切：竖幅构图放进横幅位（Hero / 通栏）只会保留中间一条横带，
+    // 含人物的竖图必然切到头或脚 —— 属于「宁可改版式，也不强裁主体」，直接判高风险。
+    if (p.people > 1) { risk += 34; reasons.push("竖图含多人/合影：横裁必然切人"); }
+    else if (p.people === 1) { risk += 26; reasons.push("竖图含人物：横裁易切头/切脚"); }
+  }
   if (p.quality < 0.58) { risk += 12; reasons.push("画质偏低，放大后易失真"); }
   risk = Math.max(0, Math.min(100, risk));
   const level = risk >= 45 ? "high" : (risk >= 22 ? "medium" : "low");
@@ -269,7 +275,22 @@ function buildPhotoIntelligence(photos, a, sections, scenario) {
   // 安全裁切：高风险图若被选为 Hero，降级为 SectionLead（避免强裁主体）
   if (roleInfo.heroId && crops.byId[roleInfo.heroId] && crops.byId[roleInfo.heroId].level === "high") {
     const alt = used.find((p) => p.imageId !== roleInfo.heroId && (!crops.byId[p.imageId] || crops.byId[p.imageId].level !== "high") && p.orientation !== "portrait");
-    if (alt) { roleInfo.roles[roleInfo.heroId] = "SectionLeadImage"; roleInfo.roles[alt.imageId] = "HeroImage"; roleInfo.heroId = alt.imageId; }
+    if (alt) {
+      roleInfo.roles[roleInfo.heroId] = "SectionLeadImage"; roleInfo.roles[alt.imageId] = "HeroImage"; roleInfo.heroId = alt.imageId;
+    } else {
+      // 全部候选都高风险（例如整组竖图人像）：封面上必须有一张图 —— 退而求其次选「风险最低」的那张，
+      // 且渲染层仍会按 pagePhotoRisk 走原比例展示（.ph-safe），不会强裁。
+      const curRisk = crops.byId[roleInfo.heroId].risk;
+      let best = null, bestRisk = Infinity;
+      used.forEach((p) => {
+        if (p.imageId === roleInfo.heroId) return;
+        const c = crops.byId[p.imageId]; const r = c ? c.risk : 0;
+        if (r < bestRisk) { bestRisk = r; best = p; }
+      });
+      if (best && bestRisk < curRisk) {
+        roleInfo.roles[roleInfo.heroId] = "SectionLeadImage"; roleInfo.roles[best.imageId] = "HeroImage"; roleInfo.heroId = best.imageId;
+      }
+    }
   }
   const layout = piAdaptiveLayout(used);
   const matched = sections && sections.length ? piMatchSections(sections, used, roleInfo.roles) : [];
