@@ -54,6 +54,7 @@
     else if (view === "mallAdmin") { state.mallView = "admin"; state.mallCtx = "admin"; app.innerHTML = renderMallAdmin(); }
     else if (view === "mallCommission") { state.mallConsoleTab = "commission"; state.view = "mallConsole"; app.innerHTML = renderShell(renderClubMallConsole(), "mallConsole"); }
     else if (view === "mallProduct") app.innerHTML = renderMallProduct(getProduct(params.id));
+    else if (view === "mallCart") { state.mallCtx = "store"; app.innerHTML = renderMallCart(); }
     else if (view === "memberCenter") app.innerHTML = renderMembershipH5();
     else app.innerHTML = renderFrontHome();
     window.scrollTo(0, 0);
@@ -636,6 +637,7 @@
       }
       case "mallBuy": {
         const p = getProduct(d.id); if (!p) break;
+        if ((p.stock || 0) <= 0) { toast("该商品已售罄"); break; }
         const clubId = (state.brand && state.brand.id) || "club_demo";
         const commission = commissionOf(p, p.retailPrice);
         const src = state._mallSource || null;
@@ -643,11 +645,59 @@
         const sourceId = d.sourceId || (src && src.id) || "";
         const order = { id: uid(), clubId, userId: "u_demo", sourceType, sourceId, referrerClubId: "", items: [{ productId: p.id, title: p.title, price: p.retailPrice, qty: 1 }], amount: p.retailPrice, commission, commissionStatus: "pending", logistics: "pending", refunded: false, status: "paid", createdAt: Date.now() };
         state.mallOrders.unshift(order);
+        if (p.stock > 0) p.stock -= 1;
         state.mallSalesMonth = (state.mallSalesMonth || 0) + p.retailPrice;
         const granted = checkAiMilestones();
         if (sourceType === "ai_gear_list") { state.aiGearOrders = (state.aiGearOrders || 0) + 1; toast("模拟下单成功（Demo）· 来自活动装备清单推荐，已归因 ai_gear_list" + (granted ? ` · 商城里程碑 +${granted} AI 积分` : "")); }
         else { toast("模拟下单成功（Demo）· 订单已归因本俱乐部，佣金进入「待确认」" + (granted ? ` · 商城里程碑 +${granted} AI 积分` : "")); }
         saveState();
+        showView("mall"); break;
+      }
+      case "openMallCart": { showView("mallCart"); window.scrollTo(0, 0); break; }
+      case "mallAddCart": {
+        const p = getProduct(d.id); if (!p) break;
+        if ((p.stock || 0) <= 0) { toast("该商品已售罄"); break; }
+        state.mallCart = state.mallCart || [];
+        const ex = state.mallCart.find((c) => c.productId === d.id);
+        if (ex) ex.qty = (ex.qty || 1) + 1; else state.mallCart.push({ productId: d.id, qty: 1 });
+        saveState(); toast("已加入购物车"); break;
+      }
+      case "mallCartInc": {
+        const it = (state.mallCart || []).find((c) => c.productId === d.id);
+        if (it) { const p = getProduct(d.id); if (p && (p.stock || 0) <= (it.qty || 1)) toast("库存不足"); else { it.qty = (it.qty || 1) + 1; saveState(); } }
+        showView("mallCart"); break;
+      }
+      case "mallCartDec": {
+        const it = (state.mallCart || []).find((c) => c.productId === d.id);
+        if (it) { if ((it.qty || 1) <= 1) state.mallCart = state.mallCart.filter((c) => c.productId !== d.id); else it.qty -= 1; saveState(); }
+        showView("mallCart"); break;
+      }
+      case "mallCartRemove": {
+        state.mallCart = (state.mallCart || []).filter((c) => c.productId !== d.id);
+        saveState(); showView("mallCart"); break;
+      }
+      case "mallCheckout": {
+        const cart = state.mallCart || [];
+        if (!cart.length) { toast("购物车是空的"); break; }
+        const clubId = (state.brand && state.brand.id) || "club_demo";
+        const items = []; let amount = 0; let commission = 0;
+        cart.forEach((c) => {
+          const p = getProduct(c.productId); if (!p) return;
+          const qty = Math.max(1, c.qty || 1);
+          if ((p.stock || 0) < qty) { toast(p.title + " 库存不足，已跳过"); return; }
+          items.push({ productId: p.id, title: p.title, price: p.retailPrice, qty });
+          amount += p.retailPrice * qty;
+          commission += commissionOf(p, p.retailPrice) * qty;
+          p.stock -= qty;
+        });
+        if (!items.length) { toast("所选商品库存不足，无法结算"); break; }
+        const order = { id: uid(), clubId, userId: "u_demo", sourceType: "club_shop", sourceId: "", referrerClubId: "", items, amount, commission, commissionStatus: "pending", logistics: "pending", refunded: false, status: "paid", createdAt: Date.now() };
+        state.mallOrders.unshift(order);
+        state.mallSalesMonth = (state.mallSalesMonth || 0) + amount;
+        state.mallCart = [];
+        const granted = checkAiMilestones();
+        saveState();
+        toast("结算成功（Demo）· 订单已归因本俱乐部" + (granted ? ` · 商城里程碑 +${granted} AI 积分` : ""));
         showView("mall"); break;
       }
       case "mallNew": { state.mallEditId = "__new__"; showView(isPlatformView(state.view) ? "platformMall" : "mallAdmin"); break; }
@@ -660,10 +710,11 @@
         const commissionMode = $("#mpMode").value;
         const commissionValue = +($("#mpValue").value || 0);
         const riskLevel = $("#mpRisk").value;
+        const stock = Math.max(0, parseInt($("#mpStock").value || "0", 10) || 0);
         if (id === "__new__") {
-          state.mallProducts.unshift({ id: "p_" + Date.now(), title, subtitle: "", cover: "https://images.unsplash.com/photo-1551632811-561732d1e306?w=400&q=80", category: "其他", riskLevel, fulfillmentMode: "cloud_warehouse", commissionMode, commissionValue, retailPrice, supplyPrice, stock: 100, supplierId: "sup_yun", tags: [], rating: 4.5 });
+          state.mallProducts.unshift({ id: "p_" + Date.now(), title, subtitle: "", cover: "https://images.unsplash.com/photo-1551632811-561732d1e306?w=400&q=80", category: "其他", riskLevel, fulfillmentMode: "cloud_warehouse", commissionMode, commissionValue, retailPrice, supplyPrice, stock, supplierId: "sup_yun", tags: [], rating: 4.5 });
         } else {
-          const p = getProduct(id); if (p) { p.title = title; p.retailPrice = retailPrice; p.supplyPrice = supplyPrice; p.commissionMode = commissionMode; p.commissionValue = commissionValue; p.riskLevel = riskLevel; }
+          const p = getProduct(id); if (p) { p.title = title; p.retailPrice = retailPrice; p.supplyPrice = supplyPrice; p.commissionMode = commissionMode; p.commissionValue = commissionValue; p.riskLevel = riskLevel; p.stock = stock; }
         }
         state.mallEditId = null; saveState(); toast("已保存商品"); showView(isPlatformView(state.view) ? "platformMall" : "mallAdmin"); break;
       }
@@ -697,14 +748,30 @@
       }
       case "mallRefund": {
         const o = (state.mallOrders || []).find((x) => x.id === d.id);
-        if (o && o.commissionStatus !== "settled" && o.commissionStatus !== "reversed") {
+        if (o && !o.refunded && o.commissionStatus !== "settled" && o.commissionStatus !== "reversed") {
           const prev = o.commissionStatus;
           o.commissionStatus = "reversed"; o.refunded = true; saveState();
           toast(`订单退款，佣金由「${COMM_STATUS_LABEL[prev]}」冲销归零`);
+        } else if (o && o.commissionStatus === "settled") {
+          toast("佣金已结算，无法退款");
         }
-        refreshMallContext(); break;
+        if (state.view === "myOrders") showView("myOrders");
+        else if (state.view === "mallCart") showView("mallCart");
+        else refreshMallContext();
+        break;
       }
       case "mallConsoleTab": { state.mallConsoleTab = d.tab || "products"; showView("mallConsole"); break; }
+      case "mallFilter": {
+        const key = d.fkey; if (!key) break;
+        const val = d.fval != null ? d.fval : (el && el.value != null ? el.value : "");
+        state.mallFilter = state.mallFilter || { keyword: "", category: "all", gear: "all", tag: "all", sort: "default" };
+        state.mallFilter[key] = val;
+        saveState(); showView("mall"); break;
+      }
+      case "mallFilterReset": {
+        state.mallFilter = { keyword: "", category: "all", gear: "all", tag: "all", sort: "default" };
+        saveState(); showView("mall"); break;
+      }
       case "commissionSubTab": { state.commissionSubTab = d.tab || "apply"; showView("mallConsole"); break; }
       case "mallApplySettlement": {
         const checkboxes = document.querySelectorAll(".settle-cb:checked");
@@ -2295,7 +2362,18 @@
     if (!el) return;
     handleClick(el.dataset.action, el);
   });
+  document.addEventListener("change", (e) => {
+    const sel = e.target.closest("[data-action]");
+    if (sel && sel.tagName === "SELECT") handleClick(sel.dataset.action, sel);
+  });
   document.addEventListener("input", (e) => {
+    const mallSearchEl = e.target.closest("#mallSearchInput");
+    if (mallSearchEl) {
+      state.mallFilter = state.mallFilter || { keyword: "", category: "all", gear: "all", tag: "all", sort: "default" };
+      state.mallFilter.keyword = mallSearchEl.value;
+      if (typeof refreshMallGrid === "function") refreshMallGrid();
+      return;
+    }
     const listEl = e.target.closest("[data-bind-list]");
     if (listEl && state.draft) {
       const key = listEl.dataset.bindList;

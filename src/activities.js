@@ -1860,7 +1860,10 @@ function channelMeta(ch) {
           <div class="mo-t">${esc(first.title || "装备订单")}${more}</div>
           <div class="mo-s">${o.trackingNo ? "运单 " + esc(o.trackingNo) : "下单 " + new Date(o.createdAt || Date.now()).toLocaleDateString("zh-CN")}</div>
         </div>
-        <div class="mo-r"><span class="mo-st ${o.logistics === "signed" || o.logistics === "done" ? "on" : ""}">${st}</span><span class="mo-amt">¥${o.amount}</span></div>
+        <div class="mo-r">
+          <span class="mo-st ${o.logistics === "signed" || o.logistics === "done" ? "on" : ""}">${st}</span><span class="mo-amt">¥${o.amount}</span>
+          ${!o.refunded && o.commissionStatus !== "settled" ? `<button class="mo-refund-btn" data-action="mallRefund" data-id="${o.id}">申请退款</button>` : ""}
+        </div>
       </div>`;
     };
     return `<div class="front">
@@ -1884,6 +1887,7 @@ function channelMeta(ch) {
   function renderMembershipH5() {
     const b = state.brand || {};
     const signups = state.signups || [];
+    const recs = (state.myRecs || []).map((id) => getProduct(id)).filter(Boolean);
     const joined = signups.length;
     const gearOrders = (state.mallOrders || []).filter((o) => !o.refunded);
     const gearSpend = gearOrders.reduce((n, o) => n + (o.amount || 0), 0);
@@ -1936,6 +1940,16 @@ function channelMeta(ch) {
               : `<div class="mc-grow done">已是最高会员等级</div>`}
             <button class="btn btn-primary btn-block" data-action="memberUpgrade">${nextTier ? "升级会员" : "查看会员权益"}</button>
           </div>
+        </div>
+        <div class="fr-section">
+          <div class="fr-section-h"><h3>本俱乐部推荐</h3><span class="more" data-action="openMall">去商城</span></div>
+          ${recs.length
+            ? `<div class="mc-recs">${recs.map((p) => `<div class="mc-rec" data-action="mallProduct" data-id="${p.id}">
+                <div class="mc-rec-ph" ${smartBg(p.cover)}></div>
+                <div class="mc-rec-info"><div class="mc-rec-t">${esc(p.title)}</div><div class="mc-rec-p">¥${p.retailPrice}</div></div>
+                <span class="mc-rec-go">${ICON("chevron-right")}</span>
+              </div>`).join("")}</div>`
+            : `<p class="muted small">俱乐部暂未设置主推装备，去商城看看领队精选吧</p>`}
         </div>
         <div class="fr-section" style="margin-bottom:30px">
           <div class="fr-section-h"><h3>联系我们</h3></div>
