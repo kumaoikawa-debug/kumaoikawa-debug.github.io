@@ -4927,3 +4927,21 @@ body{
 /* ============ P0-11 安全裁切：高风险图（多人/合影/竖图近边缘）原比例展示，宁可留白不裁坏主体 ============ */
 .ph-safe { background: #f2ede5; }
 .ph-safe .ph-img { width: 100%; height: 100%; }
+
+/* ============ P1-6 智能筛图结果「轻确认」 ============ */
+.xpr { margin-top: 12px; border-top: 1px dashed var(--line, #ece7df); padding-top: 12px; }
+.xpr-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.xpr-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.xpr-chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #f3efe7; color: var(--muted); }
+.xpr-chip.warn { background: #fff3e0; color: #c8602a; }
+.xpr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
+.xpr-cell { position: relative; border-radius: 10px; overflow: hidden; border: 2px solid transparent; background: #fff; }
+.xpr-cell.is-cover { border-color: var(--brand, #DD6B33); }
+.xpr-cell.is-ex { opacity: .45; }
+.xpr-cell.is-soft { opacity: .78; }
+.xpr-ph { height: 64px; background-size: cover; background-position: center; }
+.xpr-badge { position: absolute; left: 4px; top: 4px; font-size: 10px; padding: 1px 6px; border-radius: 999px; background: rgba(0,0,0,.6); color: #fff; }
+.xpr-cell.is-cover .xpr-badge { background: var(--brand, #DD6B33); }
+.xpr-ops { display: flex; gap: 4px; padding: 4px; }
+.xpr-btn { flex: 1; font-size: 10px; padding: 2px 4px; border-radius: 6px; border: 1px solid var(--line, #ece7df); background: #fff; color: var(--muted); cursor: pointer; white-space: nowrap; }
+.xpr-reset { margin-top: 10px; font-size: 12px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line, #ece7df); background: #fff; color: var(--ink); cursor: pointer; }

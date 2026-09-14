@@ -1285,6 +1285,7 @@
       /* ---- AI 宣发中心（v112） ---- */
       case "xfGoScenario": {
         const xf = xfState();
+        xf.photoOverrides = { cover: null, excluded: {} };
         if (d.s === "back") { xf.scenario = null; xf.step = null; xf.aid = null; xf.out = null; xf.recap = null; }
         else { xf.scenario = d.s; xf.step = null; xf.aid = null; xf.out = null; xf.recap = null; }
         showView(state.view);
@@ -1307,6 +1308,35 @@
       case "xfDelPhoto": {
         const xf = xfState();
         xf.photos = (xf.photos || []).filter((_, i) => i !== (+d.i));
+        xf.photoOverrides = { cover: null, excluded: {} }; // 索引已变，清空轻确认覆盖
+        showView(state.view);
+        break;
+      }
+      case "xfSetCover": {
+        const xf = xfState();
+        xf.photoOverrides = xf.photoOverrides || { cover: null, excluded: {} };
+        xf.photoOverrides.cover = +d.i;
+        toast("已设为封面");
+        showView(state.view);
+        break;
+      }
+      case "xfToggleExclude": {
+        const xf = xfState();
+        const i = +d.i;
+        const src = (xf.photos || [])[i];
+        if (!src) break;
+        xf.photoOverrides = xf.photoOverrides || { cover: null, excluded: {} };
+        const ex = xf.photoOverrides.excluded || (xf.photoOverrides.excluded = {});
+        if (ex[src]) { delete ex[src]; toast("已恢复该图"); }
+        else { ex[src] = true; toast("已移除，不进入生成结果"); }
+        if (xf.photoOverrides.cover === i) xf.photoOverrides.cover = null;
+        showView(state.view);
+        break;
+      }
+      case "xfUseRecommended": {
+        const xf = xfState();
+        xf.photoOverrides = { cover: null, excluded: {} };
+        toast("已采用 AI 推荐（封面与筛选）");
         showView(state.view);
         break;
       }
@@ -1365,15 +1395,16 @@
         const a = (state.activities || []).find((x) => x.id === xf.aid);
         if (!a) { toast("请先选择一场活动"); break; }
         xf._a = a;
-        xf.master = buildContentMaster(a, xf.photos);
+        const actPhotos = (typeof xfActivePhotos === "function") ? xfActivePhotos(xf) : (xf.photos || []);
+        xf.master = buildContentMaster(a, actPhotos);
         xf.genState = "loading"; showView(state.view);
         try {
-          xf.strategy = await genStrategy(a, xf.photos, xf.notes, "recruit");
+          xf.strategy = await genStrategy(a, actPhotos, xf.notes, "recruit");
           xf.master.keyImages = await xfAttachPhotoCaptions(xf.master.keyImages, xf.master.confirmedFacts, xf.strategy.editorialDirection);
           xf.out = await genRecruit(a, xf.master, xf.strategy);
           // §41：版式质量不达标 → 重选家族/变体（重生成 ED/Layout）一次
           if (aiAuthMode() && state.xf.quality && state.xf.quality.editorialRisk) {
-            xf.strategy = await genStrategy(a, xf.photos, xf.notes, "recruit");
+            xf.strategy = await genStrategy(a, actPhotos, xf.notes, "recruit");
             xf.out = await genRecruit(a, xf.master, xf.strategy);
           }
           xf.family = xf.strategy.editorialDirection.family;
@@ -1409,15 +1440,16 @@
           };
         }
         xf._a = a;
-        xf.master = buildContentMaster(a, xf.photos);
+        const actPhotos = (typeof xfActivePhotos === "function") ? xfActivePhotos(xf) : (xf.photos || []);
+        xf.master = buildContentMaster(a, actPhotos);
         xf.genState = "loading"; showView(state.view);
         try {
-          xf.strategy = await genStrategy(a, xf.photos, xf.recapNotes, "recap");
+          xf.strategy = await genStrategy(a, actPhotos, xf.recapNotes, "recap");
           xf.master.keyImages = await xfAttachPhotoCaptions(xf.master.keyImages, xf.master.confirmedFacts, xf.strategy.editorialDirection);
           xf.recap = await genRecap(a, xf.master, xf.strategy, xf.photos, xf.recapNotes);
           // §41：版式质量不达标 → 重选家族/变体（重生成 ED/Layout）一次
           if (aiAuthMode() && state.xf.quality && state.xf.quality.editorialRisk) {
-            xf.strategy = await genStrategy(a, xf.photos, xf.recapNotes, "recap");
+            xf.strategy = await genStrategy(a, actPhotos, xf.recapNotes, "recap");
             xf.recap = await genRecap(a, xf.master, xf.strategy, xf.photos, xf.recapNotes);
           }
           xf.recapType = xfRecapType(a, xf.photos);

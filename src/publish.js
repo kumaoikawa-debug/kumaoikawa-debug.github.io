@@ -92,12 +92,14 @@ function xfState() {
     master: null, out: null, recap: null,
     layout: "route_editorial", family: "route_editorial", variant: 0, styleSeed: null,
     photos: [], notes: "", recapNotes: "",
+    photoOverrides: { cover: null, excluded: {} },
     genState: "idle", platTab: "gzh", recapType: "",
     strategy: null, quality: null,
     customRecap: { title: "", date: "", place: "", type: "", signups: "", leader: "" },
     _a: null, _styleHistory: [],
   };
   if (!state.xf.customRecap) state.xf.customRecap = { title: "", date: "", place: "", type: "", signups: "", leader: "" };
+  if (!state.xf.photoOverrides) state.xf.photoOverrides = { cover: null, excluded: {} };
   if (!state.xf._styleHistory) state.xf._styleHistory = [];
   var xf0 = state.xf;
   if (xf0.scenario === "recruit" && xf0.step === "result") {
@@ -934,6 +936,83 @@ function xfActivityPicker(filterFn, label, emptyMsg) {
   </div>`;
 }
 
+/* ---------- P1-6 / P1-2：智能筛图结果「轻确认」 ----------
+   老板上传的图先经过 piSelect（去重/质量/数量策略），生成前给出：
+   建议使用 M 张、封面是哪张、各角色数量、不建议使用的张数；老板可改封面 / 移除某张 / 一键采用推荐。 */
+function xfExcluded(xf) { return (xf.photoOverrides && xf.photoOverrides.excluded) || {}; }
+function xfActivePhotos(xf) {
+  const ex = xfExcluded(xf);
+  return (xf.photos || []).filter((s) => !ex[s]);
+}
+function xfPhotoIntelFor(xf, a, scenario) {
+  const photos = xfActivePhotos(xf);
+  if (!photos.length || typeof buildPhotoIntelligence !== "function") return null;
+  const intel = buildPhotoIntelligence(photos, a || {}, [], scenario || xf.scenario || "recruit");
+  // 老板手动指定封面 → 覆盖 Hero 角色
+  const ov = xf.photoOverrides || {};
+  if (ov.cover != null && ov.cover >= 0) {
+    const src = (xf.photos || [])[ov.cover];
+    const p = src && intel.used.find((u) => u.src === src);
+    if (p) {
+      if (intel.heroId) intel.roles[intel.heroId] = "SectionLeadImage";
+      intel.roles[p.imageId] = "HeroImage";
+      intel.heroId = p.imageId;
+    }
+  }
+  return intel;
+}
+function xfCoverIndex(xf) {
+  const ov = xf.photoOverrides || {};
+  if (ov.cover != null && ov.cover >= 0) return Math.min(ov.cover, (xf.photos || []).length - 1);
+  const intel = xfPhotoIntelFor(xf, xf._a, xf.scenario);
+  if (intel && intel.heroId) {
+    const h = intel.used.find((u) => u.imageId === intel.heroId);
+    if (h) { const i = (xf.photos || []).indexOf(h.src); if (i >= 0) return i; }
+  }
+  return 0;
+}
+function xfPhotoReview(xf) {
+  const photos = xf.photos || [];
+  if (!photos.length) return "";
+  const intel = xfPhotoIntelFor(xf, xf._a, xf.scenario);
+  if (!intel) return "";
+  const ex = xfExcluded(xf);
+  const coverSrc = photos[xfCoverIndex(xf)];
+  const usedSet = {}; intel.used.forEach((u) => { usedSet[u.src] = true; });
+  const roleOf = (src) => { const p = intel.analysis.find((u) => u.src === src); return intel.roles[p && p.imageId]; };
+  const rc = {};
+  intel.used.forEach((u) => { const r = intel.roles[u.imageId] || "GalleryImage"; rc[r] = (rc[r] || 0) + 1; });
+  const dirty = (xf.photoOverrides && (xf.photoOverrides.cover != null || Object.keys(ex).length));
+  return `<div class="xpr">
+    <div class="xpr-head"><b>智能筛图结果</b><span class="tiny muted">上传 ${intel.analysis.length} 张 → 建议使用 ${intel.used.length} 张（弃用 ${intel.selection.discarded.length}）</span></div>
+    <div class="xpr-chips">
+      <span class="xpr-chip">封面 1</span>
+      <span class="xpr-chip">段落主图 ${rc.SectionLeadImage || 0}</span>
+      <span class="xpr-chip">图廊 ${(rc.GalleryImage || 0) + (rc.SupportImage || 0)}</span>
+      <span class="xpr-chip">细节 ${rc.DetailImage || 0}</span>
+      ${intel.cropSafety.highRiskIds.length ? `<span class="xpr-chip warn">${intel.cropSafety.highRiskIds.length} 张不宜大图（已按原比例保护）</span>` : ""}
+    </div>
+    <div class="xpr-grid">
+      ${photos.map((p, i) => {
+        const isCover = p === coverSrc;
+        const isEx = !!ex[p];
+        const inUsed = !!usedSet[p];
+        const lab = isCover ? "封面" : (isEx ? "已移除" : (inUsed ? (intel.roleLabel[roleOf(p)] || "使用") : "建议弃用"));
+        return `<div class="xpr-cell ${isCover ? "is-cover" : ""} ${isEx ? "is-ex" : ""} ${(!inUsed && !isEx) ? "is-soft" : ""}">
+          <div class="xpr-ph" ${smartBg(p)}></div>
+          <span class="xpr-badge">${esc(lab)}</span>
+          <span class="xpr-ops">
+            ${isCover ? "" : `<button class="xpr-btn" data-action="xfSetCover" data-i="${i}">设为封面</button>`}
+            <button class="xpr-btn" data-action="xfToggleExclude" data-i="${i}">${isEx ? "恢复" : "移除"}</button>
+          </span>
+        </div>`;
+      }).join("")}
+    </div>
+    ${dirty ? `<button class="xpr-reset" data-action="xfUseRecommended">采用 AI 推荐（还原封图与筛选）</button>` : ""}
+    <p class="tiny muted">AI 会按内容把图片匹配到正文段落；「移除」的图不会进入生成结果。</p>
+  </div>`;
+}
+
 function xfRecruitPicker() {
   const xf = xfState();
   return xfActivityPicker((a) => a.status === "recruiting" || a.status === "draft" || a.status === "full" || !a.status, "选择要招募的活动") +
@@ -945,6 +1024,7 @@ function xfRecruitPicker() {
         <div class="panel-body">
           <div class="xf-photos">${(xf.photos || []).map((p, i) => `<div class="xf-ph" ${smartBg(p)}><button class="x" data-action="xfDelPhoto" data-i="${i}">${ICON("x")}</button></div>`).join("")}
             <label class="xf-ph-add">${ICON("upload")}<input type="file" id="xfPhotoInput" accept="image/*" multiple hidden></label></div>
+          ${xfPhotoReview(xf)}
           <button class="btn btn-primary btn-sm" data-action="xfRecruitGen" style="margin-top:10px" ${xf.genState === "loading" ? "disabled" : ""}>${ICON("sparkles")} ${xf.genState === "loading" ? "生成中…" : "生成宣传内容"}</button>
         </div></div>
     </div>`;
@@ -958,6 +1038,13 @@ function xfRecapPicker() {
     (selected ? `<div class="xf-supp"><div class="panel"><div class="panel-head"><h3>已选择活动</h3></div><div class="panel-body"><div class="xf-act" style="margin:0"><div class="xf-act-info"><b>${esc(selected.title || "未命名活动")}</b><span class="muted small">${(selected.dateMD || selected.date || "时间待定")} · ${esc(selected.place || "")}</span></div><button class="btn btn-ghost btn-sm" data-action="xfPickActivity" data-aid="">清除选择</button></div></div></div></div>` : "") +
     (xf.genState === "loading" ? `<div class="xf-loading-overlay"><div class="xf-spinner"></div><div class="xf-loading-title">正在生成活动回顾</div><div class="xf-loading-tip">理解活动 → 分析照片 → 撰写回顾 → 多平台排版</div></div>` : "") +
     `<div class="xf-supp">
+      <div class="panel"><div class="panel-head"><h3>上传本次活动照片</h3><span class="tiny muted">先传照片，AI 先识别 / 筛图 / 分类，再据此提炼回顾主题</span></div>
+        <div class="panel-body">
+          <div class="xf-photos">${(xf.photos || []).map((p, i) => `<div class="xf-ph" ${smartBg(p)}><button class="x" data-action="xfDelPhoto" data-i="${i}">${ICON("x")}</button><span class="xf-ph-cat">${xfPhotoCategory(p, i)}</span></div>`).join("")}
+            <label class="xf-ph-add">${ICON("camera")}<input type="file" id="xfPhotoInput" accept="image/*" multiple hidden></label></div>
+          ${xfPhotoReview(xf)}
+          ${(xf.photos || []).length ? "" : `<p class="tiny muted">上传现场照片后，AI 会先整理照片，再基于照片与补充信息提炼回顾主题。</p>`}
+        </div></div>
       <div class="panel"><div class="panel-head"><h3>或直接填写活动信息生成回顾</h3><span class="tiny muted">不绑定已有活动时使用这些信息</span></div>
         <div class="panel-body">
           <div class="xf-field"><label>活动名称</label><input class="input" data-xf="customTitle" placeholder="例如：虹口漂流一日记" value="${esc(c.title || "")}"></div>
@@ -967,13 +1054,7 @@ function xfRecapPicker() {
           <div class="xf-field"><label>参与人数</label><input class="input" data-xf="customSignups" type="number" placeholder="例如：18" value="${esc(c.signups || "")}"></div>
           <div class="xf-field"><label>领队 / 组织者</label><input class="input" data-xf="customLeader" placeholder="例如：阿龙" value="${esc(c.leader || "")}"></div>
         </div></div>
-      <div class="panel"><div class="panel-head"><h3>上传本次活动照片</h3><span class="tiny muted">自动分类：封面/风景/人物/动作/团队/合影/细节</span></div>
-        <div class="panel-body">
-          <div class="xf-photos">${(xf.photos || []).map((p, i) => `<div class="xf-ph" ${smartBg(p)}><button class="x" data-action="xfDelPhoto" data-i="${i}">${ICON("x")}</button><span class="xf-ph-cat">${xfPhotoCategory(p, i)}</span></div>`).join("")}
-            <label class="xf-ph-add">${ICON("camera")}<input type="file" id="xfPhotoInput" accept="image/*" multiple hidden></label></div>
-          <p class="tiny muted">AI 正在整理你的照片，生成时会按内容匹配到正文段落。</p>
-        </div></div>
-      <div class="panel"><div class="panel-head"><h3>补充资料（可选）</h3><span class="tiny muted">领队备注 / 用户反馈 / 特别瞬间 / 实际天气</span></div>
+      <div class="panel"><div class="panel-head"><h3>补充真实信息（可选）</h3><span class="tiny muted">领队备注 / 用户反馈 / 特别瞬间 / 实际天气</span></div>
         <div class="panel-body"><textarea class="textarea" data-xf="recapNotes" placeholder="例如：当天其实放晴了、小朋友第一次自己爬上来、大家最满意的是晚餐…">${esc(xf.recapNotes || "")}</textarea>
           <button class="btn btn-primary btn-sm" data-action="xfRecapGen" style="margin-top:10px" ${xf.genState === "loading" ? "disabled" : ""}>${ICON("sparkles")} ${xf.genState === "loading" ? "生成中…" : "生成活动回顾"}</button>
         </div></div>
