@@ -309,11 +309,26 @@ const AI_LAYOUT_COMPOSER = {
   renderPage: renderActivityStoryPage,
 };
 
+/* pipelineVersion() → 本层版本号
+   ⚠️ 不能读 APP_VER：它在 boot.js 的 IIFE 内（函数作用域，非全局），且 boot.js 在 pipeline.js 之后加载。
+   可靠来源：本脚本自身的 ?v= 查询串（bump.py 保证与 version.json 同步），仅在载入时可用。 */
+function pipelineVersion() {
+  try {
+    if (typeof document !== "undefined" && document.currentScript && document.currentScript.src) {
+      const m = String(document.currentScript.src).match(/[?&]v=(\d+)/);
+      if (m) return "v" + m[1];
+    }
+  } catch (e) { /* 降级 */ }
+  try { if (typeof window !== "undefined" && window.APP_VER) return "v" + window.APP_VER; } catch (e) { /* 降级 */ }
+  return "unknown";
+}
+const PIPELINE_VER = pipelineVersion(); // 载入时立即捕获（document.currentScript 仅此时有效）
+
 /* 控制台逐条验收入口：window.CLUBOS_PIPELINE.extractFacts(...) 等 */
 if (typeof window !== "undefined") {
   window.CLUBOS_PIPELINE = {
-    // 版本随发版动态读取，不硬编码（避免下次 bump 后失真）
-    version: (typeof APP_VER !== "undefined") ? ("v" + APP_VER) : "unknown",
+    version: PIPELINE_VER,
+    pipelineVersion: pipelineVersion, // 供测试与排查
     extractFacts: extractFacts,
     detectMissingFacts: detectMissingFacts,
     confidenceMap: confidenceMap,
