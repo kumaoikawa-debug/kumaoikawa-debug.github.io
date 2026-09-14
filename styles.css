@@ -34,6 +34,10 @@
   --serif: "Noto Serif SC", Georgia, serif;
 }
 
+/* smart crop helpers: ensure all AI-analyzed photos fill their containers */
+[data-smart-img]{object-fit:cover}
+[data-smart-bg]{background-size:cover !important;background-repeat:no-repeat !important;background-position:center}
+
 /* V96 — content-first operating system */
 .nav-group-label{padding:18px 18px 7px;color:#87918d;font-size:10px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
 .sidebar .nav-group-label:first-of-type{padding-top:10px}

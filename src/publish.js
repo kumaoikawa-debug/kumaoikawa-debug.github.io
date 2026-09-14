@@ -58,19 +58,19 @@ function xfRenderComponent(name, opts) {
     case "ChapterHeader":   return `<h2>${esc(opts.h || "")}</h2>`;
     case "LeadParagraph":   return opts.html || "";
     case "PullQuote":       return `<section class="gzh-sec gzh-sec-quote"><div class="gzh-quote-mark">”</div>${opts.h ? `<h2>${esc(opts.h)}</h2>` : ""}<div class="gzh-quote-body">${paras.join("")}</div></section>`;
-    case "FullBleedImage":  return ph && ph.src ? `<div class="gzh-wide-img" style="background-image:url('${ph.src}')"><span class="gzh-img-cap">${esc(xfCap(ph, ""))}</span></div>` : "";
-    case "ImagePair":       return (ph && ph.src) ? `<section class="gzh-sec gzh-sec-split"><div class="gzh-split-text">${opts.h ? `<h2>${esc(opts.h)}</h2>` : ""}${paras.join("")}</div><div class="gzh-split-img" style="background-image:url('${ph.src}')"><span class="gzh-img-cap">${esc(xfCap(ph, ""))}</span></div></section>` : `<section class="gzh-sec gzh-sec-full">${opts.h ? `<h2>${esc(opts.h)}</h2>` : ""}${paras.join("")}</section>`;
+    case "FullBleedImage":  return ph && ph.src ? `<div class="gzh-wide-img" ${smartBg(ph.src)}><span class="gzh-img-cap">${esc(xfCap(ph, ""))}</span></div>` : "";
+    case "ImagePair":       return (ph && ph.src) ? `<section class="gzh-sec gzh-sec-split"><div class="gzh-split-text">${opts.h ? `<h2>${esc(opts.h)}</h2>` : ""}${paras.join("")}</div><div class="gzh-split-img" ${smartBg(ph.src)}><span class="gzh-img-cap">${esc(xfCap(ph, ""))}</span></div></section>` : `<section class="gzh-sec gzh-sec-full">${opts.h ? `<h2>${esc(opts.h)}</h2>` : ""}${paras.join("")}</section>`;
     case "MetricStrip":     return (opts.kvs || []).map((r) => `<div class="gzh-challenge-kv"><b>${esc(r.v)}</b><span>${esc(r.k)}</span></div>`).join("");
     case "SectionDivider":  return `<div class="gzh-divider"></div>`;
     case "EditorialCTA":    return opts.text ? `<div class="${opts.cls || "gzh-diary-cta"}">${esc(opts.text)}</div>` : "";
     case "InfoGrid":        return (opts.rows || []).map((r) => `<div class="gzh-info-cell"><span class="gzh-info-k">${esc(r.k)}</span><span class="gzh-info-v">${esc(r.v)}</span></div>`).join("");
     case "InfoTable":       return `<table>${(opts.rows || []).map((r) => `<tr><td>${esc(r.k)}</td><td>${esc(r.v)}</td></tr>`).join("")}</table>`;
     case "FeeBlock":        return `${opts.fee ? `<p>${esc(opts.fee)}</p>` : ""}${opts.service ? `<p class="gzh-service">${esc(opts.service)}</p>` : ""}`;
-    case "GalleryGrid":     return `<div class="gzh-gallery-grid">${(opts.photos || []).map((p) => `<div class="gzh-gallery-item" style="background-image:url('${p.src}')"><span class="gzh-img-cap">${esc(xfCap(p, ""))}</span></div>`).join("")}</div>`;
-    case "YouthCard":       return `<div class="gzh-youth-card">${ph && ph.src ? `<div class="gzh-youth-card-img" style="background-image:url('${ph.src}')"><span class="gzh-img-cap">${esc(xfCap(ph, ""))}</span></div>` : ""}<div class="gzh-youth-card-body"><div class="gzh-youth-card-num">0${((opts.i || 0) % 9) + 1}</div>${opts.h ? `<h3>${esc(opts.h)}</h3>` : ""}${paras.join("")}</div></div>`;
-    case "FamilyStep":      return `<div class="gzh-family-step"><div class="gzh-family-step-num">${(opts.i || 0) + 1}</div><div class="gzh-family-step-body">${opts.h ? `<h3>${esc(opts.h)}</h3>` : ""}${paras.join("")}</div>${ph && ph.src ? `<div class="gzh-family-step-img" style="background-image:url('${ph.src}')"><span class="gzh-img-cap">${esc(xfCap(ph, ""))}</span></div>` : ""}</div>`;
-    case "ChallengeSec":    return `<section class="gzh-sec gzh-challenge-sec"><div class="gzh-challenge-sec-head"><div class="gzh-challenge-sec-num">0${((opts.i || 0) % 9) + 1}</div>${opts.h ? `<h2>${esc(opts.h)}</h2>` : ""}</div><div class="gzh-challenge-sec-body">${paras.join("")}${ph && ph.src ? `<div class="gzh-challenge-img" style="background-image:url('${ph.src}')"><span class="gzh-img-cap">${esc(xfCap(ph, ""))}</span></div>` : ""}</div></section>`;
-    case "LongformSec":     return `<section class="gzh-sec gzh-longform-sec gzh-longform-sec-${opts.align || "left"}">${ph && ph.src ? `<div class="gzh-longform-img" style="background-image:url('${ph.src}')"><span class="gzh-img-cap">${esc(xfCap(ph, ""))}</span></div>` : ""}<div class="gzh-longform-text"><div class="gzh-longform-sec-num">0${((opts.i || 0) % 9) + 1}</div>${opts.h ? `<h2>${esc(opts.h)}</h2>` : ""}${paras.join("")}</div></section>`;
+    case "GalleryGrid":     return `<div class="gzh-gallery-grid">${(opts.photos || []).map((p) => `<div class="gzh-gallery-item" ${smartBg(p.src)}><span class="gzh-img-cap">${esc(xfCap(p, ""))}</span></div>`).join("")}</div>`;
+    case "YouthCard":       return `<div class="gzh-youth-card">${ph && ph.src ? `<div class="gzh-youth-card-img" ${smartBg(ph.src)}><span class="gzh-img-cap">${esc(xfCap(ph, ""))}</span></div>` : ""}<div class="gzh-youth-card-body"><div class="gzh-youth-card-num">0${((opts.i || 0) % 9) + 1}</div>${opts.h ? `<h3>${esc(opts.h)}</h3>` : ""}${paras.join("")}</div></div>`;
+    case "FamilyStep":      return `<div class="gzh-family-step"><div class="gzh-family-step-num">${(opts.i || 0) + 1}</div><div class="gzh-family-step-body">${opts.h ? `<h3>${esc(opts.h)}</h3>` : ""}${paras.join("")}</div>${ph && ph.src ? `<div class="gzh-family-step-img" ${smartBg(ph.src)}><span class="gzh-img-cap">${esc(xfCap(ph, ""))}</span></div>` : ""}</div>`;
+    case "ChallengeSec":    return `<section class="gzh-sec gzh-challenge-sec"><div class="gzh-challenge-sec-head"><div class="gzh-challenge-sec-num">0${((opts.i || 0) % 9) + 1}</div>${opts.h ? `<h2>${esc(opts.h)}</h2>` : ""}</div><div class="gzh-challenge-sec-body">${paras.join("")}${ph && ph.src ? `<div class="gzh-challenge-img" ${smartBg(ph.src)}><span class="gzh-img-cap">${esc(xfCap(ph, ""))}</span></div>` : ""}</div></section>`;
+    case "LongformSec":     return `<section class="gzh-sec gzh-longform-sec gzh-longform-sec-${opts.align || "left"}">${ph && ph.src ? `<div class="gzh-longform-img" ${smartBg(ph.src)}><span class="gzh-img-cap">${esc(xfCap(ph, ""))}</span></div>` : ""}<div class="gzh-longform-text"><div class="gzh-longform-sec-num">0${((opts.i || 0) % 9) + 1}</div>${opts.h ? `<h2>${esc(opts.h)}</h2>` : ""}${paras.join("")}</div></section>`;
     case "UploadHint":      return opts.html || "";
     case "TagRow":          return (opts.tags || []).map((t) => `<span class="gzh-youth-tag">#${esc(t)}</span>`).join("");
     default:                return opts.html || "";
@@ -905,9 +905,10 @@ function xfActivityPicker(filterFn, label, emptyMsg) {
     <h3>${label}</h3>
     ${acts.length ? `<div class="xf-act-list">${acts.map((a) => {
       const selected = xf.aid === a.id;
+      const thumbSrc = (a.photos && a.photos[a.coverIndex || 0]) || "";
       return `
       <div class="xf-act ${selected ? "active" : ""}">
-        <div class="xf-act-thumb" style="background-image:url('${(a.photos && a.photos[a.coverIndex || 0]) || ""}')"></div>
+        <div class="xf-act-thumb" ${thumbSrc ? smartBg(thumbSrc) : ""}></div>
         <div class="xf-act-info">
           <b>${esc(a.title || "未命名活动")}</b>
           <span class="muted small">${(a.dateMD || a.date || "时间待定")} · ${esc(a.place || "")} · ${esc(a.status || "")}</span>
@@ -927,7 +928,7 @@ function xfRecruitPicker() {
         <div class="panel-body"><textarea class="textarea" data-xf="note" placeholder="例如：往年这篇活动阅读很高、客户最关心亲子安全、这次新增了溯溪环节…">${esc(xf.notes || "")}</textarea></div></div>
       <div class="panel"><div class="panel-head"><h3>添加图片 / 海报（可选）</h3><span class="tiny muted">用于公众号配图，自动分类</span></div>
         <div class="panel-body">
-          <div class="xf-photos">${(xf.photos || []).map((p, i) => `<div class="xf-ph" style="background-image:url('${p}')"><button class="x" data-action="xfDelPhoto" data-i="${i}">${ICON("x")}</button></div>`).join("")}
+          <div class="xf-photos">${(xf.photos || []).map((p, i) => `<div class="xf-ph" ${smartBg(p)}><button class="x" data-action="xfDelPhoto" data-i="${i}">${ICON("x")}</button></div>`).join("")}
             <label class="xf-ph-add">${ICON("upload")}<input type="file" id="xfPhotoInput" accept="image/*" multiple hidden></label></div>
           <button class="btn btn-primary btn-sm" data-action="xfRecruitGen" style="margin-top:10px" ${xf.genState === "loading" ? "disabled" : ""}>${ICON("sparkles")} ${xf.genState === "loading" ? "生成中…" : "生成宣传内容"}</button>
         </div></div>
@@ -953,7 +954,7 @@ function xfRecapPicker() {
         </div></div>
       <div class="panel"><div class="panel-head"><h3>上传本次活动照片</h3><span class="tiny muted">自动分类：封面/风景/人物/动作/团队/合影/细节</span></div>
         <div class="panel-body">
-          <div class="xf-photos">${(xf.photos || []).map((p, i) => `<div class="xf-ph" style="background-image:url('${p}')"><button class="x" data-action="xfDelPhoto" data-i="${i}">${ICON("x")}</button><span class="xf-ph-cat">${xfPhotoCategory(p, i)}</span></div>`).join("")}
+          <div class="xf-photos">${(xf.photos || []).map((p, i) => `<div class="xf-ph" ${smartBg(p)}><button class="x" data-action="xfDelPhoto" data-i="${i}">${ICON("x")}</button><span class="xf-ph-cat">${xfPhotoCategory(p, i)}</span></div>`).join("")}
             <label class="xf-ph-add">${ICON("camera")}<input type="file" id="xfPhotoInput" accept="image/*" multiple hidden></label></div>
           <p class="tiny muted">AI 正在整理你的照片，生成时会按内容匹配到正文段落。</p>
         </div></div>
@@ -1152,7 +1153,7 @@ function xfSectionsMarkup(variant, sections, secPhotos, parasFn) {
       const ph = secPhotos[i] || null;
       return `<section class="gzh-sec gzh-sec-spread">
         <h2 class="gzh-sec-spread-h">${esc(s.h)}</h2>
-        ${ph && ph.src ? `<div class="gzh-sec-spread-img" style="background-image:url('${ph.src}')"><span class="gzh-img-cap">${esc(xfCap(ph, ""))}</span></div>` : ""}
+        ${ph && ph.src ? `<div class="gzh-sec-spread-img" ${smartBg(ph.src)}><span class="gzh-img-cap">${esc(xfCap(ph, ""))}</span></div>` : ""}
         <div class="gzh-sec-spread-body">${parasFn(s.html)}</div>
       </section>`;
     }).join("");
@@ -1160,7 +1161,7 @@ function xfSectionsMarkup(variant, sections, secPhotos, parasFn) {
   return `<div class="gzh-sec-grid">` + sections.map((s, i) => {
     const ph = secPhotos[i] || null;
     return `<div class="gzh-sec-cell">
-      ${ph && ph.src ? `<div class="gzh-sec-cell-img" style="background-image:url('${ph.src}')"></div>` : ""}
+      ${ph && ph.src ? `<div class="gzh-sec-cell-img" ${smartBg(ph.src)}></div>` : ""}
       <div class="gzh-sec-cell-body"><h3>${esc(s.h)}</h3>${parasFn(s.html)}</div>
     </div>`;
   }).join("") + `</div>`;
@@ -1188,7 +1189,7 @@ function xfGzhDiaryHtml(gzh, xf, isRecap) {
   const heroDate = f.date ? `${f.place || ""} · ${f.date}`.replace(/^ · /, "") : (f.place || "");
 
   const hero = cover.src
-    ? `<div class="gzh-hero" style="background-image:url('${cover.src}')"><div class="gzh-hero-mask"></div><div class="gzh-hero-txt"><div class="gzh-eyebrow">${esc(eyebrow)}</div><h1 class="gzh-hero-title">${esc(heroTitle)}</h1>${heroSub ? `<div class="gzh-hero-sub">${esc(heroSub)}</div>` : ""}${heroDate ? `<div class="gzh-hero-pill">${esc(heroDate)}</div>` : `<div class="gzh-hero-pill">${esc(pill)}</div>`}</div></div>`
+    ? `<div class="gzh-hero" ${smartBg(cover.src)}><div class="gzh-hero-mask"></div><div class="gzh-hero-txt"><div class="gzh-eyebrow">${esc(eyebrow)}</div><h1 class="gzh-hero-title">${esc(heroTitle)}</h1>${heroSub ? `<div class="gzh-hero-sub">${esc(heroSub)}</div>` : ""}${heroDate ? `<div class="gzh-hero-pill">${esc(heroDate)}</div>` : `<div class="gzh-hero-pill">${esc(pill)}</div>`}</div></div>`
     : `<div class="gzh-hero gzh-hero-empty"><div class="gzh-hero-mask"></div><div class="gzh-hero-txt"><div class="gzh-eyebrow">${esc(eyebrow)}</div><h1 class="gzh-hero-title">${esc(heroTitle)}</h1>${heroSub ? `<div class="gzh-hero-sub">${esc(heroSub)}</div>` : ""}${heroDate ? `<div class="gzh-hero-pill">${esc(heroDate)}</div>` : `<div class="gzh-hero-pill">${esc(pill)}</div>`}<div class="gzh-hero-upload-hint">📷 上传 1 张大图，这里会变成全幅封面</div></div></div>`;
 
   const lead = gzh.summary ? `<div class="gzh-lead"><p>${esc(gzh.summary)}</p></div>` : "";
@@ -1205,7 +1206,7 @@ function xfGzhDiaryHtml(gzh, xf, isRecap) {
     if (layoutClass === "gzh-sec-quote") return xfRenderComponent("PullQuote", { h: s.h, paras: paras });
     if (layoutClass === "gzh-sec-split" && ph && ph.src) return xfRenderComponent("ImagePair", { h: s.h, paras: paras, ph: ph });
     if (layoutClass === "gzh-sec-img" && ph && ph.src) return `<section class="gzh-sec gzh-sec-img">${xfRenderComponent("FullBleedImage", { ph: ph })}<div class="gzh-img-text"><h2>${esc(s.h)}</h2>${paras.join("")}</div></section>`;
-    return `<section class="gzh-sec gzh-sec-full"><h2>${esc(s.h)}</h2>${paras.join("")}${ph && ph.src ? `<div class="gzh-sec-imgbox" style="background-image:url('${ph.src}')"><span class="gzh-img-cap">${esc(xfCap(ph, ""))}</span></div>` : ""}</section>`;
+    return `<section class="gzh-sec gzh-sec-full"><h2>${esc(s.h)}</h2>${paras.join("")}${ph && ph.src ? `<div class="gzh-sec-imgbox" ${smartBg(ph.src)}><span class="gzh-img-cap">${esc(xfCap(ph, ""))}</span></div>` : ""}</section>`;
   }).join("");
 
   const infoBlock = (!isRecap && gzh.info && gzh.info.length)
@@ -1270,7 +1271,7 @@ function xfGzhClassicHtml(gzh, xf, layout, isRecap) {
         <div class="gzh-youth-eyebrow">${esc(eyebrow)}</div>
         <h1 class="gzh-youth-title">${esc(gzh.title)}</h1>
         ${gzh.subtitle ? `<div class="gzh-youth-sub">${esc(gzh.subtitle)}</div>` : ""}
-        ${cover.src ? `<div class="gzh-youth-cover" style="background-image:url('${cover.src}')"></div>` : ""}
+        ${cover.src ? `<div class="gzh-youth-cover" ${smartBg(cover.src)}></div>` : ""}
       </div>
       ${gzh.summary ? `<div class="gzh-youth-lead">${parasFn(gzh.summary)}</div>` : ""}
       <div class="gzh-youth-cards">${vSec != null ? vSec : cards}</div>
@@ -1290,7 +1291,7 @@ function xfGzhClassicHtml(gzh, xf, layout, isRecap) {
     }).join("");
     return `<div class="gzh-article gzh-family gzh-var-${xf.variant}"${xfWsIr(xf, isRecap)} id="xfGzhArticle" contenteditable="true" spellcheck="false">
       <div class="gzh-family-hero">
-        <div class="gzh-family-cover" ${cover.src ? `style="background-image:url('${cover.src}')"` : ""}>
+        <div class="gzh-family-cover" ${cover.src ? `${smartBg(cover.src)}` : ""}>
           <div class="gzh-family-cover-mask"></div>
           <div class="gzh-family-cover-txt">
             <div class="gzh-family-eyebrow">${esc(eyebrow)}</div>
@@ -1328,7 +1329,7 @@ function xfGzhClassicHtml(gzh, xf, layout, isRecap) {
         ${gzh.subtitle ? `<div class="gzh-challenge-sub">${esc(gzh.subtitle)}</div>` : ""}
         <div class="gzh-challenge-kvs">${kvHtml}</div>
       </div>
-      ${cover.src ? `<div class="gzh-challenge-cover" style="background-image:url('${cover.src}')"></div>` : ""}
+      ${cover.src ? `<div class="gzh-challenge-cover" ${smartBg(cover.src)}></div>` : ""}
       ${gzh.summary ? `<div class="gzh-challenge-lead">${parasFn(gzh.summary)}</div>` : ""}
       ${vSec != null ? vSec : sections}
       ${infoBlock}
@@ -1355,7 +1356,7 @@ function xfGzhClassicHtml(gzh, xf, layout, isRecap) {
     }).join("");
     return `<div class="gzh-article gzh-longform gzh-var-${xf.variant}"${xfWsIr(xf, isRecap)} id="xfGzhArticle" contenteditable="true" spellcheck="false">
       <div class="gzh-longform-hero">
-        ${cover.src ? `<div class="gzh-longform-cover" style="background-image:url('${cover.src}')"><div class="gzh-longform-cover-mask"></div></div>` : ""}
+        ${cover.src ? `<div class="gzh-longform-cover" ${smartBg(cover.src)}><div class="gzh-longform-cover-mask"></div></div>` : ""}
         <div class="gzh-longform-hero-txt">
           <div class="gzh-longform-eyebrow">${esc(eyebrow)}</div>
           <h1 class="gzh-longform-title">${esc(gzh.title)}</h1>
@@ -1384,14 +1385,14 @@ function xfGzhClassicHtml(gzh, xf, layout, isRecap) {
         <h2>${esc(s.h)}</h2>
         ${paras}
       </div>
-      ${ph && ph.src ? `<div class="gzh-mag-img" style="background-image:url('${ph.src}')"><span class="gzh-img-cap">${esc(xfCap(ph, ""))}</span></div>` : ""}
+      ${ph && ph.src ? `<div class="gzh-mag-img" ${smartBg(ph.src)}><span class="gzh-img-cap">${esc(xfCap(ph, ""))}</span></div>` : ""}
     </section>`;
   }).join("");
   const gallery = photos.length > 1
     ? `<div class="gzh-gallery-classic"><h2>本期画面</h2>${xfRenderComponent("GalleryGrid", { photos: photos.slice(0, 4) })}</div>`
     : "";
   return `<div class="gzh-article gzh-magazine gzh-var-${xf.variant}"${xfWsIr(xf, isRecap)} id="xfGzhArticle" contenteditable="true" spellcheck="false">
-    <div class="gzh-cover" ${cover.src ? `style="background-image:url('${cover.src}')"` : ""}><div class="gzh-cover-mask"><div class="gzh-cover-cap">${esc(xfCap(cover, "") ? "封面建议：" + xfCap(cover, "") : (xf.photos && xf.photos.length ? "可换一张更具张力的大图作封面" : "未上传照片，建议补 1 张封面大图"))}</div></div></div>
+    <div class="gzh-cover" ${cover.src ? `${smartBg(cover.src)}` : ""}><div class="gzh-cover-mask"><div class="gzh-cover-cap">${esc(xfCap(cover, "") ? "封面建议：" + xfCap(cover, "") : (xf.photos && xf.photos.length ? "可换一张更具张力的大图作封面" : "未上传照片，建议补 1 张封面大图"))}</div></div></div>
     <div class="gzh-mag-head">
       <div class="gzh-mag-eyebrow">${esc(eyebrow)}</div>
       <h1 class="gzh-title">${esc(gzh.title)}</h1>
@@ -1438,7 +1439,7 @@ function xfPosterPanel(p, xf) {
   const pill = (p.place && p.time) ? (p.place + " · " + p.time) : (p.time || p.place || "");
   const pts = (p.points && p.points.length) ? p.points : [p.sub].filter(Boolean);
   return `<div class="xf-poster">
-    <div class="xf-poster-art" ${cover ? `style="background-image:url('${cover}')"` : ""}>
+    <div class="xf-poster-art" ${cover ? smartBg(cover) : ""}>
       <div class="xf-poster-art-mask"></div>
       <div class="xf-poster-art-txt">
         <div class="xf-poster-eyebrow">${esc(xfBrandPill({}))}</div>

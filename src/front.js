@@ -218,7 +218,7 @@
     if (!picks.length) return "";
     return `<div class="fr-section"><div class="fr-section-h"><h3>${ICON("shopping-bag")} ${esc(cfg.title || "装备推荐")}</h3><span class="more" data-action="openMall">去商城</span></div>
       <div class="mall-recs">${picks.slice(0, cfg.limit || 6).map((p) => `<div class="mall-rec" data-action="mallProduct" data-id="${p.id}">
-        <div class="mall-rec-ph" style="background-image:url('${esc(p.cover)}')"></div>
+        <div class="mall-rec-ph" ${smartBg(p.cover)}></div>
         <div class="mall-rec-t">${esc(p.title)}</div>
         <div class="mall-rec-p">¥${p.retailPrice}</div>
       </div>`).join("")}</div></div>`;
@@ -339,7 +339,7 @@
   }
   function catCell(c) {
     return `<div class="cat-cell" data-action="toast" data-msg="「${c.name}」分类筛选开发中">
-      <div class="cat-photo" style="background-image:url('${c.img}')"></div>
+      <div class="cat-photo" ${smartBg(c.img)}></div>
       <span class="cat-name">${c.name}</span>
     </div>`;
   }
@@ -545,7 +545,7 @@
     const place = a ? a.place : "";
     const price = a ? a.price : "";
     return `<div class="mine-card" data-action="openFront" data-id="${a ? a.id : ""}" style="cursor:pointer">
-      <div class="mine-card-img ${cover ? "" : "no-img"}" ${cover ? `style="background-image:url('${cover}')"` : ""}>
+      <div class="mine-card-img ${cover ? "" : "no-img"}" ${cover ? smartBg(cover) : ""}>
         <span class="mine-status ${statusCls}">${statusLabel}</span>
       </div>
       <div class="mine-card-body">

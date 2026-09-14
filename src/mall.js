@@ -4,7 +4,7 @@
     const recs = (state.myRecs || []).map((id) => getProduct(id)).filter(Boolean);
     const cats = [...new Set(products.map((p) => p.category))];
     const card = (p) => `<div class="mall-card" data-action="mallProduct" data-id="${p.id}">
-        <div class="mall-ph" style="background-image:url('${esc(p.cover)}')"></div>
+        <div class="mall-ph" ${smartBg(p.cover)}></div>
         <div class="mall-meta">
           <div class="mall-title">${esc(p.title)}</div>
           <div class="mall-sub">${esc(p.subtitle)}</div>
@@ -19,7 +19,7 @@
         <div class="store-hero-s">跟着领队用过的装备清单挑，出发前一次备齐</div>
         <div class="store-trust"><span>${ICON("check")} 正品直发</span><span>${ICON("check")} 7 天无理由</span><span>${ICON("check")} 售后统一受理</span></div>
       </div>
-      ${recs.length ? `<div class="fr-section"><div class="fr-section-h"><h3>领队推荐</h3></div><div class="mall-recs">${recs.map((p) => `<div class="mall-rec" data-action="mallProduct" data-id="${p.id}"><div class="mall-rec-ph" style="background-image:url('${esc(p.cover)}')"></div><div class="mall-rec-t">${esc(p.title)}</div><div class="mall-rec-p">¥${p.retailPrice}</div></div>`).join("")}</div></div>` : ""}
+      ${recs.length ? `<div class="fr-section"><div class="fr-section-h"><h3>领队推荐</h3></div><div class="mall-recs">${recs.map((p) => `<div class="mall-rec" data-action="mallProduct" data-id="${p.id}"><div class="mall-rec-ph" ${smartBg(p.cover)}></div><div class="mall-rec-t">${esc(p.title)}</div><div class="mall-rec-p">¥${p.retailPrice}</div></div>`).join("")}</div></div>` : ""}
       <div class="front-body">
         <div class="mall-cats">${cats.map((c) => `<span class="mall-cat-pill">${c}</span>`).join("")}</div>
         <div class="mall-grid">${products.map(card).join("")}</div>
@@ -63,7 +63,7 @@
     const row = (p) => {
       const featured = recIds.includes(p.id);
       return `<div class="shelf-row">
-        <div class="mall-rec-ph" style="background-image:url('${esc(p.cover)}')"></div>
+        <div class="mall-rec-ph" ${smartBg(p.cover)}></div>
         <div class="shelf-info">
           <div class="shelf-t">${esc(p.title)}</div>
           <div class="shelf-s">售价 ¥${p.retailPrice} · 单件佣金 ¥${commissionOf(p, p.retailPrice)}（${rate(p)}）</div>
@@ -101,7 +101,7 @@
       <div class="front-body">
         <div class="fr-section"><div class="fr-section-h"><h3>商品管理（平台）</h3><span class="more" data-action="mallNew">新增商品</span></div>
           <div class="mall-admin-list">${products.map((p) => `<div class="mall-admin-row" data-action="mallEdit" data-id="${p.id}">
-            <div class="mall-rec-ph" style="background-image:url('${esc(p.cover)}')"></div>
+            <div class="mall-rec-ph" ${smartBg(p.cover)}></div>
             <div class="mall-admin-info"><div class="mall-rec-t">${esc(p.title)}</div><div class="mall-sub">${esc(p.category)} · ${riskLabel(p.riskLevel)} · 供货 ¥${p.supplyPrice} · 售 ¥${p.retailPrice}</div></div>
             <button class="btn btn-ghost btn-sm" data-action="mallDel" data-id="${p.id}">删除</button>
           </div>`).join("")}</div>
@@ -130,7 +130,7 @@
     const onShelf = (state.myRecs || []).includes(p.id);
     return `<div class="front">
       <div class="ps-topbar"><button class="btn btn-ghost btn-sm" data-action="mallBack">${ICON("arrow-left")} 返回</button><div class="tiny" style="font-weight:700">${isConsole ? "商品详情（俱乐部视角）" : "商品详情"}</div></div>
-      <div class="mall-detail-ph" style="background-image:url('${esc(p.cover)}')"></div>
+      <div class="mall-detail-ph" ${smartBg(p.cover)}></div>
       <div class="front-body">
         <div class="mall-detail-title">${esc(p.title)}</div>
         <div class="mall-sub">${esc(p.subtitle)}</div>

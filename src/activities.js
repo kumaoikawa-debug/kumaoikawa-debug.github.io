@@ -6,7 +6,7 @@
     // 长文中间插入「数据/状态」可视化，避免纯文字用户没耐心看完；仅「为什么值得去」区块显示事实胶囊+配图
     const meter = field === "whyGo" ? difficultyMeter(a) : "";
     const facts = field === "whyGo" ? narrativeFactStrip(a) : "";
-    const fig = (photo && String(photo).trim()) ? `<figure class="narr-photo"><img data-smart-img src="${esc(photo)}" alt="${esc((a.place || a.type || "") + "风景")}" style="object-position:center" onerror="this.style.display='none';var p=this.parentElement;if(p)p.style.display='none';"></figure>` : "";
+    const fig = (photo && String(photo).trim()) ? `<figure class="narr-photo"><img data-smart-img src="${esc(photo)}" alt="${esc((a.place || a.type || "") + "风景")}" style="object-position:${smartPos(photo)}" onerror="this.style.display='none';var p=this.parentElement;if(p)p.style.display='none';"></figure>` : "";
     return `<section class="v13-narrative" data-narr="${esc(field)}"><h3>${esc(t)}</h3>${fig}<p>${esc(txt)}</p>${meter}${facts}</section>`;
   }
   // 难度状态条：把文字难度变成可视化进度条（轻量状态图）
@@ -1051,7 +1051,7 @@ function channelMeta(ch) {
   }
   function actCard(a) {
     const coverCls = a.photos && a.photos[0] ? "act-row-cover" : "act-row-cover gradient";
-    const cover = a.photos && a.photos[0] ? `style="background-image:url('${a.photos[0]}')"` : "";
+    const cover = a.photos && a.photos[0] ? smartBg(a.photos[0]) : "";
     const badge = statusBadge(a.status);
     const deps = (a.departures || []).filter((d) => d && d.date);
     const depHeader = deps.length > 1 ? `<div class="act-dep" style="margin-bottom:2px"><span class="act-dep-date" style="color:var(--muted);font-weight:500">共 ${deps.length} 个团期</span><span class="act-dep-count">合计 ${deps.reduce((sum, d) => sum + depSignupCount(a, d.id), 0)} 报名</span></div>` : "";
@@ -1432,11 +1432,11 @@ function channelMeta(ch) {
     return `<div class="vis-tab">
       <div class="vis-sec">
         <h4>图片分析结果<span class="sim-tag">模拟分析（演示）</span></h4>
-        ${photos.length ? `<div class="photo-analysis">${photos.map((src, i) => { const m = photoMeta(src); return `<div class="photo-card"><div class="pc-thumb" style="background-image:url('${src}')"></div><div class="pc-meta"><div><b>图 ${i + 1}</b>${i === cover ? " · 封面" : ""}</div>${m ? `<div>类别：${m.category} · 朝向：${m.orientation === "landscape" ? "横" : m.orientation === "portrait" ? "竖" : "方"} · 质量：${m.quality_score}</div><div>主体：${m.subjects.join("、")} · 情绪：${m.emotion}</div><div>推荐：${m.recommended_use.join("、")} · 文字区：${m.safe_text_area}</div>` : `<div class="muted small">分析中…（模拟推断）</div>`}</div></div>`; }).join("")}</div>` : `<div class="empty-state">${emptyPhotoSvg}<div><b>还没有上传图片</b><span>回到「内容」标签上传活动照片后，这里会自动分析画面并推荐用途</span></div></div>`}
+        ${photos.length ? `<div class="photo-analysis">${photos.map((src, i) => { const m = photoMeta(src); return `<div class="photo-card"><div class="pc-thumb" ${smartBg(src)}></div><div class="pc-meta"><div><b>图 ${i + 1}</b>${i === cover ? " · 封面" : ""}</div>${m ? `<div>类别：${m.category} · 朝向：${m.orientation === "landscape" ? "横" : m.orientation === "portrait" ? "竖" : "方"} · 质量：${m.quality_score}</div><div>主体：${m.subjects.join("、")} · 情绪：${m.emotion}</div><div>推荐：${m.recommended_use.join("、")} · 文字区：${m.safe_text_area}</div>` : `<div class="muted small">分析中…（模拟推断）</div>`}</div></div>`; }).join("")}</div>` : `<div class="empty-state">${emptyPhotoSvg}<div><b>还没有上传图片</b><span>回到「内容」标签上传活动照片后，这里会自动分析画面并推荐用途</span></div></div>`}
       </div>
       <div class="vis-sec">
         <h4>封面图</h4>
-        ${photos.length ? `<div class="cover-row">${photos.map((src, i) => `<button class="cover-thumb ${i === cover ? "sel" : ""}" data-action="setCover" data-i="${i}" style="background-image:url('${src}')"></button>`).join("")}</div><div class="tiny muted">点击选择封面（仅用于页面主视觉）</div>` : `<div class="empty-state">${emptyCoverSvg}<div><b>上传图片后可选封面</b><span>先上传照片，再从中挑选最具吸引力的一张作为活动封面</span></div></div>`}
+        ${photos.length ? `<div class="cover-row">${photos.map((src, i) => `<button class="cover-thumb ${i === cover ? "sel" : ""}" data-action="setCover" data-i="${i}" ${smartBg(src)}></button>`).join("")}</div><div class="tiny muted">点击选择封面（仅用于页面主视觉）</div>` : `<div class="empty-state">${emptyCoverSvg}<div><b>上传图片后可选封面</b><span>先上传照片，再从中挑选最具吸引力的一张作为活动封面</span></div></div>`}
       </div>
       <div class="vis-sec">
         <h4>页面结构（随内容与素材动态编排）</h4>
@@ -1477,7 +1477,7 @@ function channelMeta(ch) {
     const cover = a.coverIndex || 0;
     return a.photos.map((p, i) => {
       const isCover = i === cover;
-      return `<div class="thumb ${isCover ? "is-cover" : ""}" style="background-image:url('${p}')">
+      return `<div class="thumb ${isCover ? "is-cover" : ""}" ${smartBg(p)}>
         <button class="x" data-action="delPhoto" data-i="${i}" title="删除">${ICON("x")}</button>
         ${isCover ? `<span class="cover-badge">封面</span>` : `<button class="set-cover-btn" data-action="setCover" data-i="${i}">设为封面</button>`}
       </div>`;

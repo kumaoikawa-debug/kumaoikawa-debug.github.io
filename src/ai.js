@@ -2218,7 +2218,7 @@
     return `<div class="gear-mall">
       <div class="gear-mall-h"><span>${ICON("shopping-bag")}</span> 可在商城一站式备齐 · 按「安全 &gt; 评价 &gt; 价格」推荐，正品直发、7 天无理由</div>
       <div class="gear-mall-grid">${recs.map((r) => `<button class="gear-mall-card" data-action="mallProduct" data-id="${r.p.id}" data-srctype="ai_gear_list" data-srcid="${a.id}">
-        <div class="gmc-ph" style="background-image:url('${esc(r.p.cover)}')"></div>
+        <div class="gmc-ph" ${smartBg(r.p.cover)}></div>
         <div class="gmc-body">
           <div class="gmc-title">${esc(r.p.title)}</div>
           <div class="gmc-meta"><span class="gear-type g-${r.p.riskLevel}">${gearTypeLabel(r.p.riskLevel)}</span><span class="mall-rate">★ ${r.p.rating}</span>${r.matched ? `<span class="gmc-match">清单匹配</span>` : ""}</div>
@@ -2228,61 +2228,87 @@
     </div>`;
   }
 
-  /* ---------------- phone / detail render ---------------- */
-  // V1.3.2 智能焦点：用画面对比度、色彩与边缘密度找到主体，避免裁切到大片空天空。
+  /* ---------------- smart focus / auto best crop ---------------- */
+  // V1.3.2+ 智能焦点：纯浏览器 Canvas 分析，零后端，自动识别主体并给出 object-position / background-position。
   const PHOTO_FOCUS_CACHE = new Map();
   const PHOTO_FOCUS_PENDING = new Set();
-  function focusValue(src) { return PHOTO_FOCUS_CACHE.get(src) || { x: 50, y: 48 }; }
-  function updateSmartImages(src, focus) {
+  function focusValue(src) { return PHOTO_FOCUS_CACHE.get(src) || { x: 50, y: 45 }; }
+  function updateSmartFocus(src, focus) {
+    const pos = `${focus.x}% ${focus.y}%`;
     document.querySelectorAll("img[data-smart-img]").forEach((img) => {
-      if (img.getAttribute("src") === src) img.style.objectPosition = `${focus.x}% ${focus.y}%`;
+      if (img.getAttribute("src") === src) img.style.objectPosition = pos;
+    });
+    document.querySelectorAll("[data-smart-bg]").forEach((el) => {
+      if (el.getAttribute("data-smart-bg") === src) el.style.backgroundPosition = pos;
     });
   }
+  function smartImg(src, alt) {
+    return `<img data-smart-img src="${esc(src)}" alt="${esc(alt || '')}" style="object-position:${smartPos(src)}">`;
+  }
+  function smartBg(src) {
+    return `data-smart-bg="${esc(src)}" style="background-image:url('${esc(src)}');background-position:${smartPos(src)};"`;
+  }
   function analyzeImageFocus(src) {
-    const fallback = () => ({ x: 50, y: 48, orientation: "landscape", quality_score: 0.6, category: "未分析", emotion: "真实", subjects: [], focal_point: { x: 0.5, y: 0.48 }, safe_text_area: "top-right", recommended_use: ["story"], duplicate_group: null, simulated: true });
+    const fallback = () => ({ x: 50, y: 45, orientation: "landscape", quality_score: 0.6, category: "未分析", emotion: "真实", subjects: [], focal_point: { x: 0.5, y: 0.45 }, safe_text_area: "top-right", recommended_use: ["story"], duplicate_group: null, simulated: true });
     return new Promise((resolve) => {
       const img = new Image();
       img.onload = () => {
         try {
-          const max = 180, scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
-          const w = Math.max(24, Math.round(img.naturalWidth * scale));
-          const h = Math.max(24, Math.round(img.naturalHeight * scale));
+          const max = 200, scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+          const w = Math.max(28, Math.round(img.naturalWidth * scale));
+          const h = Math.max(28, Math.round(img.naturalHeight * scale));
           const c = document.createElement("canvas"); c.width = w; c.height = h;
           const cx = c.getContext("2d", { willReadFrequently: true });
           cx.drawImage(img, 0, 0, w, h);
           const px = cx.getImageData(0, 0, w, h).data;
-          const cells = [], gx = 12, gy = 12;
+          const cells = [], gx = 14, gy = 14;
           const lumAt = (x, y) => { const i = (Math.min(h-1,y)*w + Math.min(w-1,x))*4; return px[i]*.299 + px[i+1]*.587 + px[i+2]*.114; };
+          const ratio = (img.naturalWidth || 1) / (img.naturalHeight || 1);
+          const isPortrait = ratio < 0.87;
+          const isLandscape = ratio > 1.15;
           for (let yy=0; yy<gy; yy++) for (let xx=0; xx<gx; xx++) {
             const x0=Math.floor(xx*w/gx), x1=Math.max(x0+1,Math.floor((xx+1)*w/gx));
             const y0=Math.floor(yy*h/gy), y1=Math.max(y0+1,Math.floor((yy+1)*h/gy));
-            let edge=0, sat=0, contrast=0, count=0, lum=0;
+            let edge=0, hEdge=0, vEdge=0, sat=0, contrast=0, count=0, lum=0, skin=0;
             for(let y=y0; y<y1; y+=2) for(let x=x0; x<x1; x+=2){
               const i=(y*w+x)*4, r=px[i],g=px[i+1],b=px[i+2], hi=Math.max(r,g,b),lo=Math.min(r,g,b), l=r*.299+g*.587+b*.114;
+              const dh = Math.abs(l-lumAt(Math.min(w-1,x+2),y));
+              const dv = Math.abs(l-lumAt(x,Math.min(h-1,y+2)));
+              edge += dh + dv; hEdge += dh; vEdge += dv;
               sat += hi ? (hi-lo)/hi : 0;
-              edge += Math.abs(l-lumAt(Math.min(w-1,x+2),y)) + Math.abs(l-lumAt(x,Math.min(h-1,y+2)));
               contrast += Math.abs(l-150); lum += l; count++;
+              if (r > 80 && r < 240 && g > 40 && g < 200 && b > 20 && b < 170 && r - g > 8 && g - b > 8 && r > g && g > b) skin++;
             }
             const n = Math.max(1, count);
             const ny=(yy+.5)/gy, nx=(xx+.5)/gx;
-            const centerPrior = 1 - Math.min(.7, Math.abs(nx-.5)*.55);
-            const lowerPrior = .9 + ny*.18;
-            const rawScore=(edge/n)*2.8 + (sat/n)*78 + (contrast/n)*.16;
-            const score=rawScore * centerPrior * lowerPrior;
-            cells.push({ x:(xx+.5)*100/gx, y:(yy+.5)*100/gy, score, rawScore, edge: edge/n, sat: sat/n, contrast: contrast/n, lum: lum/n });
+            const centerPrior = 1 - Math.min(.45, Math.abs(nx-.5)*.6);
+            const ruleOfThirdsY = isPortrait ? 0.32 : (isLandscape ? 0.42 : 0.45);
+            const thirdPrior = 0.82 + 0.18 * Math.max(0, 1 - Math.abs(ny - ruleOfThirdsY) * 4);
+            const rawScore=(edge/n)*2.6 + (sat/n)*72 + (contrast/n)*.14 + (skin/n)*18;
+            const structureBoost = (hEdge > vEdge * 1.25 && edge/n > 12) ? 1.08 : 1;
+            const score=rawScore * centerPrior * thirdPrior * structureBoost;
+            cells.push({ x:(xx+.5)*100/gx, y:(yy+.5)*100/gy, score, rawScore, edge: edge/n, sat: sat/n, contrast: contrast/n, lum: lum/n, skin: skin/n });
           }
           cells.sort((a,b)=>b.score-a.score);
-          const chosen=cells.slice(0,Math.max(5,Math.round(cells.length*.10)));
+          const chosen=cells.slice(0,Math.max(6,Math.round(cells.length*.15)));
           let sw=0,sx=0,sy=0; chosen.forEach(v=>{const wt=Math.max(.01,v.score);sw+=wt;sx+=v.x*wt;sy+=v.y*wt;});
-          let fx=Math.round(Math.max(18,Math.min(82,sx/sw))), fy=Math.round(Math.max(18,Math.min(84,sy/sw)));
-          // 若原始分数最高的区域明显在上半部，防止 lowerPrior 把人像头部压出画面
-          const rawTop=cells.slice().sort((a,b)=>b.rawScore-a.rawScore).slice(0,Math.max(3,Math.round(cells.length*.08)));
+          let fx=Math.round(Math.max(18,Math.min(82,sx/sw))), fy=Math.round(Math.max(18,Math.min(82,sy/sw)));
+          const rawTop=cells.slice().sort((a,b)=>b.rawScore-a.rawScore).slice(0,Math.max(4,Math.round(cells.length*.10)));
           if(rawTop.length){
             const rawTopY=rawTop.reduce((s,v)=>s+v.y,0)/rawTop.length;
             const rawTopScore=rawTop.reduce((s,v)=>s+v.rawScore,0)/rawTop.length;
             const bottomCells=cells.filter(v=>v.y>55);
             const bottomScore=bottomCells.length?bottomCells.reduce((s,v)=>s+v.rawScore,0)/bottomCells.length:0;
-            if(rawTopY<45 && rawTopScore>(bottomScore*1.08+0.01)) fy=Math.min(fy, Math.round(Math.max(30, rawTopY+5)));
+            const topStrong = rawTopY < 48 && rawTopScore > (bottomScore * 1.05 + 0.01);
+            const hasFace = rawTop.some(v => v.skin > 0.08);
+            if (topStrong || hasFace) {
+              const targetY = Math.round(Math.max(30, Math.min(55, rawTopY + 6)));
+              fy = Math.min(fy, targetY);
+            }
+          }
+          const focusCell = cells.find(v => Math.abs(v.x - fx) < 8 && Math.abs(v.y - fy) < 8);
+          if (focusCell && focusCell.lum > 180 && focusCell.edge < 10) {
+            fy = Math.min(70, Math.max(fy, 55));
           }
           resolve(buildPhotoMeta(img, fx, fy, cells));
         } catch(e) { resolve(fallback()); }
@@ -2336,7 +2362,7 @@
     if (!src || PHOTO_FOCUS_CACHE.has(src) || PHOTO_FOCUS_PENDING.has(src)) return;
     PHOTO_FOCUS_PENDING.add(src);
     analyzeImageFocus(src).then((focus) => {
-      PHOTO_FOCUS_PENDING.delete(src); PHOTO_FOCUS_CACHE.set(src, focus); updateSmartImages(src, focus);
+      PHOTO_FOCUS_CACHE.set(src, focus); updateSmartFocus(src, focus); PHOTO_FOCUS_PENDING.delete(src);
     });
   }
   function smartPos(src) {
