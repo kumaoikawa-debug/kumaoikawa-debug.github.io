@@ -4566,11 +4566,11 @@ function applyVisionBatch(map) {
     lifestyle:  { why: "为什么把生活搬出来", experience: "另一种过法",     route: "慢下来的路线",     gain: "带回去的生活感",   fit: "想换种活法的人",     reasons: "把日子过成户外的理由" },
   };
   const EDITORIAL_STRUCTURES = {
-    story:      ["why", "experience", "route", "gain", "fit", "reasons"],
-    experience: ["experience", "why", "route", "gain", "fit", "reasons"],
-    route:      ["route", "why", "experience", "gain", "fit", "reasons"],
-    value:      ["gain", "why", "experience", "route", "fit", "reasons"],
-    social:     ["fit", "why", "gain", "experience", "route", "reasons"],
+    story:      ["why", "experience", "route", "night", "gain", "fit", "reasons"],
+    experience: ["experience", "why", "route", "night", "gain", "fit", "reasons"],
+    route:      ["route", "why", "experience", "night", "gain", "fit", "reasons"],
+    value:      ["gain", "why", "experience", "route", "night", "fit", "reasons"],
+    social:     ["fit", "why", "gain", "experience", "route", "night", "reasons"],
   };
   // img：每节取图数量 + 图种（拼图 mosaic / 大图 big / 单图 solo / 小图 thumbs）+ 末尾图廊模式
   const EDITORIAL_IMG = {
@@ -4723,6 +4723,25 @@ function applyVisionBatch(map) {
     const m = EDITORIAL_IMG[imgMode] || EDITORIAL_IMG["hero-mosaic"];
     return m.gallery;
   }
+  /* Case 4：昼夜节奏判定 —— 返回原始 photos 数组中的「白天/夜晚」索引，
+     供长页在白天素材之后注入「入夜」章节，自动形成 昼→夜 情绪节奏。
+     夜晚信号优先级：照片显式 isNight / analysis.isNight > 内容识别 scene=night / 标签含「夜景」。 */
+  function photoDayNight(photos) {
+    const list = (photos || []).filter(Boolean);
+    const night = [], day = [];
+    list.forEach((p, i) => {
+      let isNight = !!(p && p.isNight) || !!(p && p.analysis && p.analysis.isNight);
+      if (!isNight) {
+        try {
+          const sig = analyzeOnePhoto(typeof p === "string" ? p : (p.src || ""), i, null);
+          isNight = sig.scene === "night" || (sig.tags || []).indexOf("夜景") >= 0;
+        } catch (e) { isNight = false; }
+      }
+      (isNight ? night : day).push(i);
+    });
+    return { night: night, day: day, nightCount: night.length, dayCount: day.length, total: list.length, hasRhythm: night.length > 0 && day.length > 0 };
+  }
+
   function buildEditorialOutline(a) {
     a = a || {};
     // P0-12：同一活动按不同「变体」生成不同角度/结构/图片/密度的图文长页
@@ -4733,6 +4752,7 @@ function applyVisionBatch(map) {
     const style = (variant.style && EDITORIAL_STYLES.filter(function (x) { return x.id === variant.style; })[0]) || editorialStyleOf(a);
     const vTypo = layout.typo, vFamily = style.family;
     const dna = (typeof activityDNAOf === "function") ? activityDNAOf(a) : null;
+    const dn = photoDayNight(a.photos);
     const fb = (typeof dnaCopyFor === "function") ? dnaCopyFor(dna || {}) : {};
     const theme = (dna && dna.mainTheme) || a.storyPurpose || a.editorialTitle || a.title || "这一程";
     const sig = (dna && dna.sceneSignature) || "";
@@ -4782,6 +4802,15 @@ function applyVisionBatch(map) {
     make("gain", "gain", "people", st.gain || "参加完能得到什么", pick(a.gain, fb.gain));
     make("fit", "fit", "people", "适合谁", pick(a.fitFor, fb.fitFor || (a.targetAudience ? a.targetAudience + "，都能找到自己的步频。" : "")));
 
+    // Case 4：昼夜节奏 —— 白天+夜晚素材齐备时，注入「入夜」章节（kind=night），
+    //   排序位于 route 之后、gain 之前，长页自然呈现 白天→夜晚 的情绪弧。
+    if (dn.hasRhythm) {
+      const nightParas = [];
+      if (dna && dna.season) nightParas.push(dna.season + "的白天在脚步里铺开，入夜后营地亮起，这一程换了另一种温度。");
+      nightParas.push("白天的山路安静下来，星空或篝火把画面交还给夜——留一段给夜晚，才算完整。");
+      make("night", "night", "night", st.night || "从白天到夜晚", nightParas);
+    }
+
     const sp = (a.sellingPoints || []).filter((s) => s && (s.title || s.desc));
     if (sp.length) make("reasons", "reasons", "info", "这场活动的几个理由",
       sp.slice(0, 6).map((s) => ((s.title ? s.title : "") + (s.title && s.desc ? "：" : "") + (s.desc || "")).trim()).filter(Boolean));
@@ -4829,6 +4858,14 @@ function applyVisionBatch(map) {
       if ((sec.kind === "route" || /^day/.test(sec.key)) && typeof pageItineraryPhotos === "function") {
         const ip = pageItineraryPhotos(a);
         if (ip && ip.byDay) Object.keys(ip.byDay).forEach((k) => (ip.byDay[k] || []).forEach((p) => addSrc(p && p.src)));
+      }
+    }
+    // Case 4：「入夜」章节优先取夜晚素材，确保昼→夜节奏在配图上也成立
+    if (sec.kind === "night") {
+      const dn = (typeof photoDayNight === "function") ? photoDayNight(photos) : null;
+      if (dn && dn.night.length) {
+        const want = (sec && sec.imgCount) || 2;
+        dn.night.forEach((i) => { if (out.length < Math.max(2, want) && !usedSet.has(i)) out.push(i); });
       }
     }
     if (!out.length) {
@@ -5320,7 +5357,10 @@ if (typeof window !== "undefined") {
     buildAdaptiveLayout: buildAdaptiveLayout,
     describePhotoProfile: describePhotoProfile,
     buildPageStoryOutline: buildPageStoryOutline,
+    buildEditorialOutline: buildEditorialOutline,
+    photoDayNight: photoDayNight, // Case 4：昼夜素材判定（昼→夜节奏）
     generateSectionCopy: generateSectionCopy,
+    heuristicDirection: heuristicDirection,
     validateClaims: validateClaims,
     validateLayout: validateLayout,
     renderActivityStoryPage: renderActivityStoryPage,
@@ -5890,8 +5930,26 @@ function heuristicDirection(a, p, family, scenario, photoProfile) {
   };
   const compMap = { route_editorial: "左右交替", visual_campaign: "卡片流", challenge_editorial: "数据条+区块", brand_journal: "大图主导", photo_documentary: "手账步骤", outdoor_lookbook: "网格画廊" };
   const colorMap = { route_editorial: "墨绿", visual_campaign: "暖米", challenge_editorial: "夜空蓝", brand_journal: "山系橙", photo_documentary: "松石", outdoor_lookbook: "暖米" };
-  const structRecruit = ["为什么值得去", "来了会体验什么", "参加完你能得到什么", "适不适合我", "真实信息", "怎么报名"];
-  const structRecap = ["开场", "本次活动核心记忆", "本次参与体验", "值得记住的瞬间", "参与者收获", "照片回顾", "下一期预告"];
+  // Case 9：结构随「编辑家族」明显不同（同一活动换风格/家族，事实不变、章节结构变）
+  //   每个标题都内嵌 legacy 触发词，确保 sectionBody 路由到正确正文桶。
+  const structRecruitByFamily = {
+    route_editorial:    ["为什么值得走这条路线", "你会体验什么", "走完能收获什么", "适不适合你", "真实信息 & 装备", "怎么报名"],
+    visual_campaign:    ["为什么这地方值得去", "现场是什么体验", "最适合谁来玩", "怎么拍都出片", "报名占位"],
+    challenge_editorial:["我们想挑战什么", "行程难度 & 装备", "走完能收获什么", "适不适合你", "报名 & 下一程"],
+    brand_journal:     ["为什么值得慢下来走", "山里你会体验什么", "走完能收获什么", "适不适合你", "怎么报名"],
+    photo_documentary: ["这组照片为什么值得看", "镜头里你体验什么", "拍完能收获什么", "适不适合你来拍", "报名占位"],
+    outdoor_lookbook:  ["本季山系穿搭为什么值得看", "出片场景怎么玩", "这些角度最出片", "适不适合你", "报名 & 同款"],
+  };
+  const structRecapByFamily = {
+    route_editorial:    ["开场", "路线核心记忆", "途中体验", "值得记住的瞬间", "你的收获", "照片回顾", "下一期预告"],
+    visual_campaign:    ["先放结论", "出片现场", "最爱的几个瞬间", "大家玩嗨了", "照片墙", "下一期"],
+    challenge_editorial:["开场", "硬核数据回顾", "登顶时刻", "装备 & 体能复盘", "你的成长", "照片回顾", "下一程"],
+    brand_journal:     ["开场", "山里的慢时光", "我们记住的画面", "想说的话", "照片回顾", "下一期见"],
+    photo_documentary: ["开场", "九张图的回看", "镜头里的真实", "照片回顾", "下一期预告"],
+    outdoor_lookbook:  ["本季回顾", "出片合集", "同款清单", "照片墙", "下一期"],
+  };
+  const structRecruit = structRecruitByFamily[family] || ["为什么值得去", "来了会体验什么", "参加完你能得到什么", "适不适合我", "真实信息", "怎么报名"];
+  const structRecap = structRecapByFamily[family] || ["开场", "本次活动核心记忆", "本次参与体验", "值得记住的瞬间", "参与者收获", "照片回顾", "下一期预告"];
   return {
     family: family, variant: pickVariant(family, scenario, styleSeed()),
     styleSeed: styleSeed(),
@@ -5986,6 +6044,9 @@ function sectionBody(h, a, m) {
     if (f.transport) parts.push("交通：" + f.transport);
     if (f.meal) parts.push("含餐：" + f.meal);
     if (f.includedServices && f.includedServices.length) parts.push("费用含：" + f.includedServices.join("、"));
+    // Case 7：资料已填的保险/安全事实，高强度活动页须显性呈现
+    if (a && a.insurance) parts.push("保险：" + a.insurance);
+    if (a && a.safety && a.safety.length) parts.push("安全：" + a.safety.join("、"));
     return `<p>${parts.length ? parts.join("；") + "。" : "具体玩法与行程以发布页与现场说明为准。"}</p>`;
   }
   if (/适合|谁|门槛|匹配|友好/.test(T)) {
@@ -7042,6 +7103,10 @@ function generateSectionCopy(h, m, a, seed) {
   const place = f.place || "";
   const season = f.season || (dna && dna.season) || "";
   const mood = (dna && dna.coreMotivationLabel) || "";
+  // Case 7：专业/高强度活动（雪山、高海拔、技术型）抬高「强度/海拔/装备/安全」信息权重
+  const elev = parseFloat(f.elevation) || 0;
+  const gearTop = (f.gear && f.gear.length) ? f.gear.slice(0, 4).join("、") : "";
+  const pro = !!(dna && (dna.intensity === "challenge" || dna.activityForm === "mountain" || elev >= 2500 || dna.professionalLevel === "technical"));
   const H = String(h || "");
   const opts = [];
   if (/为什么|值得|风景|地点|路线|地貌|景/.test(H)) {
@@ -7049,9 +7114,27 @@ function generateSectionCopy(h, m, a, seed) {
     opts.push(`先去走一遍${place || "它"}。看得见的风景，比任何描述都可靠。`);
     opts.push(`${place || "这里"}的好，不在攻略里，在你走进去的那几步。`);
   } else if (/体验|玩|挑战|探索|运动|做/.test(H)) {
+    // Case 7：高强度活动优先给「海拔/装备/安全」表达，页面更专业
+    if (pro) {
+      if (elev) opts.push(`这不是轻松的散步：目标海拔约 ${elev} 米，强度${f.difficulty || "不低"}。每上升一段，都得靠装备和节奏兜底——准备越足，山越温柔。`);
+      if (gearTop) opts.push(`装备是这场挑战的底线：自备${gearTop}。出发前逐项确认，不留侥幸。`);
+      opts.push(`把体力推过临界点之前，先诚实地确认自己的经验与状态——专业路线，尊重它才走得远。`);
+    }
     opts.push(`${season ? season + "的" : ""}节奏里，注意力会从待办清单挪到脚下——走、看、停一停。`);
     opts.push(`不用急着打卡；${f.days > 1 ? "两天一夜" : "一天"}的工夫，够把节奏慢下来。`);
     opts.push(`体验很具体：身体动起来，脑子空下来。`);
+  } else if (/强度|海拔|装备|安全|准备|风险|硬指标/.test(H)) {
+    if (pro) {
+      const parts = [];
+      if (f.difficulty) parts.push("强度" + f.difficulty);
+      if (elev) parts.push("海拔约 " + elev + " 米");
+      if (gearTop) parts.push("必备装备：" + gearTop);
+      if (a && a.insurance) parts.push("已含保险：" + a.insurance);
+      if (a && a.safety && a.safety.length) parts.push("安全：" + a.safety.join("、"));
+      opts.push(parts.length ? `这场活动的硬指标：${parts.join("；")}。出发前逐项确认，比任何口号都管用。` : `这是一场需要专业准备的挑战，出发前请逐项确认装备与体能。`);
+    } else {
+      opts.push(`出发前把装备和体能都确认一遍，比任何口号都管用。`);
+    }
   } else if (/收获|得到|适合|谁|陪伴|成长/.test(H)) {
     opts.push(`${f.ageRange ? "适合 " + f.ageRange + "。" : ""}${m.targetAudience || "想换口气的人"}会喜欢这种踏实感。`);
     opts.push(`带走的不是照片，是一个能反复回想的周末。`);
