@@ -84,9 +84,9 @@ var d04 = [v0.angle !== v1.angle, v0.structure !== v1.structure, v0.img !== v1.i
 var d14 = [v1.angle !== v2.angle, v1.structure !== v2.structure, v1.img !== v2.img, v1.density !== v2.density].filter(Boolean).length;
 check(d04 === 4 && d14 === 4, "adjacent four-dim differ", "d04=" + d04 + ",d14=" + d14);
 
-// 3) 三版大纲均非空，且都含核心章节 why/experience/route/gain/fit
+// 3) 三版大纲均非空，且都含核心章节 why/experience/day(按天分节)/gain/fit
 var coreOk = function (o) {
-  return o.length >= 4 && ["why", "experience", "route", "gain", "fit"].every(function (k) { return o.some(function (s) { return s.key.indexOf(k) === 0; }); });
+  return o.length >= 4 && ["why", "experience", "day", "gain", "fit"].every(function (k) { return o.some(function (s) { return s.key.indexOf(k) === 0; }); });
 };
 check(coreOk(o0) && coreOk(o1) && coreOk(o2), "core sections present", "len=" + o0.length + "/" + o1.length + "/" + o2.length);
 

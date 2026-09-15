@@ -4770,7 +4770,7 @@ function applyVisionBatch(map) {
         days.forEach((d, i) => {
           const items = (d.items || []).filter((t) => t && (t.time || t.text));
           if (!items.length) return;
-          make("route", "route" + (i + 1), "route", "DAY " + (i + 1) + (d.label ? " · " + d.label : ""),
+          make("route", "day" + (i + 1), "route", "DAY " + (i + 1) + (d.label ? " · " + d.label : ""),
             [items.map((t) => (t.time ? t.time + " " : "") + t.text).join("；")]);
         });
       } else {

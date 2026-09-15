@@ -192,8 +192,14 @@
     // 取「筛选后待展示图」中未被封面/章节占用的部分，按数量分级 + 横竖主导自动排成 6 种版式
     const intel = (typeof pagePhotoIntel === "function") ? pagePhotoIntel() : null;
     let galleryHtml = "";
-    if (intel && intel.used && intel.used.length) {
-      const gPhotos = intel.used.filter((p) => p.imageId !== intel.heroId && !usedSet.has(p.index));
+    // P0-4 修复：结尾图廊用「专属预留图」(reserveIdx) 渲染现场影像——此前 reserveIdx 被加入 usedSet，
+    // 而旧逻辑又用 !usedSet.has(p.index) 过滤，导致预留图被自身排除、图廊永远空白。现直接消费 reserveIdx，
+    // reserveIdx 仍保留在 usedSet 中，确保章节不会抢占这些图。
+    if (reserveIdx.length) {
+      const gPhotos = reserveIdx.map((i) => {
+        const u = (intel && intel.used) ? intel.used.find((x) => x.index === i) : null;
+        return u || { index: i, src: (a.photos || [])[i] };
+      }).filter((p) => p && p.src);
       if (gPhotos.length) {
         const plan = (typeof buildAdaptiveLayout === "function") ? buildAdaptiveLayout(gPhotos, (a.photos || []).length) : null;
         const lay = (plan && typeof layoutHtml === "function") ? layoutHtml(plan) : "";
