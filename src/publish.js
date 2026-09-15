@@ -152,6 +152,35 @@ function xfCta(a) {
   return `报名方式：私信 / 群里接龙，或直接在本页提交报名。${when} 出发，名额${a.limit ? a.limit + (a.limitUnit || "人") + "，" : ""}先到先得。`;
 }
 
+/* ---------- 事实护栏：creativeContext 只给表达方向，禁止写成现场事实 ---------- */
+// 下列为「具体景观/天气/事件」词。除非资料或图片确认，否则不得出现在 creativeContext / consumerValue。
+// 活动类型推断(kind)是「内容方向分类」，绝不是现场事实——不得暗示任何具体景观/天气/事件。
+const SCENE_CLAIM_KEYWORDS = ["星空","星河","星轨","银河","云海","云瀑","佛光","日出","日落","晚霞",
+  "篝火","营火","溪流","溪水","瀑布","花海","红叶","雪景","雪线","草甸","林间","山顶","森林","峡谷","溶洞","海浪","潮水","礁石","云影","晨雾"];
+function stripSceneClaims(s) {
+  if (!s || typeof s !== "string") return s;
+  let out = s;
+  for (const k of SCENE_CLAIM_KEYWORDS) {
+    if (out.indexOf(k) >= 0) out = out.replace(new RegExp("的?" + k + "(下|里|边|上|中|旁|间)?", "g"), "");
+  }
+  return out;
+}
+function hasSceneClaim(s) {
+  if (!s || typeof s !== "string") return false;
+  return SCENE_CLAIM_KEYWORDS.some((k) => s.indexOf(k) >= 0);
+}
+// 递归清洗 creativeContext / consumerValue 的全部字符串字段，确保不含现场事实断言（防御式）
+function sanitizeCreativeContext(cc) {
+  let stripped = false;
+  function walk(v) {
+    if (typeof v === "string") { const c = stripSceneClaims(v); if (c !== v) stripped = true; return c; }
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === "object") { const o = {}; for (const k of Object.keys(v)) o[k] = walk(v[k]); return o; }
+    return v;
+  }
+  return { value: walk(cc), stripped: stripped };
+}
+
 /* ---------- Content Master（确认事实层 + 实际活动数据） ---------- */
 function xfConfirmedFacts(a, photos) {
   return {
@@ -192,19 +221,26 @@ function buildContentMaster(a, photos) {
     targetUser: xfTargetUser(a), mainConcern: xfConcern(a), mainSellingPoint: p.themeA,
   };
   const cs = { mainTheme: p.themeA, secondaryTheme: "", mainSellingPoint: p.themeA, audienceInsight: cv.targetUser, tone: p.tone };
-  // P0-2 三层分离：confirmedFacts（唯一事实源）/ creativeContext（抽象表达方向）/ consumerValue（抽象消费价值）
-  // 招募内容不含「实际活动数据」；回顾的 actualActivityData 由 genRecap 依用户补充资料单独构造，绝不等于原计划事实。
-  const creativeContext = {
-    tone: p.tone, kind: p.kind,
-    angles: [cs.mainTheme, cs.mainSellingPoint].filter(Boolean),
+  // P0-14 事实边界：
+  //   confirmedFacts = 唯一事实源（只来自用户资料/照片，绝不从活动类型推断出现场景观）
+  //   creativeContext = 只给表达方向；活动类型推断(inferredContentKind)是「内容方向分类」，assertsScenes=false，绝不暗示具体景观/天气/事件
+  //   consumerValue = 抽象消费价值
+  const ccRaw = {
+    tone: p.tone,
+    inferredContentKind: p.kind,   // 类型推断：仅内容方向分类，不是现场事实
+    assertsScenes: false,
+    isInference: true,
+    angles: [cs.mainTheme].filter(Boolean),
     visualMoodHint: "视觉情绪由照片画像与编辑方向决定，不得凭空指定具体景观或天气",
   };
+  const cc = sanitizeCreativeContext(ccRaw).value;
+  const cvSan = sanitizeCreativeContext({ scenicValue: cv.scenicValue, experienceValue: cv.experienceValue, participationValue: cv.participationValue }).value;
   return {
     contentType: "recruitment", confirmedFacts: f, actualActivityData: null,
-    creativeContext: creativeContext,
-    consumerValue: { scenicValue: cv.scenicValue, experienceValue: cv.experienceValue, participationValue: cv.participationValue },
+    creativeContext: cc,
+    consumerValue: { scenicValue: cvSan.scenicValue, experienceValue: cvSan.experienceValue, participationValue: cvSan.participationValue },
     targetAudience: cv.targetUser, mainTheme: cs.mainTheme, mainSellingPoint: cs.mainSellingPoint,
-    scenicValue: cv.scenicValue, experienceValue: cv.experienceValue, participationValue: cv.participationValue,
+    scenicValue: cvSan.scenicValue, experienceValue: cvSan.experienceValue, participationValue: cvSan.participationValue,
     tone: cs.tone, keyImages: autoClassifyPhotos([...(photos || []), ...(a.photos || [])].filter((x, i, arr) => x && arr.indexOf(x) === i)), cta: xfCta(a),
   };
 }
@@ -1416,7 +1452,8 @@ function xfGzhTextParas(html) {
 }
 function xfGzhHighlight(html, a) {
   const p = xfTypeProfile(a);
-  const kw = [p.themeA, (a.place || ""), (a.type || ""), "森林", "溪流", "山顶", "露营", "篝火", "星空", "徒步", "溯溪", "桨板", "漂流"].filter(Boolean);
+  // P0-14：高亮关键词只含「资料/类型确认」的字段，禁止凭类型推断注入未确认的具体景观(森林/溪流/山顶/篝火/星空…)
+  const kw = [p.themeA, (a.place || ""), (a.type || ""), "露营", "徒步", "溯溪", "桨板", "漂流"].filter(Boolean);
   let out = html;
   for (const k of kw) {
     if (!k || k.length < 2) continue;

@@ -1079,7 +1079,7 @@
       hike: { scenery: "把脚步交给风景，让路自己说话", healing: "在林子里把城市调成静音", sport: "用双腿重新丈量山野", social: "和同频的人走同一条路", default: "走一段少有人走的路" },
       mountain: { challenge: "向雪线之上，要走一遭", sport: "把体力推过临界点", default: "山就在那里，去靠近它" },
       water: { release: "把整个夏天泡进水里", sport: "让水流替你冲掉疲惫", default: "顺着水走，凉意一路相随" },
-      camp: { social: "把聚会搬到星空下", healing: "在篝火边把时钟调慢", default: "把卧室搬到山野里" },
+      camp: { social: "把聚会搬到山野的夜色里", healing: "在营地的暖光里把时钟调慢", default: "把卧室搬到山野里" },
       family: { family: "把第一次山野，留给孩子", default: "陪孩子，认识世界的第一页" },
       ride: { sport: "用车轮丈量风的形状", default: "风从耳边过，路在轮下长" },
       photo: { photo: "等一束光，等一片云", default: "把镜头对准没人去的角度" },
@@ -1669,7 +1669,7 @@
 
     if (a.type === "露营") return [
       { name: "星空停机", headline: `把闹钟关掉，去${p}听一夜风声。`, reason: "露营的核心是暂停与重置。", mood: "暂停" },
-      { name: "山野过夜", headline: `${days}，${p}的星空比城市多很多。`, reason: "用夜晚场景制造稀缺感。", mood: "夜晚" },
+      { name: "山野过夜", headline: `${days}，${p}的夜色比城市安静很多。`, reason: "用夜晚场景制造稀缺感，不虚构具体星空。", mood: "夜晚" },
       { name: "帐篷生活", headline: `在${p}扎一顶帐篷，把自己还给自然。`, reason: "强调简单生活的吸引力。", mood: "简单" },
       ...generic
     ];
