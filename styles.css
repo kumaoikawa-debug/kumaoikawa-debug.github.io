@@ -5068,9 +5068,13 @@ body{
 .dms-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; cursor: pointer; }
 .dms-chip.on { color: #fff; background: var(--brand-700, #2F5D50); border-color: var(--brand-700, #2F5D50); }
 .dms-chip svg { width: 13px; height: 13px; }
+.editorial-variant-switch { justify-content: flex-end; }
+.dms-cur { align-self: center; font-size: 11.5px; color: var(--muted); font-weight: 600; letter-spacing: .02em; padding-right: 2px; }
 
 .xh-ed { background: var(--bg); padding-bottom: 96px; }
 .xh-ed-hero { position: relative; min-height: 440px; display: flex; align-items: flex-end; background-size: cover; background-position: center; background-color: var(--line-2); }
+/* P0-12：小图带形态（缩略图版式用更矮的 Hero，把版面留给章节小图） */
+.xh-ed-hero.band { min-height: 300px; }
 .xh-ed-hero-mask { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.05) 0%, rgba(0,0,0,.30) 45%, rgba(0,0,0,.78) 100%); }
 .xh-ed-hero-empty { position: absolute; top: 16px; left: 16px; font-size: 12px; color: rgba(255,255,255,.85); background: rgba(0,0,0,.28); border-radius: 999px; padding: 4px 10px; }
 .xh-ed-hero-txt { position: relative; z-index: 2; padding: 28px 22px 24px; width: 100%; }
@@ -5105,6 +5109,10 @@ body{
 .xh-ed-figs.two .xh-ed-fig img { height: 190px; }
 .xh-ed-figs.three .xh-ed-fig:first-child img { height: 240px; }
 .xh-ed-figs.three .xh-ed-fig:not(:first-child) img { height: 150px; }
+/* P0-12：小图版式——三联缩略图，照片更小更密，配合画册/转化型密度 */
+.xh-ed-figs.thumbs { grid-template-columns: repeat(3, 1fr); }
+.xh-ed-figs.thumbs .xh-ed-fig img { height: 116px; }
+.xh-ed-figs.big .xh-ed-fig img { height: 360px; }
 .xh-ed-fig figcaption { font-size: 11.5px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
 .xh-ed-paras { font-size: 14.5px; line-height: 1.95; color: var(--ink); }
 .xh-ed-paras p { margin: 0 0 12px; }
@@ -5134,6 +5142,14 @@ body{
 .xh-ed-cta-price small { font-size: 14px; font-weight: 600; opacity: .8; }
 .xh-ed-cta .btn-primary { background: #fff; color: var(--brand-700, #2F5D50); }
 .xh-ed-cta .tiny { color: rgba(255,255,255,.7); }
+/* P0-12：转化型密度——CTA 区强调行动，加亮描边与提示条 */
+.xh-ed-cta.emphasis { box-shadow: 0 0 0 2px rgba(255,255,255,.22), 0 16px 40px rgba(0,0,0,.28); }
+.xh-ed-cta.emphasis::after { content: "限时名额 · 早报名早成团"; display: block; font-size: 11.5px; color: rgba(255,255,255,.82); margin: -8px 0 14px; letter-spacing: .04em; }
+/* P0-12：末尾图廊版式差异（拼图 / 通栏 / 大图 / 缩略图）视觉提示 */
+.xh-ed-gallery.g-mode-strip .ly-GalleryStrip { gap: 4px; }
+.xh-ed-gallery.g-mode-thumbs .ly-Mosaic, .xh-ed-gallery.g-mode-thumbs .ly-GalleryStrip { gap: 4px; }
+.xh-ed-gallery.g-mode-big .ly-FullWidth, .xh-ed-gallery.g-mode-big .xh-ed-fig img { min-height: 320px; }
+.xh-ed-gallery.g-mode-mosaic .ly-Mosaic { gap: 10px; }
 .xh-ed-gallery { margin-top: 38px; }
 .xh-ed-org { margin: 30px 0 0; padding-top: 18px; border-top: 1px solid var(--line); text-align: center; }
 .xh-ed-org-mark { font-family: var(--display); font-size: 15px; font-weight: 700; color: var(--ink); margin-bottom: 8px; }

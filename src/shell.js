@@ -200,6 +200,23 @@
         else refreshPreview();
         break;
       }
+      case "regenEditorial": {
+        // P0-12：同一活动连续生成不同「角度/结构/图片/密度」的图文详情页（相邻两版四维度均不同）
+        const cur = (state.draft && state.draft.editorialVariantId)
+          || (state.view === "detail" && state.params && state.params.id && getActivity(state.params.id) ? getActivity(state.params.id).editorialVariantId : "")
+          || "";
+        const next = pickEditorialVariant(null, cur);
+        if (state.draft) { state.draft.editorialVariantId = next.id; saveState(); }
+        if (state.view === "detail" && state.params && state.params.id) {
+          const aa = getActivity(state.params.id);
+          if (aa) { aa.editorialVariantId = next.id; saveState(); }
+        }
+        if (state.view === "detail") showView("detail", state.params);
+        else { refreshPreview(); }
+        const angLabel = (typeof EDITORIAL_ANGLES !== "undefined" && EDITORIAL_ANGLES[next.angle]) ? EDITORIAL_ANGLES[next.angle].label : next.angle;
+        toast("已换一版：" + angLabel + " · " + next.density);
+        break;
+      }
       case "doLogin": {
         const phone = $("#loginPhone").value.trim();
         if (!phone) return toast("请输入手机号");

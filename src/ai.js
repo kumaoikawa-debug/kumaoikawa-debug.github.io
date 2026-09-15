@@ -666,6 +666,7 @@
       pinned: false, pinnedAt: 0, ageManual: false,
       contentDirections: [], contentDirection: 0, contentApproved: false,
       brandTone: "",
+      editorialVariantId: "",
       useMemberPrice: false, allowPoints: false, allowCoupons: false, tierPrices: {},
     };
   }
@@ -3659,8 +3660,106 @@
   /* ===== P0-4「AI 图文活动详情页」：图文故事大纲（事实+行程+图片+补充资料 → 章节序列）=====
      与「简洁报名详情」并存的第二种输出，目标是接近公众号/活动宣传长图文，而非固定 SaaS 详情页。 */
   const EDITORIAL_KIND_LABEL = { scenic: "SCENERY", experience: "EXPERIENCE", route: "ROUTE", people: "PEOPLE", gear: "GEAR", info: "INFO" };
+
+  /* ===== P0-12 图文详情页「多样生成」=====
+     同一活动连续生成多版，必须在四个维度同时产生差异：
+       内容角度 angle：风景 / 自由 / 挑战 / 陪伴 / 社交 / 季节 / 生活方式
+       页面结构 structure：章节顺序
+       图片结构 img：Hero / 拼图 / 图廊 / 大图 / 小图 的组合方式
+       文案密度 density：画册型 / 杂志型 / 纪实型 / 转化型 */
+  const EDITORIAL_ANGLES = {
+    scenery:    { key: "scenery",    label: "看风景",   cta: "把看过变成走过" },
+    freedom:    { key: "freedom",    label: "自由",     cta: "让风景替你说话" },
+    challenge:  { key: "challenge",  label: "挑战",     cta: "用坚持换一片只有山顶才有的视野" },
+    companion:  { key: "companion",  label: "陪伴",     cta: "第一次爬山，由你陪他走完" },
+    social:     { key: "social",     label: "社交",     cta: "把聚会从会议室搬到山里" },
+    season:     { key: "season",     label: "季节",     cta: "把这一季收进脚步里" },
+    lifestyle:  { key: "lifestyle",  label: "生活方式", cta: "把日子过成户外" },
+  };
+  // 各角度下，每个章节的「角度化标题」——保证不同角度的同一活动，章节标题明显不同（不止背景色/主标题）
+  const EDITORIAL_ANGLE_HEADINGS = {
+    scenery:    { why: "为什么值得去",     experience: "你会看到的风景", route: "沿着风景走",       gain: "带走的一片风景",   fit: "谁会爱上这条路线", reasons: "这条路线值得的理由" },
+    freedom:    { why: "为什么想逃出来",   experience: "把节奏交给山野", route: "不设闹钟的一天",   gain: "找回的松弛感",     fit: "想喘口气的人",       reasons: "放下城市的理由" },
+    challenge:  { why: "为什么要挑战它",   experience: "身体会经历的",   route: "一步步往上",       gain: "突破之后得到的",   fit: "能走完的人",         reasons: "它难在哪、又值在哪" },
+    companion:  { why: "为什么带孩子来",   experience: "孩子会经历的",   route: "陪他走完全程",     gain: "一起攒下的回忆",   fit: "愿意同行的家庭",     reasons: "亲子场才有的细节" },
+    social:     { why: "为什么约朋友来",   experience: "一路上会发生什么", route: "同走一条路",     gain: "认识的人与事",     fit: "想找同频的人",       reasons: "聚在一起的理由" },
+    season:     { why: "这一季为什么去",   experience: "此刻才有的样子", route: "踩准季节的步点",   gain: "把季节收进记忆",   fit: "赶在这一季的人",     reasons: "错过等一年的理由" },
+    lifestyle:  { why: "为什么把生活搬出来", experience: "另一种过法",     route: "慢下来的路线",     gain: "带回去的生活感",   fit: "想换种活法的人",     reasons: "把日子过成户外的理由" },
+  };
+  const EDITORIAL_STRUCTURES = {
+    story:      ["why", "experience", "route", "gain", "fit", "reasons"],
+    experience: ["experience", "why", "route", "gain", "fit", "reasons"],
+    route:      ["route", "why", "experience", "gain", "fit", "reasons"],
+    value:      ["gain", "why", "experience", "route", "fit", "reasons"],
+    social:     ["fit", "why", "gain", "experience", "route", "reasons"],
+  };
+  // img：每节取图数量 + 图种（拼图 mosaic / 大图 big / 单图 solo / 小图 thumbs）+ 末尾图廊模式
+  const EDITORIAL_IMG = {
+    "hero-mosaic":   { hero: "full", secCount: 2, secKind: "mosaic",  gallery: "mosaic" },
+    "gallery-strip": { hero: "full", secCount: 1, secKind: "solo",    gallery: "strip" },
+    "big-solo":      { hero: "full", secCount: 1, secKind: "big",     gallery: "big" },
+    "small-thumbs":  { hero: "band", secCount: 3, secKind: "thumbs",  gallery: "thumbs" },
+    "mixed":         { hero: "full", secCount: 2, secKind: "mosaic",  gallery: "mixed" },
+  };
+  const EDITORIAL_DENSITY = {
+    album:       { maxPara: 1, trunc: 90,  quote: false, cta: false },
+    magazine:    { maxPara: 2, trunc: 170, quote: true,  cta: false },
+    conversion:  { maxPara: 2, trunc: 150, quote: true,  cta: true },
+    documentary: { maxPara: 99, trunc: 0,  quote: false, cta: false },
+  };
+  // 一组精选「版式预设」：每一版都好看，且彼此在四维度上明显不同（连续生成相邻两版必不同）
+  const EDITORIAL_VARIANTS = [
+    { id: "v-scenery-mag",     angle: "scenery",    structure: "story",      img: "hero-mosaic",   density: "magazine" },
+    { id: "v-challenge-doc",   angle: "challenge",  structure: "route",      img: "big-solo",      density: "documentary" },
+    { id: "v-companion-album", angle: "companion",  structure: "experience", img: "gallery-strip", density: "album" },
+    { id: "v-social-conv",     angle: "social",     structure: "social",    img: "small-thumbs",  density: "conversion" },
+    { id: "v-season-mag",      angle: "season",     structure: "story",      img: "hero-mosaic",   density: "magazine" },
+    { id: "v-freedom-doc",     angle: "freedom",    structure: "route",      img: "big-solo",      density: "documentary" },
+    { id: "v-lifestyle-conv",  angle: "lifestyle",  structure: "value",      img: "gallery-strip", density: "conversion" },
+  ];
+  function editorialVariantOf(a) {
+    a = a || {};
+    const id = a.editorialVariantId;
+    const v = (id && EDITORIAL_VARIANTS.filter(function (x) { return x.id === id; })[0]) || null;
+    return v || EDITORIAL_VARIANTS[0];
+  }
+  // 连续生成：给定上一版 id，挑下一版（相邻两版在 angle/structure/img/density 上都有差异）
+  function pickEditorialVariant(a, prevId) {
+    const list = EDITORIAL_VARIANTS;
+    let i = 0;
+    if (prevId) {
+      const idx = list.map(function (x) { return x.id; }).indexOf(prevId);
+      i = (idx >= 0 ? (idx + 1) % list.length : 0);
+    }
+    return list[i];
+  }
+  function angleLeadOf(angle, a, fb) {
+    const A = EDITORIAL_ANGLES[angle] || EDITORIAL_ANGLES.scenery;
+    const fbk = fb || {};
+    const lead = (fbk.intro || a.intro || A.cta || "").split(/\n+/).map(function (s) { return s.trim(); }).filter(Boolean)[0] || A.cta;
+    return A.label + " · " + lead;
+  }
+  // 按密度裁剪每段文案长度与段数（画册型短、杂志型中、纪实型全、转化型短而利落）
+  function editorialDensityTrim(density, paras) {
+    const d = EDITORIAL_DENSITY[density] || EDITORIAL_DENSITY.magazine;
+    let out = (paras || []).map(function (p) { return String(p || "").trim(); }).filter(Boolean);
+    if (d.maxPara < 99) out = out.slice(0, d.maxPara);
+    if (d.trunc > 0) out = out.map(function (p) { return p.length > d.trunc ? p.slice(0, d.trunc) + "…" : p; });
+    return out;
+  }
+  function editorialImgCount(imgMode, secKey) {
+    const m = EDITORIAL_IMG[imgMode] || EDITORIAL_IMG["hero-mosaic"];
+    return { count: m.secCount, kind: m.secKind };
+  }
+  function editorialGalleryMode(imgMode) {
+    const m = EDITORIAL_IMG[imgMode] || EDITORIAL_IMG["hero-mosaic"];
+    return m.gallery;
+  }
   function buildEditorialOutline(a) {
     a = a || {};
+    // P0-12：同一活动按不同「变体」生成不同角度/结构/图片/密度的图文长页
+    const variant = (arguments.length > 1 && arguments[1]) ? arguments[1] : editorialVariantOf(a);
+    const vAngle = variant.angle, vStruct = variant.structure, vImg = variant.img, vDens = variant.density;
     const dna = (typeof activityDNAOf === "function") ? activityDNAOf(a) : null;
     const fb = (typeof dnaCopyFor === "function") ? dnaCopyFor(dna || {}) : {};
     const theme = (dna && dna.mainTheme) || a.storyPurpose || a.editorialTitle || a.title || "这一程";
@@ -3669,19 +3768,23 @@
     const envLabel = (dna && dna.environmentLabel) || a.place || "山野";
     const lines = (t) => String(t || "").split(/\n+/).map((s) => s.trim()).filter(Boolean);
     const pick = (v, f) => (lines(v).length ? lines(v) : lines(f));
-    const secs = [];
-    const push = (key, kind, heading, paras) => {
-      const list = (paras || []).map((p) => String(p || "").trim()).filter(Boolean);
-      if (!list.length) return;
-      secs.push({ num: secs.length + 1, key, kind, heading: heading || theme, paras: list });
-    };
     const st = a.sectionTitles || {};
+    const heads = EDITORIAL_ANGLE_HEADINGS[vAngle] || {};
 
-    // 01 为什么值得去（风景/氛围）
-    push("why", "scenic", st.whyGo || "为什么值得去", pick(a.whyGo, fb.whyGo));
-    // 02 来了会体验什么（体验）
-    push("experience", "experience", st.experience || "来了会体验什么", pick(a.experience, fb.experience));
-    // 03 这一天会怎么过（行程）——多日：每天一节；单日：一节总览
+    // 各章节先按固定逻辑生成内容，再按 variant 做「角度化标题 / 密度裁剪 / 取图数量」
+    const byGroup = {};
+    const make = (group, key, kind, baseHeading, paras) => {
+      const list = editorialDensityTrim(vDens, paras || []);
+      if (!list.length) return;
+      const ic = editorialImgCount(vImg, key);
+      byGroup[group] = byGroup[group] || [];
+      byGroup[group].push({ group: group, key: key, kind: kind, heading: heads[key] || baseHeading || theme, paras: list, imgCount: ic.count, imgKind: ic.kind, angle: vAngle, density: vDens });
+    };
+
+    make("why", "why", "scenic", st.whyGo || "为什么值得去", pick(a.whyGo, fb.whyGo));
+    make("experience", "experience", "experience", st.experience || "来了会体验什么", pick(a.experience, fb.experience));
+
+    // 行程：多日每天一节，统一归到 route 组（保持内部顺序）
     const days = a.itineraryDays || [];
     const dayHasContent = days.some((d) => (d.items || []).some((t) => t && (t.time || t.text)));
     if (dayHasContent) {
@@ -3695,39 +3798,46 @@
         days.forEach((d, i) => {
           const items = (d.items || []).filter((t) => t && (t.time || t.text));
           if (!items.length) return;
-          push("day" + (i + 1), "route", "DAY " + (i + 1) + (d.label ? " · " + d.label : ""),
+          make("route", "route" + (i + 1), "route", "DAY " + (i + 1) + (d.label ? " · " + d.label : ""),
             [items.map((t) => (t.time ? t.time + " " : "") + t.text).join("；")]);
         });
       } else {
         const items = (days[0].items || []).filter((t) => t && (t.time || t.text));
-        push("route", "route", "这一天会怎么过", [narTxt, items.map((t) => (t.time ? t.time + " " : "") + t.text).join("；")]);
+        make("route", "route", "route", "这一天会怎么过", [narTxt, items.map((t) => (t.time ? t.time + " " : "") + t.text).join("；")]);
       }
     }
-    // 04 参加完能得到什么（收获/人）
-    push("gain", "people", st.gain || "参加完能得到什么", pick(a.gain, fb.gain));
-    // 05 适合谁
-    push("fit", "people", "适合谁", pick(a.fitFor, fb.fitFor || (a.targetAudience ? a.targetAudience + "，都能找到自己的步频。" : "")));
-    // 06 这场活动的几个理由（卖点 → 图文页的「N 个理由」节）
+
+    make("gain", "gain", "people", st.gain || "参加完能得到什么", pick(a.gain, fb.gain));
+    make("fit", "fit", "people", "适合谁", pick(a.fitFor, fb.fitFor || (a.targetAudience ? a.targetAudience + "，都能找到自己的步频。" : "")));
+
     const sp = (a.sellingPoints || []).filter((s) => s && (s.title || s.desc));
-    if (sp.length) push("reasons", "info", "这场活动的几个理由",
+    if (sp.length) make("reasons", "reasons", "info", "这场活动的几个理由",
       sp.slice(0, 6).map((s) => ((s.title ? s.title : "") + (s.title && s.desc ? "：" : "") + (s.desc || "")).trim()).filter(Boolean));
-    // 06 现场纪实（补充资料 / 正文 body）
+
     const bodyParas = (a.body || []).map((p) => String(p || "").trim()).filter(Boolean);
     if (bodyParas.length) {
       const half = bodyParas.length > 3 ? Math.ceil(bodyParas.length / 2) : bodyParas.length;
-      push("field1", "scenic", "现场纪实", bodyParas.slice(0, half));
-      if (bodyParas.length > half) push("field2", "scenic", "路上的细节", bodyParas.slice(half));
+      make("field", "field1", "scenic", "现场纪实", bodyParas.slice(0, half));
+      if (bodyParas.length > half) make("field", "field2", "scenic", "路上的细节", bodyParas.slice(half));
     }
+
     // 兜底：内容极薄时用 DNA 主题 + 标志场景 + 推荐角度撑起大纲，避免长页空壳
-    if (secs.length < 3) {
+    if (!byGroup.why && !byGroup.experience) {
       const extra = [];
       if (theme) extra.push(theme + "。");
       if (sig) extra.push(sig + "。");
       if (angles.length) extra.push(angles.slice(0, 3).join("；") + "。");
-      if (extra.length) push("theme", "scenic", a.editorialTitle || theme, extra);
-      if (envLabel) push("env", "scenic", envLabel + "的这一天",
+      make("why", "why", "scenic", heads.why || (a.editorialTitle || theme), extra);
+      if (envLabel) make("experience", "experience", "scenic", heads.experience || (envLabel + "的这一天"),
         [sig || (envLabel + "会给你一个不重复的现场。"), (dna && dna.season ? dna.season + "的" + envLabel + "，值得用脚步丈量。" : "")]);
     }
+
+    // 按 variant.structure 排序输出（route 组保持内部顺序；field 组兜底排在最后）
+    const order = EDITORIAL_STRUCTURES[vStruct] || EDITORIAL_STRUCTURES.story;
+    const secs = [];
+    let num = 0;
+    order.forEach((g) => { (byGroup[g] || []).forEach((s) => { num++; s.num = num; secs.push(s); }); });
+    Object.keys(byGroup).forEach((g) => { if (order.indexOf(g) < 0) (byGroup[g] || []).forEach((s) => { num++; s.num = num; secs.push(s); }); });
     return secs;
   }
 
@@ -3750,9 +3860,11 @@
       }
     }
     if (!out.length) {
-      for (let i = 0; i < photos.length && out.length < 2; i++) if (!usedSet.has(i)) out.push(i);
+      const want = (sec && sec.imgCount) || 2;
+      for (let i = 0; i < photos.length && out.length < Math.max(2, want); i++) if (!usedSet.has(i)) out.push(i);
     }
-    const res = out.slice(0, 3);
+    // P0-12：每节取图数量由变体 img 结构决定（1 大图 / 2 拼图 / 3 小图），绝不溢出
+    const res = out.slice(0, (sec && sec.imgCount) || 2);
     res.forEach((i) => usedSet.add(i));
     return res;
   }

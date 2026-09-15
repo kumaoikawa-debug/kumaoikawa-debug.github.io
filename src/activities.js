@@ -52,6 +52,17 @@
       + `<button type="button" class="dms-chip ${m === "editorial" ? "on" : ""}" data-action="setDetailMode" data-mode="editorial">${ICON("sparkles")} 图文长页</button>`
       + `</div>`;
   }
+  function editorialVariantSwitch(a) {
+    a = a || {};
+    const v = (typeof editorialVariantOf === "function") ? editorialVariantOf(a) : { angle: "scenery", density: "magazine", img: "hero-mosaic" };
+    const ang = (typeof EDITORIAL_ANGLES !== "undefined" && EDITORIAL_ANGLES[v.angle]) ? EDITORIAL_ANGLES[v.angle].label : v.angle;
+    const densLabel = { magazine: "杂志型", album: "画册型", documentary: "纪实型", conversion: "转化型" }[v.density] || v.density;
+    const imgLabel = (typeof EDITORIAL_IMG !== "undefined" && EDITORIAL_IMG[v.img] && EDITORIAL_IMG[v.img].hero === "band") ? "小图带" : "大图Hero";
+    return `<div class="detail-mode-switch editorial-variant-switch">`
+      + `<button type="button" class="dms-chip" data-action="regenEditorial" title="换一版不同角度/结构/图片/密度的详情页">${ICON("refresh")} 换一版</button>`
+      + `<span class="dms-cur">${esc(ang)} · ${esc(densLabel)} · ${esc(imgLabel)}</span>`
+      + `</div>`;
+  }
   function xhFig(a, i, cap) {
     const src = (a.photos || [])[i];
     if (!src) return "";
@@ -62,6 +73,8 @@
     if (!a) return "";
     if (typeof setPagePhotoIntel === "function") setPagePhotoIntel(a);
     const dna = (typeof activityDNAOf === "function") ? activityDNAOf(a) : null;
+    // P0-12：读取当前详情页变体（角度/结构/图片/密度），驱动整页多样生成
+    const variant = (typeof editorialVariantOf === "function") ? editorialVariantOf(a) : { angle: "scenery", structure: "story", img: "hero-mosaic", density: "magazine" };
     const ac = styleAccent(a);
     const photos = a.photos || [];
     const coverIdx = Math.max(0, Math.min(+(a.coverIndex || 0), Math.max(0, photos.length - 1)));
@@ -70,7 +83,7 @@
     const eyebrow = [a.type, a.place, (dna && dna.season)].filter(Boolean).join(" · ");
     const theme = (dna && dna.mainTheme) || a.storyPurpose || a.editorialTitle || a.title || "";
     const sub = a.posterTagline || a.hook || "";
-    const outline = (typeof buildEditorialOutline === "function") ? buildEditorialOutline(a) : [];
+    const outline = (typeof buildEditorialOutline === "function") ? buildEditorialOutline(a, variant) : [];
     const caps = a.photoCaptions || [];
     const usedSet = new Set([coverIdx]);
     let capIdx = 1;
@@ -93,18 +106,22 @@
     const leadParas = String(a.intro || "").split(/\n+/).map((s) => s.trim()).filter(Boolean);
     const leadHtml = leadParas.length ? `<div class="xh-ed-lead">${leadParas.map((p) => `<p>${esc(p)}</p>`).join("")}</div>` : "";
 
-    // 图文故事：每节 = 编号 + 标题 + 图片匹配/组合 + 每段文案
+    // 图文故事：每节 = 编号 + 标题 + 图片匹配/组合 + 每段文案（取图数量/图种由变体 img 结构决定）
     const secHtml = outline.map((sec) => {
       const idxs = (typeof editorialPhotosFor === "function") ? editorialPhotosFor(a, sec, usedSet) : [];
+      const fcls = idxs.length === 1 ? "one" : (idxs.length === 2 ? "two" : (idxs.length >= 3 ? "three" : ""));
+      const kindCls = sec.imgKind ? " figs-" + sec.imgKind : "";
       let figs = "";
-      if (idxs.length === 1) figs = `<div class="xh-ed-figs one">${xhFig(a, idxs[0], nextCap())}</div>`;
-      else if (idxs.length === 2) figs = `<div class="xh-ed-figs two">${idxs.map((i) => xhFig(a, i, nextCap())).join("")}</div>`;
-      else if (idxs.length >= 3) figs = `<div class="xh-ed-figs three">${idxs.slice(0, 3).map((i) => xhFig(a, i, nextCap())).join("")}</div>`;
+      if (idxs.length === 1) figs = `<div class="xh-ed-figs one${kindCls}">${xhFig(a, idxs[0], nextCap())}</div>`;
+      else if (idxs.length === 2) figs = `<div class="xh-ed-figs two${kindCls}">${idxs.map((i) => xhFig(a, i, nextCap())).join("")}</div>`;
+      else if (idxs.length >= 3) figs = `<div class="xh-ed-figs three${kindCls}">${idxs.slice(0, 3).map((i) => xhFig(a, i, nextCap())).join("")}</div>`;
       const kindLabel = (typeof EDITORIAL_KIND_LABEL !== "undefined" && EDITORIAL_KIND_LABEL[sec.kind]) || "STORY";
-      return `<section class="xh-ed-sec" data-sec="${esc(sec.key)}"><div class="xh-ed-num">${String(sec.num).padStart(2, "0")} / ${kindLabel}</div><h2 class="xh-ed-h">${esc(sec.heading)}</h2>${figs}<div class="xh-ed-paras">${sec.paras.map((p) => `<p>${esc(p)}</p>`).join("")}</div></section>`;
+      return `<section class="xh-ed-sec" data-sec="${esc(sec.key)}" data-angle="${esc(sec.angle || variant.angle)}"><div class="xh-ed-num">${String(sec.num).padStart(2, "0")} / ${kindLabel}</div><h2 class="xh-ed-h">${esc(sec.heading)}</h2>${figs}<div class="xh-ed-paras">${sec.paras.map((p) => `<p>${esc(p)}</p>`).join("")}</div></section>`;
     }).join("\n");
 
-    const quoteHtml = a.pullQuote ? `<section class="xh-ed-quote"><div class="xh-ed-quote-mark">${ICON("quote")}</div><p>${esc(a.pullQuote)}</p></section>` : "";
+    // P0-12：金句是否出现由「文案密度」决定（画册/纪实克制，杂志/转化强调）
+    const dens = (typeof EDITORIAL_DENSITY !== "undefined" && EDITORIAL_DENSITY[variant.density]) || null;
+    const quoteHtml = (dens && dens.quote && a.pullQuote) ? `<section class="xh-ed-quote"><div class="xh-ed-quote-mark">${ICON("quote")}</div><p>${esc(a.pullQuote)}</p></section>` : "";
 
     // 决策信息
     const metaRows = [
@@ -160,7 +177,10 @@
 
     const decisionHtml = `<section class="xh-ed-decision" id="xhDecision"><div class="xh-ed-decision-h"><span class="xh-ed-decision-kicker">DECISION</span><h2>报名信息</h2></div>${metaHtml}${(typeof departuresBlockHtml === "function") ? departuresBlockHtml(a) : ""}${itinHtml}${feeHtml}${gearHtml}${suitHtml}${notesHtml}${extraHtml}</section>`;
 
-    const ctaHtml = `<section class="xh-ed-cta"><div class="xh-ed-cta-theme">${esc(theme)}</div><div class="xh-ed-cta-price">${priceTxt}</div><button class="btn btn-primary btn-block" data-action="openSignup" data-id="${a.id}">${ICON("check")} 立即报名</button><div class="tiny muted">${a.days > 1 ? a.days + " 天行程" : "单日行程"} · ${a.limit ? "限 " + a.limit + esc(a.limitUnit) : "名额不限"}</div></section>`;
+    // P0-12：CTA 主题文案由「内容角度」驱动；转化型密度额外强调行动
+    const ctaTheme = (typeof EDITORIAL_ANGLES !== "undefined" && EDITORIAL_ANGLES[variant.angle]) ? EDITORIAL_ANGLES[variant.angle].cta : theme;
+    const ctaEmphasis = (dens && dens.cta) ? " emphasis" : "";
+    const ctaHtml = `<section class="xh-ed-cta${ctaEmphasis}"><div class="xh-ed-cta-theme">${esc(ctaTheme)}</div><div class="xh-ed-cta-price">${priceTxt}</div><button class="btn btn-primary btn-block" data-action="openSignup" data-id="${a.id}">${ICON("check")} 立即报名</button><div class="tiny muted">${a.days > 1 ? a.days + " 天行程" : "单日行程"} · ${a.limit ? "限 " + a.limit + esc(a.limitUnit) : "名额不限"}</div></section>`;
 
     // P0-10 Photo Layout Intelligence：按素材数量 + 横竖比例自动选版式（同一套模板不硬塞所有组合）
     // 取「筛选后待展示图」中未被封面/章节占用的部分，按数量分级 + 横竖主导自动排成 6 种版式
@@ -171,17 +191,23 @@
       if (gPhotos.length) {
         const plan = (typeof piAdaptiveLayout === "function") ? piAdaptiveLayout(gPhotos, (a.photos || []).length) : null;
         const lay = (plan && typeof piLayoutHtml === "function") ? piLayoutHtml(plan) : "";
-        if (lay) galleryHtml = `<section class="xh-ed-sec xh-ed-gallery" data-sec="gallery"><div class="xh-ed-num">${String(outline.length + 1).padStart(2, "0")} / GALLERY</div><h2 class="xh-ed-h">现场影像</h2>${lay}</section>`;
+        // P0-12：末尾图廊版式由变体 img 结构决定（拼图 / 通栏 / 大图 / 缩略图），肉眼可见不同
+        const gMode = (typeof editorialGalleryMode === "function") ? editorialGalleryMode(variant.img) : "mosaic";
+        if (lay) galleryHtml = `<section class="xh-ed-sec xh-ed-gallery g-mode-${esc(gMode)}" data-sec="gallery"><div class="xh-ed-num">${String(outline.length + 1).padStart(2, "0")} / GALLERY</div><h2 class="xh-ed-h">现场影像</h2>${lay}</section>`;
       }
     }
     // 机构页脚（长图文末尾落款）
     const orgHtml = (typeof state !== "undefined" && state && state.brand) ? `<section class="xh-ed-org"><div class="xh-ed-org-mark">${esc(state.brand.name || "")}</div>${state.brand.intro ? `<p>${esc(state.brand.intro)}</p>` : ""}<div class="xh-ed-org-meta">客服微信：${esc(state.brand.wechat || "-")} · ${esc(state.brand.phone || "-")}</div></section>` : "";
 
+    // P0-12：Hero 形态（整幅 / 带幅）由变体 img 结构决定
+    const imgCfg = (typeof EDITORIAL_IMG !== "undefined" && EDITORIAL_IMG[variant.img]) || { hero: "full" };
+    const heroCls = imgCfg.hero === "band" ? " band" : "";
     return `
       <div class="activity-page xh-ed">
       <div class="ps-topbar">${psLogo()}</div>
       ${detailModeSwitch()}
-      <header class="xh-ed-hero" ${coverSrc ? `style="background-image:url('${coverSrc}')"` : `style="background:${ac.grad}"`}>
+      ${editorialVariantSwitch(a)}
+      <header class="xh-ed-hero${heroCls}" ${coverSrc ? `style="background-image:url('${coverSrc}')"` : `style="background:${ac.grad}"`}>
         <div class="xh-ed-hero-mask"></div>
         ${!coverSrc ? `<div class="xh-ed-hero-empty">${isAdminMode() ? "待上传主视觉" : "活动图片待机构补充"}</div>` : ""}
         <div class="xh-ed-hero-txt">
