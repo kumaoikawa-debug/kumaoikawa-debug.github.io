@@ -409,6 +409,47 @@ function xfWeightedPick(keys, weight, seed) {
   }
   return keys[keys.length - 1];
 }
+/* ---------- P2-3：最近风格去重（家族 / 变体 / 配色 / 构图 多维避让） ----------
+   目标：连续多次生成时，最近几版的「家族 + 变体 + 配色 + 构图」不要过于相似。
+   实现：
+     ① xfPickFamily：最近 1-3 次用过的家族按衰减权重降权（最近一次降最狠）；
+     ② xfPickVariant：避开最近几次用过的「变体序号」（跨家族，因 variant 0/1/2 = 版式结构）；
+     ③ xfHeuristicDirection：避开最近用过的配色 / 构图。
+   _styleHistory 每条记录完整视觉签名 {family, variant, color, composition, whitespace}，
+   由 xfStyleSig() 在每次生成 / 换风格 / 换版式 / 快捷预设后统一写出。 */
+const XF_COLOR_PALETTE = ["墨绿", "暖米", "夜空蓝", "山系橙", "松石"];
+const XF_COMPOSITION_PALETTE = ["左右交替", "卡片流", "数据条+区块", "大图主导", "手账步骤", "网格画廊"];
+function xfStyleSig(xf) {
+  const dir = (xf && xf.strategy && xf.strategy.editorialDirection) || {};
+  const vis = dir.visual || {};
+  return {
+    family: xf.family,
+    variant: xf.variant,
+    color: vis.color || "",
+    composition: vis.composition || "",
+    whitespace: (dir.whitespace || "") + "",
+  };
+}
+function xfRecentHistory(n) {
+  const hist = (state.xf && state.xf._styleHistory) || [];
+  return hist.slice(-(n || 3));
+}
+/* 最近 2 次用过的配色 → 选一个近期没出现过的备选色（仅启发式路径生效，AI 路径由模型自定） */
+function xfAvoidRecentColor(defaultColor, fam) {
+  const recent = xfRecentHistory(2).map((h) => h.color).filter(Boolean);
+  if (recent.indexOf(defaultColor) < 0) return defaultColor;
+  const alt = XF_COLOR_PALETTE.filter((c) => c !== defaultColor && recent.indexOf(c) < 0);
+  if (alt.length) return alt[Math.floor(xfStyleSeed() * alt.length) % alt.length];
+  return defaultColor;
+}
+/* 最近 2 次用过的构图 → 选一个近期没出现过的备选构图 */
+function xfAvoidRecentComposition(defaultComp) {
+  const recent = xfRecentHistory(2).map((h) => h.composition).filter(Boolean);
+  if (recent.indexOf(defaultComp) < 0) return defaultComp;
+  const alt = XF_COMPOSITION_PALETTE.filter((c) => c !== defaultComp && recent.indexOf(c) < 0);
+  if (alt.length) return alt[Math.floor(xfStyleSeed() * alt.length) % alt.length];
+  return defaultComp;
+}
 function xfPickFamily(a, photos, scenario) {
   const allowed = Object.keys(XF_FAMILIES).filter((f) => XF_FAMILIES[f].scenario.includes(scenario));
   const t = (a.type || "") + (a.title || "");
@@ -461,7 +502,7 @@ function xfPickFamily(a, photos, scenario) {
       if (dna.coreMotivation === "challenge") weight.brand_journal += 1;
     }
   }
-  // P2-5 风格去重：最近几次生成用过的家族降权，避免连续几版过于相似（最近一次降得最狠）
+  // P2-3 风格去重：最近几次生成用过的家族降权，避免连续几版过于相似（最近一次降得最狠）
   const histAll = (state.xf && state.xf._styleHistory) || [];
   const recentFams = histAll.slice(-3).map((h) => h.family).reverse();
   const decay = [0.38, 0.6, 0.82];
@@ -472,8 +513,25 @@ function xfPickVariant(family, scenario, seed) {
   const n = (XF_FAMILIES[family].variants || [""]).length;
   if (n <= 1) return 0;
   const hist = (state.xf && state.xf._styleHistory) || [];
-  const last = hist.filter((h) => h.family === family).slice(-1)[0];
   let v = Math.floor(xfRand(seed * 7.13 + 11) * n) % n;
+  // P2-3：避开最近几次用过的「变体序号」（跨家族）。variant 0/1/2 对应版式结构（原生/舒展/紧致），
+  // 即便换了家族，连续两版用同一种版式结构也会显得太像，因此整体避让。
+  const recent = hist.slice(-3).map((h) => h.variant);
+  if (recent.indexOf(v) >= 0) {
+    let cand = [];
+    for (let i = 0; i < n; i++) if (recent.indexOf(i) < 0) cand.push(i);
+    if (!cand.length) {
+      // 所有 variant 近期都用过了：选「最久未用」的那一个（绝不重复紧邻的上一次）
+      const lastSeen = {};
+      hist.forEach((h, idx) => { lastSeen[h.variant] = idx; });
+      let best = -1, bestPos = Infinity;
+      for (let i = 0; i < n; i++) { const pos = (lastSeen[i] != null) ? lastSeen[i] : -1; if (pos < bestPos) { bestPos = pos; best = i; } }
+      if (best >= 0) cand = [best];
+    }
+    if (cand.length) v = cand[Math.floor(xfRand(seed * 3.7 + 5) * cand.length) % cand.length];
+  }
+  // 同家族上一次用过的 variant 仍避让
+  const last = hist.filter((h) => h.family === family).slice(-1)[0];
   if (last && last.variant === v) v = (v + 1) % n;
   return v;
 }
@@ -515,7 +573,7 @@ function xfHeuristicDirection(a, p, family, scenario, photoProfile) {
     textDensity: "medium",
     whitespace: (family === "brand_journal" || family === "photo_documentary") ? "generous" : (family === "route_editorial" ? "medium" : "generous"),
     imageRatio: scenario === "recap" ? 0.68 : 0.55,
-    visual: { mood: photoProfile.mood, emotion: photoProfile.emotion, scene: photoProfile.dominantScene || (photoProfile.sceneTypes || []).join(""), color: colorMap[family], composition: compMap[family], coverHint: photoProfile.cover ? "用已上传封面" : "建议补充 1 张大图", typographic: family === "route_editorial" ? "衬线大标题" : "无衬线粗体" },
+    visual: { mood: photoProfile.mood, emotion: photoProfile.emotion, scene: photoProfile.dominantScene || (photoProfile.sceneTypes || []).join(""), color: xfAvoidRecentColor(colorMap[family], family), composition: xfAvoidRecentComposition(compMap[family]), coverHint: photoProfile.cover ? "用已上传封面" : "建议补充 1 张大图", typographic: family === "route_editorial" ? "衬线大标题" : "无衬线粗体" },
     copyDirectives: { avoid: ["硬销", "名额仅剩", "最后机会"], must: ["地点真实感", "基于已确认事实"] },
   };
 }
@@ -1354,6 +1412,8 @@ function xfStyleBar(xf) {
   // 但「缺少事实依据」是合规警告（P2-2），必须默认可见 —— 折进折叠块里等于没提示。
   const warnText = q.fictionRisk ? ("⚠️ " + (q.note || "发现可能缺少事实依据的描述，请确认。"))
     : ((q.unsupported && q.unsupported.length) ? ("⚠️ 以下说法缺少事实依据，建议修改或删除：" + q.unsupported.join("、")) : "");
+  // P2-2：图片不足时给出降级提示（信息级，区别于橙色的合规警告）
+  const dgNote = xfPhotoDowngrade(xf).hint;
   const cScore = (q.content && typeof q.content.score === "number") ? q.content.score : null;
   const eScore = (q.editorial && typeof q.editorial.score === "number") ? q.editorial.score : null;
   // P1-1 简化结果页：普通老板默认只看到「当前风格 / 换一种版式 / 换一种风格 / 快捷(4)」。
@@ -1366,6 +1426,7 @@ function xfStyleBar(xf) {
       <button class="btn btn-ghost btn-sm" data-action="xfSwitchStyle">${ICON("sparkles")} 换一种风格</button>
     </div>
     ${warnText ? `<div class="xf-stylebar-row xf-warn">${esc(warnText)}</div>` : ""}
+    ${dgNote ? `<div class="xf-stylebar-row xf-down">${esc(dgNote)}</div>` : ""}
     <div class="xf-stylebar-row xf-quick"><span class="xf-stylebar-lbl">快捷</span>
       <button class="xf-chip xf-chip-soft" data-action="xfQuickStyle" data-k="magazine">更杂志</button>
       <button class="xf-chip xf-chip-soft" data-action="xfQuickStyle" data-k="visual">更视觉</button>
@@ -1428,7 +1489,7 @@ function xfQuickStyle(kind) {
   if (cfg.composition) dir.visual.composition = cfg.composition;
   if (cfg.whitespace) dir.whitespace = cfg.whitespace;
   if (cfg.imagePriority) dir.imagePriority = cfg.imagePriority;
-  xf._styleHistory.push({ family: xf.family, variant: xf.variant });
+  xf._styleHistory.push(xfStyleSig(xf));
   toast("已应用风格");
   showView(state.view);
 }
@@ -1635,9 +1696,12 @@ function xfGzhCover(xf) {
   }
   return cover || {};
 }
-function xfPhotoSet(xf, prefer, count) {
+function xfPhotoSet(xf, prefer, count, exclude) {
   const list = [];
   const used = new Set();
+  // P2-2：排除项（通常是封面 hero 图）——避免封面图在正文段落再次重复出现。
+  // 少图时同一张图重复出现，根因正是封面被纳入正文图池；这里从源头把它挡在 section 之外。
+  if (exclude) { (Array.isArray(exclude) ? exclude : [exclude]).forEach((s) => { if (s) used.add(s); }); }
   // P0-7/P0-8：若有图片智能结果，先用「自动筛图 + 角色」排序后的池子（Hero 优先，弃用图不参与）
   const intel = (xf.strategy && xf.strategy.photoIntel) || null;
   let imgs = (xf.master && xf.master.keyImages) || [];
@@ -1667,6 +1731,17 @@ function xfPhotoSet(xf, prefer, count) {
     }
   }
   return list;
+}
+
+/* ---------- P2-2：图片不足自动降级 ----------
+   根据「实际可用图数」给出降级档位与文案 + 正文配图数量上限，
+   避免少图时同一张图被反复塞进多个段落（封面已被 xfPhotoSet 的 exclude 挡在正文外，
+   其余图也按上限克制取用，超出的段落自然退为纯文字 + 留白）。 */
+function xfPhotoDowngrade(xf) {
+  const n = (typeof xfActivePhotos === "function") ? xfActivePhotos(xf).length : (xf.photos || []).length;
+  if (n <= 3) return { tier: "few", few: true, hint: "图片较少，已自动采用克制留白版式，部分段落以纯文字呈现。", reqCount: 3 };
+  if (n < 9) return { tier: "mild", few: false, hint: "图片偏少，已精简配图、保留留白。", reqCount: 6 };
+  return { tier: "full", few: false, hint: "", reqCount: 8 };
 }
 function xfGzhTextParas(html) {
   return (html || "").split(/\n+/).map((p) => p.trim()).filter(Boolean);
@@ -1718,8 +1793,12 @@ function xfGzhDiaryHtml(gzh, xf, isRecap) {
   const eyebrow = xfEyebrow(a, m);
   const pill = xfBrandPill(a);
   const sectionCount = (gzh.sections || []).length || 4;
+  // P2-2：封面图排除出正文图池，避免重复；降级档位决定正文最多取几张（少图时克制留白）
+  const dg = xfPhotoDowngrade(xf);
+  const coverSrc = cover.src || "";
+  const reqCount = dg.few ? dg.reqCount : (dg.tier === "mild" ? dg.reqCount : Math.max(sectionCount, dg.reqCount));
   // quote 不配图，多取一些保证其它区块有图；照片按顺序喂给各 section
-  const secPhotos = xfPhotoSet(xf, ["scenic", "people", "action", "detail", "cover", "team"], Math.max(sectionCount, 6));
+  const secPhotos = xfPhotoSet(xf, ["scenic", "people", "action", "detail", "cover", "team"], reqCount, coverSrc);
   const hasPhotos = secPhotos.length > 0 || !!cover.src;
   const parasFnDiary = (html) => xfGzhTextParas(html).map((p) => `<p>${xfGzhHighlight(p, a)}</p>`).join("");
   const vSec = (xf.variant >= 1) ? xfSectionsMarkup(xf.variant, gzh.sections, secPhotos, parasFnDiary) : null;
@@ -1785,8 +1864,12 @@ function xfGzhClassicHtml(gzh, xf, layout, isRecap) {
   const f = m.confirmedFacts || {};
   const cover = xfGzhCover(xf);
   const eyebrow = xfEyebrow(a, m);
-  const photos = xfPhotoSet(xf, ["scenic", "people", "action", "cover", "detail"], 8);
-  const secPhotos = xfPhotoSet(xf, ["scenic", "people", "action", "detail"], 8);
+  const coverSrc = cover.src || "";
+  const dgC = xfPhotoDowngrade(xf);
+  const reqC = dgC.few ? dgC.reqCount : (dgC.tier === "mild" ? dgC.reqCount : 8);
+  // P2-2：封面图排除出正文/图廊图池，避免封面在正文段落与图廊里再次重复
+  const photos = xfPhotoSet(xf, ["scenic", "people", "action", "cover", "detail"], reqC, coverSrc);
+  const secPhotos = xfPhotoSet(xf, ["scenic", "people", "action", "detail"], reqC, coverSrc);
   const hasPhotos = photos.length > 0 || !!cover.src;
   const parasFn = (html) => xfGzhTextParas(html).map((p) => `<p>${xfGzhHighlight(p, a)}</p>`).join("");
   const vSec = (xf.variant >= 1) ? xfSectionsMarkup(xf.variant, gzh.sections, secPhotos, parasFn) : null;

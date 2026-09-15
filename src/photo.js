@@ -831,12 +831,14 @@ function buildPhotoIntelligence(photos, a, sections, scenario) {
   };
 }
 
-/* ---------- P2-3：真实视觉模型接口预留 ----------
+/* ---------- P2-4：真实视觉模型接口（标准化写回入口） ----------
    本项目当前的 scene / subject / people / action / emotion 为规则启发式推断（simulated=true）。
-   接入真实视觉模型时，只需把模型结果写回缓存，无需改动任何版式/渲染代码：
-     piApplyVision(src, { orientation, quality_score, category, emotion, subjects,
-                          people_count, action, safe_text_area, focal_point, recommended_use })
-   —— piAnalyze() 会自动采用（并把该图的 simulated 置为 false）。 */
+   接入真实视觉模型时，无需改动任何版式/渲染代码，只需走统一契约写回缓存：
+     ① 模型返回「归一化 JSON」（字段见 vision.js 的 VISION_NORMALIZED_SCHEMA / VISION_FIELD_WHITELIST）；
+     ② vision.js 的 visionToPhotoMeta() 把它映射成 photoMeta 形态（metaToSignals 读取的字段名）；
+     ③ piApplyVisionNormalized(src, norm) 写回 PHOTO_FOCUS_CACHE（simulated 强制 false）。
+   之后 piAnalyze() 经 photoMeta 读到真实字段，piSelect / piAssignRoles / piAdaptiveLayout 全部自动采用。
+   旧的直接写回 piApplyVision(src, meta) 仍可用（meta 已是 photoMeta 形态）。 */
 function piVisionEnabled() { return (typeof window !== "undefined" && !!window.CLUBOS_VISION_API); }
 function piApplyVision(src, data) {
   if (!src || !data || typeof PHOTO_FOCUS_CACHE === "undefined") return false;

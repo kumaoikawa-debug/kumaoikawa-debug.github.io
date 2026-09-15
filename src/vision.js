@@ -113,6 +113,71 @@ function visionNormalize(raw) {
   return Object.keys(out).length > 1 ? out : null;
 }
 
+/* ---------- P2-4：标准化视觉模型接口（Mock / 真实 共用同一归一化契约） ----------
+   契约（VISION_NORMALIZED_SCHEMA）：模型只需返回这组字段（见 VISION_FIELD_WHITELIST），
+   与后端 / 浏览器直连 / 未来任意供应商无关。本层负责把它映射成 photo.js 内部的
+   photoMeta 形态（metaToSignals 读取的字段名），使 piAnalyzeOne → piSelect → piAssignRoles
+   → piAdaptiveLayout 等全部下游「零改动」即可消费真实视觉结果。
+   写回入口统一为 piApplyVision(src, meta)（meta.simulated 强制置 false）。
+   切换路径：
+     ① Demo（无模型）：photoMeta 返回 null → piAnalyzeOne 走像素启发式（simulated=true），UI 标「模拟分析」；
+     ② 真实模型：visionAnalyzeBatch → piApplyVisionNormalized 写回 PHOTO_FOCUS_CACHE
+       → 下次 piAnalyze 经 photoMeta 读到 simulated=false，自动采用真实字段。 */
+const VISION_NORMALIZED_SCHEMA = {
+  orientation: "landscape|portrait|square",
+  quality_score: "0-1 数字",
+  scene: "scenic|sky|people|action|water|camp|meal|gear|detail|route",
+  subject: "人物|环境|天空|细节",
+  people_count: "整数，0 表示无人",
+  action: "动态|静止",
+  emotion: "明快|沉静|治愈|活力",
+  safe_text_area: "top-left|top-right|bottom-left|bottom-right",
+  focal_point: "{x:0-1, y:0-1}",
+  crop_risk: "low|medium|high",
+  recommended_use: "['hero','story','gallery','detail','full'] 子集",
+};
+/* 归一化视觉 JSON → photoMeta 形态（metaToSignals 读取的字段名）。
+   关键：把模型的 scene 映射成内部布尔信号（isWater/isNight/isHike/...），
+   使 piTagPhoto / piPrimaryScene 能正确归类，避免真实模型结果在标签层被丢弃。 */
+function visionToPhotoMeta(norm) {
+  if (!norm || typeof norm !== "object") return null;
+  const n = norm;
+  const scene = n.scene || "";
+  const peopleCount = (n.people_count != null) ? (parseInt(n.people_count, 10) || 0) : 0;
+  const skinRatio = peopleCount > 0 ? Math.min(0.42, 0.05 * peopleCount + 0.04) : 0;
+  const sig = {
+    simulated: false,
+    orientation: n.orientation || "landscape",
+    quality_score: (n.quality_score != null) ? Number(n.quality_score) : undefined,
+    people_count: peopleCount,
+    skinRatio: skinRatio,
+    emotion: n.emotion || "真实",
+    action: n.action || "",
+    actionFlag: n.action === "动态",
+    safe_text_area: n.safe_text_area || "top-right",
+    recommended_use: n.recommended_use || ["story"],
+    focal_point: n.focal_point || { x: 0.5, y: 0.45 },
+    crop_risk: n.crop_risk || null,
+    category: (scene && PI_SCENE_LABEL[scene]) ? PI_SCENE_LABEL[scene] : "内容识别",
+    sceneLabel: (scene && PI_SCENE_LABEL[scene]) ? PI_SCENE_LABEL[scene] : "",
+  };
+  // scene → 内部布尔信号（与 metaToSignals 推导保持一致）
+  if (scene === "water") sig.isWater = true;
+  if (scene === "night" || scene === "sky") sig.isNight = true;
+  if (scene === "hike" || scene === "route") sig.isHike = true;
+  if (scene === "route") sig.isRoute = true;
+  if (scene === "gear") sig.isGear = true;
+  if (scene === "action") sig.actionFlag = true;
+  if (scene === "detail") sig.isDetail = true;
+  return sig;
+}
+/* 写回入口（标准化）：把真实模型归一化结果映射成 photoMeta 后写回缓存 */
+function piApplyVisionNormalized(src, norm) {
+  const meta = visionToPhotoMeta(norm);
+  if (!meta) return false;
+  return (typeof piApplyVision === "function") ? piApplyVision(src, meta) : false;
+}
+
 function visionParseJson(text) {
   if (!text) return null;
   let s = String(text).trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
@@ -247,7 +312,7 @@ async function visionAnalyzeBatch(photos, opts) {
       const i = cursor++;
       const src = targets[i];
       const data = await visionAnalyzeOne(src);
-      if (data && typeof piApplyVision === "function" && piApplyVision(src, data)) { result.analyzed++; result.results[src] = data; }
+      if (data && piApplyVisionNormalized(src, data)) { result.analyzed++; result.results[src] = data; }
       else result.failed++;
       done++;
       if (opts.onProgress) opts.onProgress(done, targets.length);

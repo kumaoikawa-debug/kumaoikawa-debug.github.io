@@ -1460,7 +1460,7 @@
         xf.variant = ((xf.variant || 0) + 1) % vs.length;
         if (xf.strategy && xf.strategy.editorialDirection) xf.strategy.editorialDirection.variant = xf.variant;
         xf._styleHistory = xf._styleHistory || [];
-        xf._styleHistory.push({ family: xf.family, variant: xf.variant });
+        xf._styleHistory.push((typeof xfStyleSig === "function") ? xfStyleSig(xf) : { family: xf.family, variant: xf.variant });
         toast("已换一种版式");
         showView(state.view);
         break;
@@ -1485,7 +1485,7 @@
           else xf.recap = await genRecap(a, xf.master, xf.strategy, swPhotos, xf.recapNotes);
           xf.family = xf.strategy.editorialDirection.family;
           xf.variant = xf.strategy.editorialDirection.variant;
-          xf._styleHistory.push({ family: xf.family, variant: xf.variant });
+          xf._styleHistory.push((typeof xfStyleSig === "function") ? xfStyleSig(xf) : { family: xf.family, variant: xf.variant });
           xf.genState = "idle"; xf.platTab = "gzh";
           toast("已换风格重生成");
         } catch (e) { xf.genState = "idle"; toast("换风格失败：" + (e && e.message ? e.message : e)); }
@@ -1517,7 +1517,7 @@
           xf.family = xf.strategy.editorialDirection.family;
           xf.variant = xf.strategy.editorialDirection.variant;
           xf.styleSeed = xf.strategy.editorialDirection.styleSeed;
-          xf._styleHistory.push({ family: xf.family, variant: xf.variant });
+          xf._styleHistory.push((typeof xfStyleSig === "function") ? xfStyleSig(xf) : { family: xf.family, variant: xf.variant });
           xf.step = "result"; xf.genState = "idle"; xf.platTab = "gzh";
           toast("已生成宣传内容");
         } catch (e) { xf.genState = "idle"; toast("生成失败：" + (e && e.message ? e.message : e)); }
@@ -1565,7 +1565,7 @@
           xf.family = xf.strategy.editorialDirection.family;
           xf.variant = xf.strategy.editorialDirection.variant;
           xf.styleSeed = xf.strategy.editorialDirection.styleSeed;
-          xf._styleHistory.push({ family: xf.family, variant: xf.variant });
+          xf._styleHistory.push((typeof xfStyleSig === "function") ? xfStyleSig(xf) : { family: xf.family, variant: xf.variant });
           xf.step = "result"; xf.genState = "idle"; xf.platTab = "gzh";
           toast("已生成活动回顾");
         } catch (e) { xf.genState = "idle"; toast("生成失败：" + (e && e.message ? e.message : e)); }
