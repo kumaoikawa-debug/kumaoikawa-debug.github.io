@@ -1278,20 +1278,27 @@
     a = a || {};
     const dna = activityDNAOf(a);
     const pick = (r) => timeline.filter((t) => t.contentRole === r);
-    const open = pick("opening")[0] || timeline[0];
-    const core = pick("core");
-    const meal = pick("meal");
-    const close = pick("closing")[0] || timeline[timeline.length - 1];
     const place = a.place || "";
+    // 体验基调：由 DNA 动机驱动，但绝不新增事件、不臆造天气/感受
     const mood = ({ scenery: "把节奏放慢，看清一路的季节", sport: "让身体舒展开来", family: "陪孩子一起走进自然", challenge: "一步一步把这段路走完", healing: "暂时放下待办，只专注脚下", social: "和同频的人边走边聊", photo: "等光、构图，把此刻装进相册", release: "彻底松开身心的那口气" })[dna.coreMotivation] || "走进户外，换一种节奏";
     const paras = [];
-    if (open && open.fact) paras.push(`${open.time ? open.time + "，" : ""}${open.fact}。这一程从这里开始，${mood}。`);
-    if (core.length) {
-      const spine = core.map((c) => c.fact).filter(Boolean).slice(0, 3).join("；");
-      paras.push(`${spine}${place ? "（" + place + "）" : ""}，是整段行程最值得沉浸的部分。${a.distance ? "全程约 " + a.distance + " 公里，" : ""}按自己的节奏走就好。`);
+    // 1) 开场：保留真实时间锚点 + 体验基调
+    const start = pick("opening")[0] || pick("arrival")[0] || timeline[0];
+    if (start && start.fact) paras.push(`${start.time ? start.time + "，" : ""}${start.fact}。这一程从这里开始，${mood}。`);
+    // 2) 途中：热身 / 到达 / 核心 / 休息·拍照 全部串成一段可读体验，逐条保留真实时间
+    const mid = [].concat(pick("arrival"), pick("warmup"), pick("core"), pick("rest"));
+    if (mid.length) {
+      const spine = mid.filter((t) => t.fact).map((t) => (t.time ? t.time + " " : "") + t.fact).join("；");
+      const tail = place ? `（${place}）` : "";
+      const dist = a.distance ? `全程约 ${a.distance} 公里，` : "";
+      paras.push(`${spine}${tail}，是整段行程最值得沉浸的部分。${dist}按自己的节奏走就好。`);
     }
-    if (meal.length && meal[0].fact) paras.push(`${meal[0].time ? meal[0].time + "，" : ""}${meal[0].fact}，找个舒服的地方用餐、补给，也是难得的松弛时刻。`);
-    if (close && close.fact) paras.push(`${close.time ? close.time + "，" : ""}${close.fact}。带着这一程的疲惫与满足，为这次出发收尾。`);
+    // 3) 餐食：保留真实时间
+    const meal = pick("meal");
+    if (meal.length && meal[0].fact) paras.push(`${meal[0].time ? meal[0].time + "，" : ""}${meal[0].fact}，找个舒服的地方补给、回血，也是难得的松弛时刻。`);
+    // 4) 收尾：保留真实时间
+    const end = pick("closing")[0] || timeline[timeline.length - 1];
+    if (end && end.fact && end !== start) paras.push(`${end.time ? end.time + "，" : ""}${end.fact}。带着这一程的疲惫与满足，为这次出发收尾。`);
     return { title: "这一程，这样走过", paras: paras };
   }
   function structureItinerary(a) {
@@ -1304,6 +1311,19 @@
       });
     });
     return { timeline: timeline, hasReal: timeline.length > 0, days: days.length, narrative: buildItineraryNarrative(a, timeline) };
+  }
+  // P0-5：两种表达的 HTML 片段（复用，避免各页面各写一份）
+  // 内容型行程：把真实行程转成可阅读体验叙事（已保留真实时间锚点，未新增事件）
+  function itinContentHtml(a) {
+    const itin = (typeof structureItinerary === "function") ? structureItinerary(a) : null;
+    if (!itin || !itin.narrative || !itin.narrative.paras.length) return "";
+    return `<div class="itin-narrative"><div class="itin-narrative-t">${esc(itin.narrative.title || "这一程，这样走过")}</div>${itin.narrative.paras.map((p) => `<p>${esc(p)}</p>`).join("")}</div>`;
+  }
+  // 结构型行程：真实时间表（只搬运 time + fact，never 被 AI 叙事替换）
+  function itinTimelineHtml(a) {
+    const days = (a.itineraryDays || []).filter((d) => (d.items || []).some((t) => t && (t.time || t.text)));
+    if (!days.length) return "";
+    return days.map((day, idx) => `<div class="xh-ed-day"><div class="xh-ed-day-h"><span>DAY</span><b>${idx + 1}</b>${day.label ? " · " + esc(day.label) : ""}</div><div class="timeline">${(day.items || []).filter((t) => t && (t.time || t.text)).map((t) => `<div class="tl-item"><div class="tl-node"></div><div class="t">${esc(t.time)}</div><div class="d">${esc(t.text)}</div></div>`).join("")}</div></div>`).join("");
   }
 
   const FACT_SPECS = [
@@ -2393,11 +2413,13 @@
         </div>
       `;
     }).join("");
+    const itinNar = (typeof itinContentHtml === "function") ? itinContentHtml(a) : "";
     return `
       <div class="panel" style="margin-bottom:18px">
-        <div class="panel-head"><h3>详细行程 · 共 ${a.days || 1} 天</h3><span class="tiny muted">AI 先生成 · 你可手动调整</span></div>
+        <div class="panel-head"><h3>详细行程 · 共 ${a.days || 1} 天</h3><span class="tiny muted">结构型行程（真实时间表）· 你手动调整，AI 不增删事件</span></div>
         <div class="panel-body">
           ${dayBlocks}
+          ${itinNar ? `<div class="itin-express-note"><span class="tiny muted">内容型行程（体验叙事预览，自动从上方真实行程生成，保留真实时间、不编造事件）</span>${itinNar}</div>` : ""}
           <div class="row gap-8" style="margin-top:12px">
             <button class="btn btn-soft btn-sm" data-action="regenItinerary">重新生成行程</button>
             <button class="btn btn-soft btn-sm" data-action="addItinDay" ${(a.days || 1) >= 7 ? "disabled" : ""}>+ 增加一天</button>

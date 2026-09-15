@@ -4992,6 +4992,9 @@ body{
 .itin-narrative-t { font-family: var(--serif); font-size: 15px; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
 .itin-narrative p { font-size: 13.5px; line-height: 1.85; color: var(--ink-2, #4a463f); margin: 0 0 8px; }
 .itin-narrative p:last-child { margin-bottom: 0; }
+.itin-timeline-wrap { margin-top: 14px; }
+.itin-express-note { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line); }
+.itin-express-note .tiny { display: block; margin-bottom: 8px; }
 
 /* ============ P0-11 安全裁切：高风险图（多人/合影/竖图近边缘）原比例展示，宁可留白不裁坏主体 ============ */
 .ph-safe { background: #f2ede5; }

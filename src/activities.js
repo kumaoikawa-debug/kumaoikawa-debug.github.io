@@ -125,7 +125,8 @@
       + `</div></div>`;
 
     const days = (a.itineraryDays || []).filter((d) => (d.items || []).some((t) => t && (t.time || t.text)));
-    const itinHtml = days.length ? `<div class="dsec"><div class="dsec-h"><h3>详细行程</h3></div>${days.map((d, i) => `<div class="xh-ed-day"><div class="xh-ed-day-h"><span>DAY</span><b>${i + 1}</b>${d.label ? " · " + esc(d.label) : ""}</div><div class="timeline">${(d.items || []).filter((t) => t && (t.time || t.text)).map((t) => `<div class="tl-item"><div class="tl-node"></div><div class="t">${esc(t.time)}</div><div class="d">${esc(t.text)}</div></div>`).join("")}</div></div>`).join("")}</div>` : "";
+    const itinContent = (typeof itinContentHtml === "function") ? itinContentHtml(a) : "";
+    const itinHtml = days.length ? `<div class="dsec"><div class="dsec-h"><h3>详细行程</h3></div>${itinContent}<div class="itin-timeline-wrap">${days.map((d, i) => `<div class="xh-ed-day"><div class="xh-ed-day-h"><span>DAY</span><b>${i + 1}</b>${d.label ? " · " + esc(d.label) : ""}</div><div class="timeline">${(d.items || []).filter((t) => t && (t.time || t.text)).map((t) => `<div class="tl-item"><div class="tl-node"></div><div class="t">${esc(t.time)}</div><div class="d">${esc(t.text)}</div></div>`).join("")}</div></div>`).join("")}</div></div>` : "";
 
     const gearHtml = (() => {
       if (typeof matchGearProducts !== "function" || typeof gearRender !== "function") return "";
