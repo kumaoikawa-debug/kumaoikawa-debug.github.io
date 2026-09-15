@@ -1336,6 +1336,13 @@ function channelMeta(ch) {
           <span class="chip" data-action="example" data-text="${esc(EXAMPLE2)}">都江堰虹口漂流</span>
           <span class="chip" data-action="paste">粘贴一段旧文案</span>
         </div>
+        <div class="field" style="margin-bottom:14px"><label>活动照片（可选）</label>
+          <div class="xf-photos">
+            ${((state._pendingPhotos) || []).map((p, i) => `<div class="xf-ph" style="background-image:url('${esc(p)}')"><button class="x" type="button" data-action="dropCreatePhoto" data-i="${i}" aria-label="移除">${ICON("x")}</button></div>`).join("")}
+            <label class="xf-ph-add">${ICON("camera")}<input type="file" id="createPhotoInput" accept="image/*" multiple hidden></label>
+          </div>
+          <div class="hint">先传照片也行：AI 会自动挑图、配图、排版，并规避人物被裁坏。</div>
+        </div>
         <div class="row gap-10">
           <button class="btn btn-accent btn-lg" data-action="generate">${ICON("sparkles")} AI 生成活动</button>
           <button class="btn btn-ghost btn-lg" data-action="voice">${ICON("mic")} 语音</button>
@@ -1605,7 +1612,7 @@ function channelMeta(ch) {
       </div>
       ${ (a.missingFacts && a.missingFacts.length) ? `<div class="advice-missing"><b>AI 提示缺少的信息</b>${a.missingFacts.map((t) => `<div class="am-item">${esc(t)}</div>`).join("")}</div>` : "" }
       ${ (a.forewordTitles && a.forewordTitles.length) ? `<div class="title-cands"><div class="tc-h"><span>标题备选（点击采用）</span><button class="tc-refresh mini-regen" data-action="regenField" data-field="forewordTitles">${ICON("refresh")} 换一组</button></div>${a.forewordTitles.map((t, i) => `<button class="tc-item" data-action="pickForewordTitle" data-i="${i}">${esc(t)}</button>`).join("")}</div>` : "" }
-      <div class="advice-actions"><button class="btn btn-ghost" data-action="nav" data-view="create">返回修改输入</button><button class="btn btn-primary btn-lg" data-action="approveDirection">进入编辑 ${ICON("arrow-right")}</button></div>
+      <div class="advice-actions"><button class="btn btn-ghost" data-action="nav" data-view="create">返回修改输入</button><button class="btn btn-primary btn-lg" data-action="confirmFactsToPage">${ICON("sparkles")} 生成图文详情页</button><button class="btn btn-ghost" data-action="approveDirection">进入编辑器微调 ${ICON("arrow-right")}</button></div>
     </div>`;
   }
 

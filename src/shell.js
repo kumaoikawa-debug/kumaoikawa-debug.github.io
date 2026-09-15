@@ -41,6 +41,8 @@
       if (view === "settings" || view === "brand") bindBrandExtras();
       if (view === "decorate") bindDecorateExtras();
       if (view === "operator") bindFabuExtras();
+      if (view === "factConfirm") bindConfirmExtras();
+      if (view === "create") bindCreateExtras();
       updateBrandColor();
       return;
     }
@@ -1493,85 +1495,21 @@
         break;
       }
       case "publishReset": { state.xf = null; showView(state.view); break; }
-      case "recruitGen": {
-        const xf = publishState();
-        const ta = document.querySelector('[data-xf="note"]');
-        if (ta) xf.notes = ta.value;
-        const a = (state.activities || []).find((x) => x.id === xf.aid);
-        if (!a) { toast("请先选择一场活动"); break; }
-        xf._a = a;
-        const actPhotos = (typeof activePhotos === "function") ? activePhotos(xf) : (xf.photos || []);
-        xf.master = buildContentMaster(a, actPhotos);
-        xf.genState = "loading"; showView(state.view);
-        try {
-          xf.strategy = await genStrategy(a, actPhotos, xf.notes, "recruit");
-          applyCoverOverride(xf); // P1-2：老板选的封面落到生成的 hero
-          xf.master.keyImages = await attachPhotoCaptions(xf.master.keyImages, xf.master.confirmedFacts, xf.strategy.editorialDirection);
-          xf.out = await genRecruit(a, xf.master, xf.strategy);
-          // §41：版式质量不达标 → 重选家族/变体（重生成 ED/Layout）一次
-          if (aiAuthMode() && state.xf.quality && state.xf.quality.editorialRisk) {
-            xf.strategy = await genStrategy(a, actPhotos, xf.notes, "recruit");
-            applyCoverOverride(xf); // P1-2
-            xf.out = await genRecruit(a, xf.master, xf.strategy);
-          }
-          xf.family = xf.strategy.editorialDirection.family;
-          xf.variant = xf.strategy.editorialDirection.variant;
-          xf.styleSeed = xf.strategy.editorialDirection.styleSeed;
-          xf._styleHistory.push((typeof styleSignature === "function") ? styleSignature(xf) : { family: xf.family, variant: xf.variant });
-          xf.step = "result"; xf.genState = "idle"; xf.platTab = "gzh";
-          toast("已生成宣传内容");
-        } catch (e) { xf.genState = "idle"; toast("生成失败：" + (e && e.message ? e.message : e)); }
-        showView(state.view);
+      case "recruitGen": { await runRecruitGen(); break; }
+      case "confirmFactsToPage": { await confirmFactsToPage(); break; }
+      case "dropConfirmPhoto": {
+        if (!state.draft) break;
+        state.draft.photos = (state.draft.photos || []).filter((_, i) => i !== (+d.i));
+        showView("factConfirm");
         break;
       }
-      case "recapGen": {
-        const xf = publishState();
-        const rt = document.querySelector('[data-xf="recapNotes"]');
-        if (rt) xf.recapNotes = rt.value;
-        const customFields = { title: "", date: "", place: "", type: "", signups: "", leader: "" };
-        ["customTitle", "customDate", "customPlace", "customType", "customSignups", "customLeader"].forEach((k) => {
-          const el = document.querySelector(`[data-xf="${k}"]`);
-          if (el) customFields[k.replace("custom", "").toLowerCase()] = el.value;
-        });
-        xf.customRecap = customFields;
-        let a;
-        if (xf.aid) {
-          a = (state.activities || []).find((x) => x.id === xf.aid);
-          if (!a) { toast("所选活动不存在"); break; }
-        } else {
-          if (!customFields.title.trim()) { toast("请选择一场活动，或填写活动名称"); break; }
-          a = {
-            title: customFields.title.trim(), type: customFields.type.trim(), place: customFields.place.trim(),
-            dateMD: customFields.date.trim(), signups: customFields.signups ? +customFields.signups : 0,
-            leaderName: customFields.leader.trim(), status: "ended",
-          };
-        }
-        xf._a = a;
-        const actPhotos = (typeof activePhotos === "function") ? activePhotos(xf) : (xf.photos || []);
-        xf.master = buildContentMaster(a, actPhotos);
-        xf.genState = "loading"; showView(state.view);
-        try {
-          xf.strategy = await genStrategy(a, actPhotos, xf.recapNotes, "recap");
-          applyCoverOverride(xf); // P1-2：老板选的封面落到生成的 hero
-          xf.master.keyImages = await attachPhotoCaptions(xf.master.keyImages, xf.master.confirmedFacts, xf.strategy.editorialDirection);
-          xf.recap = await genRecap(a, xf.master, xf.strategy, xf.photos, xf.recapNotes);
-          // §41：版式质量不达标 → 重选家族/变体（重生成 ED/Layout）一次
-          if (aiAuthMode() && state.xf.quality && state.xf.quality.editorialRisk) {
-            xf.strategy = await genStrategy(a, actPhotos, xf.recapNotes, "recap");
-            applyCoverOverride(xf); // P1-2
-            xf.recap = await genRecap(a, xf.master, xf.strategy, xf.photos, xf.recapNotes);
-          }
-          xf.recapType = recapType(a, xf.photos);
-          xf.family = xf.strategy.editorialDirection.family;
-          xf.variant = xf.strategy.editorialDirection.variant;
-          xf.styleSeed = xf.strategy.editorialDirection.styleSeed;
-          xf._styleHistory.push((typeof styleSignature === "function") ? styleSignature(xf) : { family: xf.family, variant: xf.variant });
-          xf.step = "result"; xf.genState = "idle"; xf.platTab = "gzh";
-          toast("已生成活动回顾");
-        } catch (e) { xf.genState = "idle"; toast("生成失败：" + (e && e.message ? e.message : e)); }
-        showView(state.view);
+      case "confirmPublishPage": { confirmPublishPage(); break; }
+      case "dropCreatePhoto": {
+        state._pendingPhotos = (state._pendingPhotos || []).filter((_, i) => i !== (+d.i));
+        showView("create");
         break;
       }
+      case "recapGen": { await runRecapGen(); break; }
       case "copyGzhHtml": {
         const art = document.getElementById("gzhArticle");
         if (!art) break;
@@ -1620,6 +1558,7 @@
     if (!text) return toast("请先描述你的活动");
     if (!aiAuthMode()) { toast("请先在「AI 设置」配置后端地址或本地演示 Key 以启用 AI 生成"); openAISettings(); return; }
     state.draft = blankActivity();
+    state.draft.photos = (state._pendingPhotos || []).slice(); // §七：第 1 步就已上传的照片带进活动
     state.draft.raw = text;
     showGenerating();
     parseActivityWithAI(text).then(async (json) => {
@@ -1667,6 +1606,206 @@
       if (state.view === "create" || state.view === "factConfirm") showView("factConfirm");
     })();
   }
+  /* ===== §七 一键闭环：一句话 + 传图 → AI 理解 → 只问必要问题 → 自动生成完整活动
+     → 自动生成图文详情页 → 换版式/换风格 → 确认发布。
+     下面四个函数把原是「两个互不相通模块」的链路接上：
+       runRecruitGen / runRecapGen  —— 生成逻辑（供 picker 按钮与一键闭环复用）
+       confirmFactsToPage           —— 确认卡 → 落库 → 直接生成图文详情页（不经过逐字段编辑器）
+       confirmPublishPage           —— 详情页 → 确认发布（含发布前事实检查与回退）           */
+
+  /* 生成宣传内容（原 recruitGen handler 抽出，逻辑不变；notes 为空时不覆盖已有补充资料） */
+  async function runRecruitGen() {
+    const xf = publishState();
+    const ta = document.querySelector('[data-xf="note"]');
+    if (ta) { const v = String(ta.value || "").trim(); if (v) xf.notes = v; }
+    const a = xf._a || (state.activities || []).find((x) => x.id === xf.aid);
+    if (!a) { toast("请先选择一场活动"); return; }
+    xf._a = a;
+    const actPhotos = (typeof activePhotos === "function") ? activePhotos(xf) : (xf.photos || []);
+    xf.master = buildContentMaster(a, actPhotos);
+    xf.genState = "loading"; showView(state.view);
+    try {
+      xf.strategy = await genStrategy(a, actPhotos, xf.notes, "recruit");
+      applyCoverOverride(xf); // P1-2：老板选的封面落到生成的 hero
+      xf.master.keyImages = await attachPhotoCaptions(xf.master.keyImages, xf.master.confirmedFacts, xf.strategy.editorialDirection);
+      xf.out = await genRecruit(a, xf.master, xf.strategy);
+      // §41：版式质量不达标 → 重选家族/变体（重生成 ED/Layout）一次
+      if (aiAuthMode() && state.xf.quality && state.xf.quality.editorialRisk) {
+        xf.strategy = await genStrategy(a, actPhotos, xf.notes, "recruit");
+        applyCoverOverride(xf); // P1-2
+        xf.out = await genRecruit(a, xf.master, xf.strategy);
+      }
+      xf.family = xf.strategy.editorialDirection.family;
+      xf.variant = xf.strategy.editorialDirection.variant;
+      xf.styleSeed = xf.strategy.editorialDirection.styleSeed;
+      xf._styleHistory.push((typeof styleSignature === "function") ? styleSignature(xf) : { family: xf.family, variant: xf.variant });
+      xf.step = "result"; xf.genState = "idle"; xf.platTab = "gzh";
+      toast("已生成图文详情页");
+    } catch (e) { xf.genState = "idle"; toast("生成失败：" + (e && e.message ? e.message : e)); }
+    showView(state.view);
+  }
+
+  /* 生成活动回顾（原 recapGen handler 抽出，逻辑不变） */
+  async function runRecapGen() {
+    const xf = publishState();
+    const rt = document.querySelector('[data-xf="recapNotes"]');
+    if (rt && String(rt.value || "").trim()) xf.recapNotes = rt.value;
+    const customFields = { title: "", date: "", place: "", type: "", signups: "", leader: "" };
+    ["customTitle", "customDate", "customPlace", "customType", "customSignups", "customLeader"].forEach((k) => {
+      const el = document.querySelector(`[data-xf="${k}"]`);
+      if (el) customFields[k.replace("custom", "").toLowerCase()] = el.value;
+    });
+    xf.customRecap = customFields;
+    let a;
+    if (xf.aid) {
+      a = xf._a || (state.activities || []).find((x) => x.id === xf.aid);
+      if (!a) { toast("所选活动不存在"); return; }
+    } else {
+      if (!customFields.title.trim()) { toast("请选择一场活动，或填写活动名称"); return; }
+      a = {
+        title: customFields.title.trim(), type: customFields.type.trim(), place: customFields.place.trim(),
+        dateMD: customFields.date.trim(), signups: customFields.signups ? +customFields.signups : 0,
+        leaderName: customFields.leader.trim(), status: "ended",
+      };
+    }
+    xf._a = a;
+    const actPhotos = (typeof activePhotos === "function") ? activePhotos(xf) : (xf.photos || []);
+    xf.master = buildContentMaster(a, actPhotos);
+    xf.genState = "loading"; showView(state.view);
+    try {
+      xf.strategy = await genStrategy(a, actPhotos, xf.recapNotes, "recap");
+      applyCoverOverride(xf); // P1-2：老板选的封面落到生成的 hero
+      xf.master.keyImages = await attachPhotoCaptions(xf.master.keyImages, xf.master.confirmedFacts, xf.strategy.editorialDirection);
+      xf.recap = await genRecap(a, xf.master, xf.strategy, xf.photos, xf.recapNotes);
+      // §41：版式质量不达标 → 重选家族/变体（重生成 ED/Layout）一次
+      if (aiAuthMode() && state.xf.quality && state.xf.quality.editorialRisk) {
+        xf.strategy = await genStrategy(a, actPhotos, xf.recapNotes, "recap");
+        applyCoverOverride(xf); // P1-2
+        xf.recap = await genRecap(a, xf.master, xf.strategy, xf.photos, xf.recapNotes);
+      }
+      xf.recapType = recapType(a, xf.photos);
+      xf.family = xf.strategy.editorialDirection.family;
+      xf.variant = xf.strategy.editorialDirection.variant;
+      xf.styleSeed = xf.strategy.editorialDirection.styleSeed;
+      xf._styleHistory.push((typeof styleSignature === "function") ? styleSignature(xf) : { family: xf.family, variant: xf.variant });
+      xf.step = "result"; xf.genState = "idle"; xf.platTab = "gzh";
+      toast("已生成活动回顾");
+    } catch (e) { xf.genState = "idle"; toast("生成失败：" + (e && e.message ? e.message : e)); }
+    showView(state.view);
+  }
+
+  /* §七 关键一跳：确认卡 → 直接生成图文详情页。
+     不再让老板「进编辑器逐字段改」，而是把活动落库后立刻走 AI 生成链路，
+     直接落到可换版式/换风格的结果页；编辑器仍可从结果页随时进入。 */
+  async function confirmFactsToPage() {
+    const fa = state.draft;
+    if (!fa) return;
+    document.querySelectorAll("[id^='gap_']").forEach((el) => {
+      const key = el.id.replace("gap_", "");
+      if (el.value && el.value.trim()) applyBossFact(fa, key, el.value);
+    });
+    fa.status = fa.status || "draft";
+    if (fa.pinned) fa.pinnedAt = Date.now();
+    fa._autoPageGeneratedAt = Date.now();
+    upsert(fa); // 宣发中心按 id 从活动库取活动，必须先落库
+    saveState();
+    state._pendingPhotos = []; // 照片已并入这场活动，避免下一场活动误带旧图
+    const xf = publishState();
+    xf.scenario = "recruit";
+    xf.aid = fa.id;
+    xf.step = null;
+    xf.master = null; xf.out = null; xf.recap = null;
+    xf.strategy = null; xf.quality = null;
+    xf.photos = (fa.photos || []).slice();
+    xf.photoOverrides = { cover: null, excluded: {} };
+    xf._a = fa;
+    if (fa.raw) xf.notes = String(fa.raw).slice(0, 800); // 旧资料/原话一并交给 AI
+    state.draft = null;
+    showView("operator");
+    await runRecruitGen();
+  }
+
+  /* §七 最后一环：详情页 → 确认发布。事实不全时不硬发，回到确认卡补全后重生成。 */
+  function confirmPublishPage() {
+    const xf = publishState();
+    const a = xf._a || (state.activities || []).find((x) => x.id === xf.aid);
+    if (!a) { toast("找不到这场活动，请重新选择"); return; }
+    const isRecap = xf.scenario === "recap";
+    if (!isRecap) {
+      const chk = (typeof runPublishCheck === "function") ? runPublishCheck(a) : { blocking: [] };
+      if (chk.blocking && chk.blocking.length) {
+        toast("还差 " + chk.blocking.length + " 项关键事实，补全后即可发布");
+        state.draft = JSON.parse(JSON.stringify(a));
+        state.draft.photos = ((typeof activePhotos === "function") ? activePhotos(xf) : (xf.photos || [])).slice();
+        showView("factConfirm");
+        return;
+      }
+      if (chk.warnings && chk.warnings.length) toast("有 " + chk.warnings.length + " 项待确认，已按现有事实发布");
+      a.status = "recruiting";
+    } else {
+      a.recapPublished = true;
+      a.recapPublishedAt = Date.now();
+    }
+    if (a.pinned) a.pinnedAt = Date.now();
+    upsert(a);
+    state.history = state.history || [];
+    const snap = JSON.parse(JSON.stringify(a));
+    snap._historyAt = Date.now();
+    state.history.unshift(snap);
+    state.history = state.history.slice(0, 30);
+    saveState();
+    showPublishSuccess(a.id);
+  }
+
+  /* 第 1 步「一句话创建」的照片上传：先暂存，生成活动时带进 draft.photos（§七：输入一句话 → 上传图片） */
+  function bindCreateExtras() {
+    const inp = $("#createPhotoInput");
+    if (!inp || inp._bound) return;
+    inp._bound = true;
+    inp.addEventListener("change", (e) => {
+      const files = Array.from(e.target.files || []);
+      if (!files.length) return;
+      let pending = files.length;
+      state._pendingPhotos = state._pendingPhotos || [];
+      files.forEach((f) => {
+        const r = new FileReader();
+        r.onload = (ev) => {
+          const src = ev.target.result;
+          (typeof analyzeImageFocus === "function" ? analyzeImageFocus(src) : Promise.resolve(null)).then((focus) => {
+            if (typeof PHOTO_FOCUS_CACHE !== "undefined" && focus) PHOTO_FOCUS_CACHE.set(src, focus);
+            state._pendingPhotos.push(src);
+            if (--pending === 0) { e.target.value = ""; showView("create"); }
+          });
+        };
+        r.readAsDataURL(f);
+      });
+    });
+  }
+
+  /* 确认卡的照片上传：直接写进 draft.photos，生成时由 AI 自动筛选/配图/排版 */
+  function bindConfirmExtras() {
+    const inp = $("#confirmPhotoInput");
+    if (!inp || inp._bound) return;
+    inp._bound = true;
+    inp.addEventListener("change", (e) => {
+      const files = Array.from(e.target.files || []);
+      if (!files.length) return;
+      let pending = files.length;
+      files.forEach((f) => {
+        const r = new FileReader();
+        r.onload = (ev) => {
+          const src = ev.target.result;
+          (typeof analyzeImageFocus === "function" ? analyzeImageFocus(src) : Promise.resolve(null)).then((focus) => {
+            if (typeof PHOTO_FOCUS_CACHE !== "undefined" && focus) PHOTO_FOCUS_CACHE.set(src, focus);
+            if (state.draft) { state.draft.photos = state.draft.photos || []; state.draft.photos.push(src); }
+            if (--pending === 0) { e.target.value = ""; showView("factConfirm"); }
+          });
+        };
+        r.readAsDataURL(f);
+      });
+    });
+  }
+
   // P0-1：一句话创建后的「老板确认卡」——AI 已完成约 80%，只让老板补关键事实
   function renderFactConfirm() {
     const a = state.draft;
@@ -1676,6 +1815,7 @@
     const inferredGaps = gaps.filter((g) => g.status === "inferred");
     const confirmed = confirmedFacts(a);
     const doneList = confirmed.slice(0, 10).map((f) => `<li><span class="gc-done-k">${esc(f.label)}</span><b>${esc(f.value)}</b></li>`).join("");
+    const ph = a.photos || []; // §七：照片在「一句话创建」这一步就能传，不需要另开模块
     const gapRow = (g, i) => {
       const tag = g.status === "inferred" ? `<span class="gc-tag gc-tag-inf">系统已推测·待确认</span>` : `<span class="gc-tag gc-tag-miss">缺失</span>`;
       const input = g.kind === "textarea"
@@ -1724,10 +1864,20 @@
         ${missingHtml}
         ${inferredHtml}
       </div>
-      <div class="gc-actions">
-        <button class="btn btn-primary" data-action="confirmFactsContinue">${missingGaps.length ? "补全并进入编辑器" : "进入编辑器"}</button>
-        ${missingGaps.length ? `<button class="btn btn-ghost" data-action="confirmFactsSkip">先看看（暂不补全）</button>` : ""}
+      <div class="gc-block" style="background:#f3f8f4;border-color:#d5e8da">
+        <div class="gc-block-head" style="color:#2e7d4f">活动照片 / 旧资料（可选）</div>
+        <p class="gc-sub" style="margin:0 0 10px">照片直接放这里就行：AI 会自动挑图、自动配到对应段落、自动排版，并自动规避人物被裁坏——<b>不需要你手动选图/配图</b>。</p>
+        <div class="xf-photos">
+          ${ph.map((p, i) => `<div class="xf-ph" style="background-image:url('${esc(p)}')"><button class="x" type="button" data-action="dropConfirmPhoto" data-i="${i}" aria-label="移除">${ICON("x")}</button></div>`).join("")}
+          <label class="xf-ph-add">${ICON("upload")}<input type="file" id="confirmPhotoInput" accept="image/*" multiple hidden></label>
+        </div>
+        <p class="tiny muted" style="margin:8px 0 0">${ph.length ? `已上传 ${ph.length} 张，生成时自动筛选与分配角色。` : "不传照片也能生成，页面会自动使用克制的纯文字版式。"}旧文案可直接粘贴在最上面的输入框。</p>
       </div>
+      <div class="gc-actions">
+        <button class="btn btn-primary btn-lg" data-action="confirmFactsToPage">${ICON("sparkles")} ${missingGaps.length ? "补全并生成图文详情页" : "一键生成图文详情页"}</button>
+        <button class="btn btn-ghost" data-action="confirmFactsContinue">先看内容策略</button>
+      </div>
+      <p class="tiny muted" style="margin-top:10px">生成后可直接「换版式 / 换风格」，满意再确认发布；也可以随时回到编辑器逐字段微调。</p>
     </div>`;
   }
   function rerenderEditor() {

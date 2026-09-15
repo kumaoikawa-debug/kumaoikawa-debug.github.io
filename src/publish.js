@@ -7227,6 +7227,7 @@ function styleBar(xf) {
       ${pq ? `<span class="xf-qbadge xf-qb-${esc(pq.band)}">内容质量 ${esc(pq.band)}</span>` : ""}
       <button class="btn btn-ghost btn-sm" data-action="nextVariant">${ICON("refresh")} 换一种版式</button>
       <button class="btn btn-ghost btn-sm" data-action="switchStyle">${ICON("sparkles")} 换一种风格</button>
+      <button class="btn btn-primary btn-sm" data-action="confirmPublishPage">${ICON("check")} ${sc === "recap" ? "发布回顾" : "确认发布"}</button>
     </div>
     ${warnText ? `<div class="xf-stylebar-row xf-warn">${esc(warnText)}</div>` : ""}
     ${dgNote ? `<div class="xf-stylebar-row xf-down">${esc(dgNote)}</div>` : ""}
