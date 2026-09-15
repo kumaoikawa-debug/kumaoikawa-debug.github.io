@@ -873,6 +873,101 @@ function xfTextOf(out) {
   return parts.join("\n");
 }
 
+/* §39b P0-18 Claim→Fact 执行层：无依据 claim 的删除/重写
+   12 类重点校验：领队 / 保险 / 餐食 / 住宿 / 交通 / 天气 / 人数 / 登顶 / 完成路线 / 用户反馈 / 安全保障 / 装备提供
+   逻辑：生成文案 → 提取关键 Claim → 对应事实字段检查 → 无依据 → 删除（或按事实安全重写清空）。 */
+function xfClaimDetectors(facts, adv) {
+  const A = adv || {};
+  const f = facts || {};
+  const hasList = (x) => (Array.isArray(x) ? x.filter(Boolean).length > 0 : !!x);
+  const summitText = [A.completionSummary, (Array.isArray(A.actualHighlights) ? A.actualHighlights.join("") : ""), A.memorableMoments].filter(Boolean).join("");
+  // 住宿：已确认 / 费用包含住宿 / 或句子本身是「不含住宿」这类事实陈述 → 视为有依据，不删
+  const lodgingOk = (txt) => !!(f.lodging || (f.includedServices || []).some((s) => /住宿|客栈|民宿|房/.test(String(s)))) || /(不含|不提供|无住宿|没有住宿|未含住宿)/.test(txt);
+  return [
+    { w: "保险", re: /保险|意外险|投保/, ok: !!f.insurance },
+    { w: "领队", re: /领队|教练|向导/, ok: !!f.leader },
+    { w: "交通", re: /大巴|包车|专车|接送/, ok: !!f.transport },
+    { w: "餐食", re: /含餐|午餐|晚餐|早餐|团餐|正餐/, ok: !!f.meal },
+    { w: "装备", re: /(提供|配发|免费使用)[^。；\n]{0,6}(装备|登山杖|头盔|救生衣)/, ok: !!(f.gear && f.gear.length) },
+    { w: "住宿", re: /住宿|客栈|民宿|入住|标间/, ok: lodgingOk },
+    { w: "天气", re: /(万里无云|阳光明媚|晴空万里|下起了雨|突然放晴|阴雨绵绵|艳阳高照|天气很(好|差))/, ok: !!A.actualWeather },
+    { w: "实际人数", re: /(\d+)\s*(人|位|名)\s*(参加|到场|实到|出席)|共\s*\d+\s*人|实际参加\s*\d+/, ok: A.actualParticipants != null },
+    { w: "登顶", re: /(登顶|到达顶峰|登顶成功|成功登顶|全员登顶|把山踩在脚下|站在山顶)/, ok: /登顶|顶峰|山顶/.test(summitText) },
+    { w: "完成路线", re: /(走完|完成)(了)?(全程|整条|整段|路线)|一个不落/, ok: !!A.completionSummary },
+    { w: "用户反馈", re: /(有人说|大家(都)?(表示|说)|大家纷纷表示|(队员|学员|家长|参与者)(们)?(都)?(表示|反馈|说)|好评如潮|纷纷点赞|纷纷(表示|说|反馈)|大家一致)/, ok: hasList(A.actualFeedback) },
+    { w: "路线成熟度", re: /(路线(很|非常)?成熟|成熟的?(路线|线路)|老少皆宜|男女皆宜|毫无难度|闭眼可走|零门槛)/, ok: !!f.routeMaturity },
+    { w: "安全保障", re: /(安全保障|全程保障|安全无忧|安全放心|专业保障|安全措施完善|全程安全|安全保障到位)/, ok: !!(f.safetyMeasures || f.insurance) },
+    { w: "风景判断", re: /(风景(绝美|绝佳|美到)|美到窒息|人间仙境|宛如仙境|震撼人心|美得不像话|此生必去)/, ok: false },
+  ];
+}
+function xfStripTags(s) { return (s || "").replace(/<[^>]+>/g, ""); }
+// 按句切分 HTML（保留标签与标点；标点须在标签外），供逐句删除无依据 claim
+function xfSplitSentences(html) {
+  const out = []; let buf = ""; let inTag = false;
+  for (let i = 0; i < (html || "").length; i++) {
+    const ch = html[i];
+    if (ch === "<") { inTag = true; buf += ch; continue; }
+    if (ch === ">") { inTag = false; buf += ch; continue; }
+    buf += ch;
+    if (!inTag && "。！？；\n".indexOf(ch) >= 0) { out.push(buf); buf = ""; }
+  }
+  if (buf.trim()) out.push(buf);
+  return out;
+}
+function xfCleanInner(inner, detectors, removed, seen) {
+  const sents = xfSplitSentences(inner);
+  const kept = [];
+  sents.forEach((s) => {
+    const t = xfStripTags(s).trim();
+    if (!t) { kept.push(s); return; }
+    const hit = detectors.find((d) => d.re.test(t) && ((typeof d.ok === "function") ? d.ok(t) : d.ok) === false);
+    if (hit) { if (!seen[hit.w]) { seen[hit.w] = 1; removed.push(hit.w); } return; }
+    kept.push(s);
+  });
+  return kept.join("");
+}
+function xfCleanSectionHtml(html, detectors, removed, seen) {
+  return (html || "").replace(/<(p|li|blockquote|h[1-6])([^>]*)>([\s\S]*?)<\/\1>/g,
+    (m, tag, attrs, inner) => {
+      const cleaned = xfCleanInner(inner, detectors, removed, seen);
+      return cleaned ? `<${tag}${attrs}>${cleaned}</${tag}>` : "";
+    });
+}
+// P0-18 执行层：就地删除/重写无依据 claim，返回被删除的类别清单（去重）
+function xfStripUnsupportedClaims(out, facts, adv) {
+  if (!out || !out.gzh) return [];
+  const detectors = xfClaimDetectors(facts, adv);
+  const removed = []; const seen = {};
+  const stripText = (text) => {
+    const sents = (text || "").split(/(?<=[。！？；])/);
+    const kept = [];
+    sents.forEach((s) => {
+      const t = s.trim();
+      if (!t) { kept.push(s); return; }
+      const hit = detectors.find((d) => d.re.test(t) && ((typeof d.ok === "function") ? d.ok(t) : d.ok) === false);
+      if (hit) { if (!seen[hit.w]) { seen[hit.w] = 1; removed.push(hit.w); } return; }
+      kept.push(s);
+    });
+    return kept.join("");
+  };
+  (out.gzh.sections || []).forEach((sec) => { if (sec && sec.html) sec.html = xfCleanSectionHtml(sec.html, detectors, removed, seen); });
+  if (out.gzh.sections) out.gzh.sections = out.gzh.sections.filter((s) => s && s.html && xfStripTags(s.html).trim().length > 0);
+  const origTitle = out.gzh.title;
+  if (out.gzh.title) { out.gzh.title = stripText(out.gzh.title); if (!out.gzh.title.trim()) out.gzh.title = origTitle; }
+  if (out.gzh.subtitle) out.gzh.subtitle = stripText(out.gzh.subtitle);
+  if (out.gzh.summary) out.gzh.summary = stripText(out.gzh.summary);
+  if (out.xhs && out.xhs.body) out.xhs.body = out.xhs.body.split("\n").map((l) => stripText(l)).filter((l) => l.trim().length > 0).join("\n");
+  if (out.moments) {
+    if (typeof out.moments === "string") out.moments = stripText(out.moments);
+    else ["warm", "formal", "last"].forEach((k) => { if (out.moments[k]) out.moments[k] = stripText(out.moments[k]); });
+  }
+  if (out.wechat) {
+    if (typeof out.wechat === "string") out.wechat = stripText(out.wechat);
+    else ["recruit", "brief"].forEach((k) => { if (out.wechat[k]) out.wechat[k] = stripText(out.wechat[k]); });
+  }
+  return removed;
+}
+
 /* §39 ContentQualityCheck：虚构词 / 模板拼接感 / 空洞词 / 重复 / 主题统一 / 图文匹配 / 转化 / 纪实 */
 function xfContentQuality(out, dir, scenario, facts, adv) {
   const T = xfTextOf(out);
@@ -881,31 +976,14 @@ function xfContentQuality(out, dir, scenario, facts, adv) {
   const FORBID = ["万里无云", "阳光明媚", "下起了雨", "突然放晴", "领队说", "大家纷纷表示", "据说", "据说当时", "不得不说", "说实话", "我们都很", "大家都说", "很多人都说", "风景绝好", "风景绝佳", "新手友好", "新手也能跟上", "不用担心跟不上", "强度友好", "我们登顶了", "把山踩在了脚下", "绝对值得", "必去", "guaranteed", "走完了全程", "走完全程", "把这条线走完了", "玩得超尽兴", "玩得尽兴", "大家玩得尽兴", "我们完成全程", "互相照应", "互相照顾", "大家互相照顾", "有人说来对了", "有人说", "合照那一刻", "返程车上安静下来", "返程车上", "当天下雨"];
   let fiction = 0; FORBID.forEach((w) => { if (T.indexOf(w) >= 0) { fiction++; if (flags.indexOf("fiction:" + w) < 0) flags.push("fiction:" + w); } });
   if (fiction > 0) score -= Math.min(45, fiction * 14);
-  // P0-8 Claim→Fact 硬校验：服务/保障类声明必须有对应已确认事实，否则标记为无依据声明并降分
-  if (facts) {
-    const claims = [
-      { k: /保险|意外险|投保/, ok: !!facts.insurance, w: "保险" },
-      { k: /领队|教练|向导/, ok: !!facts.leader, w: "领队" },
-      { k: /大巴|包车|专车|接送/, ok: !!facts.transport, w: "交通" },
-      { k: /含餐|午餐|晚餐|早餐|团餐|正餐/, ok: !!facts.meal, w: "餐食" },
-      { k: /(提供|配发|免费使用)[^。；\n]{0,6}(装备|登山杖|头盔|救生衣)/, ok: !!(facts.gear && facts.gear.length), w: "装备" },
-      // 住宿：不再恒判无依据 —— 若费用包含里写了住宿/房，则视为已确认
-      { k: /住宿|客栈|民宿|入住|标间/, ok: !!(facts.lodging || (facts.includedServices || []).some((s) => /住宿|客栈|民宿|房/.test(String(s)))), w: "住宿" },
-    ];
-    claims.forEach((c) => { if (c.k.test(T) && !c.ok) { score -= 8; flags.push("unsupported:" + c.w); } });
-    // P2-2 更强 Claim→Fact：天气 / 实际人数 / 完成情况 / 用户反馈 / 路线成熟度 / 风景判断
-    // 全部依赖「已确认事实」或「回顾的实际活动数据」，无依据即标记（不给 AI 留想象空间）
-    const A = adv || {};
-    const hasList = (x) => (Array.isArray(x) ? x.filter(Boolean).length > 0 : !!x);
-    const extraClaims = [
-      { k: /(万里无云|阳光明媚|晴空万里|下起了雨|突然放晴|阴雨绵绵|艳阳高照|天气很(好|差))/, ok: !!A.actualWeather, w: "天气" },
-      { k: /(\d+)\s*(人|位|名)\s*(参加|到场|实到|出席)|共\s*\d+\s*人|实际参加\s*\d+/, ok: A.actualParticipants != null, w: "实际人数" },
-      { k: /(走完|完成)(了)?(全程|整条|整段|路线)|全员登顶|我们登顶|一个不落/, ok: !!A.completionSummary, w: "完成情况" },
-      { k: /(有人说|大家(都)?(表示|说)|(队员|学员|家长|参与者)(们)?(都)?(表示|反馈|说)|好评如潮|纷纷点赞|大家一致)/, ok: hasList(A.actualFeedback), w: "用户反馈" },
-      { k: /(路线(很|非常)?成熟|成熟的?(路线|线路)|老少皆宜|男女皆宜|毫无难度|闭眼可走|零门槛)/, ok: !!(facts.routeMaturity), w: "路线成熟度" },
-      { k: /(风景(绝美|绝佳|美到)|美到窒息|人间仙境|宛如仙境|震撼人心|美得不像话|此生必去)/, ok: false, w: "风景判断" },
-    ];
-    extraClaims.forEach((c) => { if (c.k.test(T) && !c.ok) { score -= 8; flags.push("unsupported:" + c.w); } });
+  // P0-18：统一 12 类 Claim→Fact 硬校验（含新增 登顶 / 安全保障）。
+  // 此处仅做「标记 + 降分」；真正的「删除/重写」由 xfStripUnsupportedClaims 在 xfQualityCheck 中执行。
+  if (facts || adv) {
+    const detectors = xfClaimDetectors(facts, adv);
+    detectors.forEach((c) => {
+      const okv = (typeof c.ok === "function") ? c.ok(T) : c.ok;
+      if (c.re.test(T) && !okv) { score -= 8; flags.push("unsupported:" + c.w); }
+    });
   }
   const TEMPLATE = ["大家好，", "大家好！", "今天给大家", "一起来看看", "不仅如此", "总而言之", "总的来说", "首先，", "其次，", "最后，"];
   let tpl = 0; TEMPLATE.forEach((w) => { if (T.indexOf(w) >= 0) tpl++; });
@@ -945,6 +1023,8 @@ function xfEditorialQuality(dir, scenario, family, variant) {
 
 function xfQualityCheck(out, dir, scenario, facts, adv) {
   if (!out) return out;
+  // P0-18：先执行无依据 claim 的删除/重写（就地修改 out，返回被删类别）
+  const removed = xfStripUnsupportedClaims(out, facts, adv);
   const gzh = out.gzh;
   if (!gzh || !gzh.sections || gzh.sections.length < 3) return out;
   const cq = xfContentQuality(out, dir, scenario, facts, adv);
@@ -957,15 +1037,18 @@ function xfQualityCheck(out, dir, scenario, facts, adv) {
     const ficHits = cq.flags.filter((f) => f.indexOf("fiction:") >= 0).map((f) => f.split(":")[1]).slice(0, 3);
     // P2-2：无事实依据的声明（保险/领队/天气/人数/完成情况/用户反馈/路线成熟度/风景判断…）
     const unsupHits = cq.flags.filter((f) => f.indexOf("unsupported:") >= 0).map((f) => f.split(":")[1]).slice(0, 5);
+    const removedNote = removed.length ? ("已自动删除以下无依据声明：" + removed.join("、")) : "";
     state.xf.quality = {
-      flag: fictionRisk ? "fiction_risk" : (unsupHits.length ? "unsupported_claim" : (contentRisk || editorialRisk ? "quality_risk" : "ok")),
-      content: cq, editorial: eq, unsupported: unsupHits,
+      // P0-18：删除层已直接处理无依据声明，故 flag 改为 unsupported_removed（不再只是标记）
+      flag: fictionRisk ? "fiction_risk" : (removed.length ? "unsupported_removed" : (unsupHits.length ? "unsupported_claim" : (contentRisk || editorialRisk ? "quality_risk" : "ok"))),
+      content: cq, editorial: eq, unsupported: unsupHits, removed: removed,
       contentRisk: contentRisk, editorialRisk: editorialRisk, fictionRisk: fictionRisk,
       note: fictionRisk ? ("检测到可能的虚构表述，建议人工复核：" + ficHits.join("、"))
-        : (unsupHits.length ? ("以下说法缺少事实依据，建议修改或删除：" + unsupHits.join("、"))
-          : (contentRisk ? "文案质量分偏低（" + cq.score + "），已尝试自动重生成"
-            : (editorialRisk ? "版式质量分偏低（" + eq.score + "），已尝试重选家族/变体"
-              : "文案基于已确认事实，质量达标（内容 " + cq.score + " / 版式 " + eq.score + "）"))),
+        : (removed.length ? removedNote
+          : (unsupHits.length ? ("以下说法缺少事实依据，建议修改或删除：" + unsupHits.join("、"))
+            : (contentRisk ? "文案质量分偏低（" + cq.score + "），已尝试自动重生成"
+              : (editorialRisk ? "版式质量分偏低（" + eq.score + "），已尝试重选家族/变体"
+                : "文案基于已确认事实，质量达标（内容 " + cq.score + " / 版式 " + eq.score + "）")))),
     };
   }
   return out;
