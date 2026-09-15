@@ -4856,6 +4856,8 @@ body{
 .xf-adv>summary:before{content:"⚙ "}
 .xf-adv[open]>summary{margin-bottom:8px}
 .xf-adv .xf-stylebar-row{margin-bottom:6px}
+.xf-debug-kv code{font-size:12px;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:3px 8px;color:var(--ink-2);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;white-space:nowrap}
+.xf-quick .xf-chip-soft{background:var(--brand-tint);border-color:transparent;color:var(--brand-700);font-weight:700}
 
 /* ============ 版式变体（18 式：家族×变体，第三视觉维度） ============ */
 /* 变体 0：经典版（默认） */

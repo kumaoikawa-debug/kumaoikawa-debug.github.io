@@ -1339,7 +1339,10 @@ function xfStyleBar(xf) {
   // 但「缺少事实依据」是合规警告（P2-2），必须默认可见 —— 折进折叠块里等于没提示。
   const warnText = q.fictionRisk ? ("⚠️ " + (q.note || "发现可能缺少事实依据的描述，请确认。"))
     : ((q.unsupported && q.unsupported.length) ? ("⚠️ 以下说法缺少事实依据，建议修改或删除：" + q.unsupported.join("、")) : "");
-  const qText = (q.content || q.editorial) ? "✓ 已检查真实信息，未发现明显事实冲突" : "";
+  const cScore = (q.content && typeof q.content.score === "number") ? q.content.score : null;
+  const eScore = (q.editorial && typeof q.editorial.score === "number") ? q.editorial.score : null;
+  // P1-1 简化结果页：普通老板默认只看到「当前风格 / 换一种版式 / 换一种风格 / 快捷(4)」。
+  // Family/Variant/Editorial Direction/Style Seed/Quality Score 与 局部重生成 全部收进「高级调试区」折叠块。
   return `<div class="xf-stylebar">
     <div class="xf-stylebar-row xf-stylebar-main">
       <span class="xf-stylebar-lbl">当前风格</span>
@@ -1348,21 +1351,24 @@ function xfStyleBar(xf) {
       <button class="btn btn-ghost btn-sm" data-action="xfSwitchStyle">${ICON("sparkles")} 换一种风格</button>
     </div>
     ${warnText ? `<div class="xf-stylebar-row xf-warn">${esc(warnText)}</div>` : ""}
-    <div class="xf-stylebar-row xf-quick"><span class="xf-stylebar-lbl">快速调整</span>${(sc === "recruit"
-      ? [["magazine", "更杂志"], ["visual", "更视觉"], ["pro", "更专业"], ["young", "更年轻"], ["challenge", "更有挑战感"]]
-      : [["doc", "更纪实"], ["warm", "更温暖"], ["album", "更像画册"], ["people", "更有人物感"], ["nature", "更自然"]]
-    ).map(([k, l]) => `<button class="xf-chip xf-chip-soft" data-action="xfQuickStyle" data-k="${k}">${l}</button>`).join("")}</div>
-    <div class="xf-stylebar-row xf-stylebar-local"><span class="xf-stylebar-lbl">局部重生成</span>
-      <button class="xf-chip" data-action="xfRegenTitle">${ICON("refresh")} 只改标题</button>
-      <button class="xf-chip" data-action="xfRegenCta">${ICON("refresh")} 只改结尾</button>
-      <button class="xf-chip" data-action="xfShufflePhotos">${ICON("refresh")} 只换图片安排</button>
-      <button class="xf-chip" data-action="xfNextVariant">${ICON("refresh")} 只换布局</button>
+    <div class="xf-stylebar-row xf-quick"><span class="xf-stylebar-lbl">快捷</span>
+      <button class="xf-chip xf-chip-soft" data-action="xfQuickStyle" data-k="magazine">更杂志</button>
+      <button class="xf-chip xf-chip-soft" data-action="xfQuickStyle" data-k="visual">更视觉</button>
+      <button class="xf-chip xf-chip-soft" data-action="xfQuickStyle" data-k="pro">更专业</button>
+      <button class="xf-chip xf-chip-soft" data-action="xfQuickStyle" data-k="nature">更自然</button>
     </div>
-    <details class="xf-adv"><summary>高级信息（内部版式参数）</summary>
-      <div class="xf-stylebar-row"><span class="xf-stylebar-lbl">编辑家族</span>${fams.map((f) => `<button class="xf-chip ${xf.family === f ? "active" : ""}" data-action="xfSwitchFamily" data-f="${f}">${XF_FAMILIES[f].label}</button>`).join("")}</div>
-      <div class="xf-stylebar-row"><span class="xf-stylebar-lbl">版式变体</span>${vs.map((v, i) => `<button class="xf-chip ${xf.variant === i ? "active" : ""}" data-action="xfSwitchVariant" data-v="${i}">${v}</button>`).join("")}</div>
-      ${dir ? `<div class="xf-dir">编辑方向：<b>${esc(dir.angle || "")}</b>${dir.hook ? ` · 钩子「${esc(dir.hook)}」` : ""} · 视觉 ${esc((dir.visual && dir.visual.color) || "")}/${esc((dir.visual && dir.visual.composition) || "")}</div>` : ""}
-      ${qText ? `<div class="xf-q">${esc(qText)}</div>` : ""}
+    <details class="xf-adv"><summary>高级调试区</summary>
+      <div class="xf-stylebar-row"><span class="xf-stylebar-lbl">局部重生成</span>
+        <button class="xf-chip" data-action="xfRegenTitle">${ICON("refresh")} 只改标题</button>
+        <button class="xf-chip" data-action="xfRegenCta">${ICON("refresh")} 只改结尾</button>
+        <button class="xf-chip" data-action="xfShufflePhotos">${ICON("refresh")} 只换图片安排</button>
+        <button class="xf-chip" data-action="xfNextVariant">${ICON("refresh")} 只换布局</button>
+      </div>
+      <div class="xf-stylebar-row"><span class="xf-stylebar-lbl">编辑家族 Family</span>${fams.map((f) => `<button class="xf-chip ${xf.family === f ? "active" : ""}" data-action="xfSwitchFamily" data-f="${f}">${XF_FAMILIES[f].label}</button>`).join("")}</div>
+      <div class="xf-stylebar-row"><span class="xf-stylebar-lbl">版式变体 Variant</span>${vs.map((v, i) => `<button class="xf-chip ${xf.variant === i ? "active" : ""}" data-action="xfSwitchVariant" data-v="${i}">${v}</button>`).join("")}</div>
+      ${dir ? `<div class="xf-dir">编辑方向 Editorial Direction：<b>${esc(dir.angle || "")}</b>${dir.hook ? ` · 钩子「${esc(dir.hook)}」` : ""} · 视觉 ${esc((dir.visual && dir.visual.color) || "")}/${esc((dir.visual && dir.visual.composition) || "")}</div>` : ""}
+      <div class="xf-stylebar-row xf-debug-kv"><span class="xf-stylebar-lbl">Style Seed</span><code>${xf.styleSeed != null ? esc(String(xf.styleSeed)) : "—"}</code></div>
+      <div class="xf-stylebar-row xf-debug-kv"><span class="xf-stylebar-lbl">Quality Score</span><code>内容 ${cScore != null ? cScore : "—"} ／ 版式 ${eScore != null ? eScore : "—"}</code></div>
     </details>
   </div>`;
 }
@@ -1379,6 +1385,8 @@ function xfQuickStyle(kind) {
       pro: { family: "challenge_editorial", color: "夜空蓝", typographic: "无衬线粗体", composition: "数据条+区块", whitespace: "low" },
       young: { family: "visual_campaign", color: "暖米", typographic: "无衬线粗体", composition: "卡片流", whitespace: "generous" },
       challenge: { family: "challenge_editorial", color: "夜空蓝", typographic: "无衬线粗体", composition: "数据条+区块", whitespace: "low" },
+      // P1-1：固定快捷预设在 recruit 场景也能解析（更自然 → 大图主导的编辑杂志感）
+      nature: { family: "route_editorial", color: "山系橙", typographic: "衬线大标题", composition: "大图主导", whitespace: "generous" },
     }
     : {
       doc: { family: "brand_journal", color: "山系橙", composition: "大图主导", whitespace: "generous" },
@@ -1386,6 +1394,10 @@ function xfQuickStyle(kind) {
       album: { family: "outdoor_lookbook", color: "暖米", composition: "网格画廊", whitespace: "generous" },
       people: { family: "photo_documentary", color: "松石", composition: "手账步骤", whitespace: "medium", imagePriority: "high" },
       nature: { family: "brand_journal", color: "山系橙", composition: "大图主导", whitespace: "generous" },
+      // P1-1：固定快捷预设在 recap 场景也能解析（更杂志/更视觉/更专业）
+      magazine: { family: "brand_journal", color: "山系橙", composition: "大图主导", whitespace: "generous" },
+      visual: { family: "outdoor_lookbook", color: "暖米", composition: "网格画廊", whitespace: "generous" },
+      pro: { family: "brand_journal", color: "夜空蓝", typographic: "无衬线粗体", composition: "数据条+区块", whitespace: "low" },
     };
   const cfg = map[kind];
   if (!cfg) return;
