@@ -1194,11 +1194,16 @@
     const editorialTitle = dna.editorialTitle || theme;
     const pullQuote = dna.pullQuote || theme;
     const intro = ((angles[1] || theme) + "。") + (sig ? sig + "。" : "") + "这一程，把脚步交给" + envLabel + "本身。";
+    // 结构化叙事字段（供消费者详情页「场景体验 / 活动价值 / 适合谁」区块直接消费）
+    const whyGo = ((angles[1] || theme) + "。") + (sig ? sig + "。" : "");
+    const experience = sig || (tags.join("、") + "，构成这一程最具体的画面。");
+    const gain = angles[2] || (tones.join("、") + "，是这趟行程留给你的余韵。");
+    const fitFor = (dna.targetAudience || "想换个节奏的人") + "，都可以在这里找到自己的步频。";
     const body = [
-      "为什么值得去：" + (angles[1] || theme) + "。",
-      "来了会体验什么：" + (sig || (tags.join("、") + "，构成这一程最具体的画面。")),
-      "参加完能得到什么：" + (angles[2] || (tones.join("、") + "，是这趟行程留给你的余韵。")),
-      "适不适合你：" + (dna.targetAudience || "想换个节奏的人") + "，都可以在这里找到自己的步频。"
+      "为什么值得去：" + whyGo,
+      "来了会体验什么：" + experience,
+      "参加完能得到什么：" + gain,
+      "适不适合你：" + fitFor
     ];
     const sellingPoints = [
       { title: envLabel + "本场才有的画面", desc: sig || "这一程最具体的风景，只属于这条路线。" },
@@ -1214,6 +1219,7 @@
     ];
     return {
       heroHook, hook, editorialTitle, pullQuote, intro, body, sellingPoints, forewordTitles,
+      whyGo, experience, gain, fitFor,
       posterTagline: (dna.season ? dna.season + "，" : "") + envLabel + "在等你",
       storyPurpose: theme
     };
@@ -1229,6 +1235,10 @@
     if (!a.editorialTitle) a.editorialTitle = c.editorialTitle;
     if (!a.pullQuote) a.pullQuote = c.pullQuote;
     if (!a.intro) a.intro = c.intro;
+    if (!a.whyGo) a.whyGo = c.whyGo;
+    if (!a.experience) a.experience = c.experience;
+    if (!a.gain) a.gain = c.gain;
+    if (!a.fitFor) a.fitFor = c.fitFor;
     if (!Array.isArray(a.body) || !a.body.length) a.body = c.body;
     if (!Array.isArray(a.sellingPoints) || !a.sellingPoints.length) {
       a.sellingPoints = c.sellingPoints;
@@ -3700,6 +3710,12 @@
     const d = pl.details;
     const refund = (d.refund && d.refund.length) ? `<div class="note-block"><div class="note-h">退改守则</div>${d.refund.map((t) => `<div class="note-row">${esc(t)}</div>`).join("")}</div>` : "";
     const alt = (d.altitude && d.altitude.length) ? `<div class="note-block"><div class="note-h">高海拔提示</div>${d.altitude.map((t) => `<div class="note-row">${esc(t)}</div>`).join("")}</div>` : "";
-    const gear = (!a.gear || !a.gear.length) ? `<div class="note-block"><div class="note-h">装备建议</div><div class="note-sub">强制</div>${d.must.map((t) => `<div class="note-row">${esc(t)}</div>`).join("")}<div class="note-sub">建议</div>${d.suggest.map((t) => `<div class="note-row">${esc(t)}</div>`).join("")}</div>` : "";
+    // 防御：pipeline.details 可能来自本地兜底（applyDnaCopyFallback 会写成 {}），
+    // 此时 must/suggest 缺失 → 旧代码 .map 直接抛错，导致整页详情崩溃。
+    const must = Array.isArray(d.must) ? d.must : [];
+    const suggest = Array.isArray(d.suggest) ? d.suggest : [];
+    const gear = ((!a.gear || !a.gear.length) && (must.length || suggest.length))
+      ? `<div class="note-block"><div class="note-h">装备建议</div>${must.length ? `<div class="note-sub">强制</div>${must.map((t) => `<div class="note-row">${esc(t)}</div>`).join("")}` : ""}${suggest.length ? `<div class="note-sub">建议</div>${suggest.map((t) => `<div class="note-row">${esc(t)}</div>`).join("")}` : ""}</div>`
+      : "";
     return `<div class="dsec note-sec"><div class="dsec-h"><span class="dsec-ic">${ICON("shield")}</span><h3>出行须知</h3></div>${refund}${alt}${gear}</div>`;
   }

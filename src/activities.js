@@ -121,6 +121,20 @@
     const servicesBlock = guaran.length
       ? `<div class="dsec"><div class="dsec-h"><h3>已确认服务</h3></div><div class="service-chips">${guaran.map((g)=>`<div class="service-chip"><span class="sc-ic">${ICON(guaranIcons[g] || "check")}</span><span>${esc(g)}</span></div>`).join("")}</div></div>`
       : "";
+
+    // P0-3：报名决策层「速览卡」——把时间/地点/集合/强度/名额/价格集中成一屏可扫的决策摘要
+    const decisionMetaHtml = (() => {
+      const rows = [
+        { ic: "calendar", k: "时间", v: esc(a.dateMD || a.date || "待定") },
+        { ic: "map-pin", k: "集合", v: esc(a.meeting || "待定") },
+        { ic: "mountain", k: "地点", v: esc(a.place || a.type || "待定") },
+        { ic: "activity", k: "强度", v: esc(routeDifficultyConflict ? "待机构确认" : ((a.difficulty && !/missing/i.test(a.difficulty)) ? a.difficulty : "待确认")) },
+        { ic: "users", k: "名额", v: esc(a.limit ? a.limit + a.limitUnit : "不限") },
+        { ic: "tag", k: "价格", v: a.price ? "¥" + a.price + (a.limitUnit ? "/" + esc(a.limitUnit) : "") : "详询" },
+      ];
+      return `<div class="decision-meta">${rows.map((r) => `<div class="dm-item"><span class="dm-ic">${ICON(r.ic)}</span><div class="dm-t"><span class="dm-k">${r.k}</span><span class="dm-v">${r.v}</span></div></div>`).join("")}</div>`;
+    })();
+
     const renderBlock = (b) => {
       switch (b.type) {
         case "editorial_lead": {
@@ -201,47 +215,41 @@
       </div>
 
       <div class="detail-body composition-${composition}">
-        <div class="lead-sheet">
-          <!-- P0-3 双层详情页 · 第一层：内容包装层（先打动人） -->
-          <div class="layer-content">
-            ${a.pullQuote ? `<div class="quote-card"><span class="quote-mark">“</span><p>${esc(a.pullQuote)}</p></div>` : ""}
-            <div class="lead-tags">
-              <span class="lead-tag-primary">${ICON("map-pin")}${esc(a.type)}</span>
-              ${core.map((t) => `<span class="lead-tag-secondary">${esc(t)}</span>`).join("")}
-            </div>
-            <h1 class="lead-title">${esc(a.title)}</h1>
-            ${a.posterTagline || a.hook ? `<p class="lead-subtitle">${esc(a.posterTagline || a.hook)}</p>` : ""}
-            ${leadHl.length ? `<div class="lead-highlights">${leadHl.map((h) => `<div class="lhl"><span class="lhl-dot"></span><span>${esc(h[0])}</span></div>`).join("")}</div>` : ""}
-          </div>
-          <!-- 第二层：报名决策层（再帮决策；信息完整但不再抢占第一屏） -->
-          <div class="layer-decision">
-            <div class="lead-quick-meta">
-              <div class="lqm-item"><span class="lqm-ic">${ICON("calendar")}</span><div><span class="lqm-k">时间</span><span class="lqm-v">${esc(a.dateMD || a.date || "待定")}</span></div></div>
-              <div class="lqm-item"><span class="lqm-ic">${ICON("map-pin")}</span><div><span class="lqm-k">集合</span><span class="lqm-v">${esc(a.meeting || "待定")}</span></div></div>
-              <div class="lqm-item"><span class="lqm-ic">${ICON("activity")}</span><div><span class="lqm-k">强度</span><span class="lqm-v">${esc(routeDifficultyConflict ? "待机构确认" : ((a.difficulty && !/missing/i.test(a.difficulty)) ? a.difficulty : "待确认"))}</span></div></div>
-            </div>
-            <div class="lead-price-card">
-              <div class="lead-price-main">${a.price ? `<b>¥${a.price}</b><small>/${esc(a.limitUnit)}</small>` : `<b>详询</b>`}${a.useMemberPrice && memberPriceRange(a) ? `<span class="lead-price-tag">${esc(formatMemberPriceNote(a))}</span>` : ""}</div>
-              <div class="lead-price-note">${a.days > 1 ? `${a.days} 天 · ` : ""}${a.limit ? `限 ${a.limit}${esc(a.limitUnit)}` : "名额不限"}</div>
+
+        <!-- A. 内容包装层：先打动人，再讲事实 -->
+        <section class="layer layer-packaging" aria-label="内容包装层">
+          <div class="lead-sheet">
+            <div class="layer-content">
+              <div class="lead-tags">
+                <span class="lead-tag-primary">${ICON("map-pin")}${esc(a.type)}</span>
+                ${core.map((t) => `<span class="lead-tag-secondary">${esc(t)}</span>`).join("")}
+              </div>
+              <h1 class="lead-title">${esc(a.title)}</h1>
+              ${a.posterTagline || a.hook ? `<p class="lead-subtitle">${esc(a.posterTagline || a.hook)}</p>` : ""}
+              ${leadHl.length ? `<div class="lead-highlights">${leadHl.map((h) => `<div class="lhl"><span class="lhl-dot"></span><span>${esc(h[0])}</span></div>`).join("")}</div>` : ""}
             </div>
           </div>
-        </div>
+          ${groups.story.join("\n")}
+          ${groups.highlights.length ? groups.highlights.join("\n") : ""}
+        </section>
 
-        ${departuresBlockHtml(a)}
-
-        <div class="section-tabs">
-          ${groups.highlights.length ? `<a href="#sec-highlights" class="stab active">亮点</a>` : ""}
-          ${groups.story.length ? `<a href="#sec-story" class="stab">详情</a>` : ""}
-          ${groups.itinerary.length ? `<a href="#sec-itinerary" class="stab">行程</a>` : ""}
-          ${groups.notes.length ? `<a href="#sec-notes" class="stab">须知</a>` : ""}
-        </div>
-
-        ${groups.highlights.length ? `<div class="sec-panel">${groups.highlights.join("\n")}</div>` : ""}
-        ${groups.story.length ? `<div class="sec-panel">${groups.story.join("\n")}</div>` : ""}
-        ${groups.itinerary.length ? `<div class="sec-panel">${groups.itinerary.join("\n")}</div>` : ""}
-        ${groups.notes.length ? `<div class="sec-panel">${groups.notes.join("\n")}</div>` : ""}
-
-        ${groups.org.length ? groups.org.join("\n") : ""}
+        <!-- B. 报名决策层：事实与决策，集中、好扫 -->
+        <section class="layer layer-decision" aria-label="报名决策层">
+          <div class="layer-decision-head">
+            <span class="ldh-kicker">报名前，先看这些</span>
+            <h2 class="ldh-title">报名决策</h2>
+          </div>
+          ${decisionMetaHtml}
+          ${departuresBlockHtml(a)}
+          ${groups.itinerary.join("\n")}
+          ${groups.notes.join("\n")}
+          ${groups.org.length ? groups.org.join("\n") : ""}
+          <div class="decision-cta">
+            <div class="decision-cta-price">${priceTxt}</div>
+            <button class="btn btn-primary btn-block" data-action="openSignup" data-id="${a.id}">${ICON("check")} 立即报名</button>
+            <div class="tiny muted">${a.days > 1 ? a.days + " 天行程" : "单日行程"} · ${a.limit ? "限 " + a.limit + esc(a.limitUnit) : "名额不限"} · 已确认服务见上</div>
+          </div>
+        </section>
 
         ${(() => { const gm = matchGearProducts(a); return gm.matchedIds.length ? `<section class="after-signup-shop"><div><span>报名后的装备服务</span><h3>需要补装备，再去商城看看</h3><p>活动信息先帮助你决定是否参加；商城只作为出发前的补充服务。</p></div><button class="btn btn-soft btn-sm" data-action="nav" data-view="mall">查看匹配装备 ${ICON("arrow-right")}</button></section>` : ""; })()}
       </div>
