@@ -192,6 +192,14 @@
         break;
       }
       case "nav": showView(d.view); window.scrollTo(0, 0); break;
+      case "setDetailMode": {
+        // P0-4：在「简洁报名」与「AI 图文长页」两种详情页输出之间切换
+        state.detailMode = (d.mode === "editorial") ? "editorial" : "lean";
+        saveState();
+        if (state.view === "detail") showView("detail", state.params);
+        else refreshPreview();
+        break;
+      }
       case "doLogin": {
         const phone = $("#loginPhone").value.trim();
         if (!phone) return toast("请输入手机号");

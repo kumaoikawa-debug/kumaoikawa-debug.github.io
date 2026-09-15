@@ -39,8 +39,168 @@
       + `</section>`;
   }
 
+  /* ===== P0-4「AI 图文活动详情页」（长图文输出）=====
+     与「简洁报名详情」并存的第二种详情页输出：更像公众号/活动宣传长图文，而非固定 SaaS 详情页。
+     输入=活动事实+行程+图片+补充资料；输出=图文故事大纲+每段文案+图片匹配+图片组合+页面排版+决策信息+CTA。 */
+  function detailModeOf() {
+    return (typeof state !== "undefined" && state && state.detailMode === "editorial") ? "editorial" : "lean";
+  }
+  function detailModeSwitch() {
+    const m = detailModeOf();
+    return `<div class="detail-mode-switch">`
+      + `<button type="button" class="dms-chip ${m === "lean" ? "on" : ""}" data-action="setDetailMode" data-mode="lean">${ICON("layout")} 简洁报名</button>`
+      + `<button type="button" class="dms-chip ${m === "editorial" ? "on" : ""}" data-action="setDetailMode" data-mode="editorial">${ICON("sparkles")} 图文长页</button>`
+      + `</div>`;
+  }
+  function xhFig(a, i, cap) {
+    const src = (a.photos || [])[i];
+    if (!src) return "";
+    const risk = (typeof pagePhotoRisk === "function") ? pagePhotoRisk(src) : null;
+    const contain = risk === "high"; // P0-11 安全裁切：高风险图宁可留白也不裁坏主体
+    return `<figure class="xh-ed-fig"><img src="${src}" alt="" loading="lazy" style="object-position:${smartPos(src)};object-fit:${contain ? "contain" : "cover"}">${cap ? `<figcaption>${esc(cap)}</figcaption>` : ""}</figure>`;
+  }
+  function renderActivityEditorial(a) {
+    if (!a) return "";
+    if (typeof setPagePhotoIntel === "function") setPagePhotoIntel(a);
+    const dna = (typeof activityDNAOf === "function") ? activityDNAOf(a) : null;
+    const ac = styleAccent(a);
+    const photos = a.photos || [];
+    const coverIdx = Math.max(0, Math.min(+(a.coverIndex || 0), Math.max(0, photos.length - 1)));
+    const coverSrc = photos[coverIdx];
+    const priceTxt = a.price ? `¥${a.price}<small>/${esc(a.limitUnit)}</small>` : "详询";
+    const eyebrow = [a.type, a.place, (dna && dna.season)].filter(Boolean).join(" · ");
+    const theme = (dna && dna.mainTheme) || a.storyPurpose || a.editorialTitle || a.title || "";
+    const sub = a.posterTagline || a.hook || "";
+    const outline = (typeof buildEditorialOutline === "function") ? buildEditorialOutline(a) : [];
+    const caps = a.photoCaptions || [];
+    const usedSet = new Set([coverIdx]);
+    let capIdx = 1;
+    const nextCap = () => { const c = caps[capIdx]; capIdx++; return (c && String(c).trim()) ? String(c).trim() : ""; };
+    // 长图文节奏：图多时预留末尾一组「现场影像」，不把照片全塞进章节（先预占，章节取图时自然跳过）
+    const reserveIdx = [];
+    if (photos.length >= 8) {
+      for (let i = photos.length - 1; i >= 0 && reserveIdx.length < 3; i--) { if (i === coverIdx) continue; reserveIdx.push(i); }
+      reserveIdx.forEach((i) => usedSet.add(i));
+    }
+
+    // 数据条（事实层）
+    const kvs = [];
+    if (a.distance) kvs.push([a.distance, "公里"]);
+    if (a.elevation) kvs.push([a.elevation, "海拔 m"]);
+    if (a.days) kvs.push([a.days, a.days > 1 ? "天行程" : "单日"]);
+    if (a.limit) kvs.push([a.limit, a.limitUnit || "人"]);
+    const kvHtml = kvs.length ? `<div class="xh-ed-kvs">${kvs.map(([v, k]) => `<div class="xh-ed-kv"><b>${esc(String(v))}</b><span>${esc(k)}</span></div>`).join("")}</div>` : "";
+
+    const leadParas = String(a.intro || "").split(/\n+/).map((s) => s.trim()).filter(Boolean);
+    const leadHtml = leadParas.length ? `<div class="xh-ed-lead">${leadParas.map((p) => `<p>${esc(p)}</p>`).join("")}</div>` : "";
+
+    // 图文故事：每节 = 编号 + 标题 + 图片匹配/组合 + 每段文案
+    const secHtml = outline.map((sec) => {
+      const idxs = (typeof editorialPhotosFor === "function") ? editorialPhotosFor(a, sec, usedSet) : [];
+      let figs = "";
+      if (idxs.length === 1) figs = `<div class="xh-ed-figs one">${xhFig(a, idxs[0], nextCap())}</div>`;
+      else if (idxs.length === 2) figs = `<div class="xh-ed-figs two">${idxs.map((i) => xhFig(a, i, nextCap())).join("")}</div>`;
+      else if (idxs.length >= 3) figs = `<div class="xh-ed-figs three">${idxs.slice(0, 3).map((i) => xhFig(a, i, nextCap())).join("")}</div>`;
+      const kindLabel = (typeof EDITORIAL_KIND_LABEL !== "undefined" && EDITORIAL_KIND_LABEL[sec.kind]) || "STORY";
+      return `<section class="xh-ed-sec" data-sec="${esc(sec.key)}"><div class="xh-ed-num">${String(sec.num).padStart(2, "0")} / ${kindLabel}</div><h2 class="xh-ed-h">${esc(sec.heading)}</h2>${figs}<div class="xh-ed-paras">${sec.paras.map((p) => `<p>${esc(p)}</p>`).join("")}</div></section>`;
+    }).join("\n");
+
+    const quoteHtml = a.pullQuote ? `<section class="xh-ed-quote"><div class="xh-ed-quote-mark">${ICON("quote")}</div><p>${esc(a.pullQuote)}</p></section>` : "";
+
+    // 决策信息
+    const metaRows = [
+      ["calendar", "时间", a.dateMD || a.date || "待定"],
+      ["map-pin", "集合", a.meeting || "待定"],
+      ["mountain", "地点", a.place || a.type || "待定"],
+      ["activity", "强度", (a.difficulty && !/missing/i.test(a.difficulty)) ? a.difficulty : "待确认"],
+      ["users", "名额", a.limit ? a.limit + (a.limitUnit || "人") : "不限"],
+      ["tag", "价格", a.price ? "¥" + a.price + (a.limitUnit ? "/" + a.limitUnit : "") : "详询"],
+    ];
+    const metaHtml = `<div class="decision-meta">${metaRows.map((r) => `<div class="dm-item"><span class="dm-ic">${ICON(r[0])}</span><div class="dm-t"><span class="dm-k">${r[1]}</span><span class="dm-v">${esc(String(r[2]))}</span></div></div>`).join("")}</div>`;
+
+    const fee = a.feeInclude || [];
+    const feeHtml = `<div class="dsec"><div class="dsec-h"><h3>费用说明</h3></div><div class="fee-card"><div class="fee-hero"><div class="fee-hero-l"><span class="fee-hero-k">活动价格</span><b class="fee-hero-v">${a.price ? "¥" + a.price : "详询"}</b>${a.price ? `<span class="fee-hero-u">/ ${esc(a.limitUnit)}</span>` : ""}</div></div>`
+      + (fee.length ? `<div class="fee-sec"><div class="fee-sec-h"><span class="fee-sec-ic ok">${ICON("check")}</span>费用包含</div><div class="fee-grid">${fee.map((f) => `<div class="fee-cell"><span class="fee-cell-ic">${ICON("check")}</span><span>${esc(f)}</span></div>`).join("")}</div></div>` : "")
+      + ((a.feeExclude || []).length ? `<div class="fee-sec"><div class="fee-sec-h"><span class="fee-sec-ic no">${ICON("x")}</span>费用不含</div><div class="fee-grid">${a.feeExclude.map((f) => `<div class="fee-cell fee-cell-no"><span class="fee-cell-ic no">${ICON("x")}</span><span>${esc(f)}</span></div>`).join("")}</div></div>` : "")
+      + `</div></div>`;
+
+    const days = (a.itineraryDays || []).filter((d) => (d.items || []).some((t) => t && (t.time || t.text)));
+    const itinHtml = days.length ? `<div class="dsec"><div class="dsec-h"><h3>详细行程</h3></div>${days.map((d, i) => `<div class="xh-ed-day"><div class="xh-ed-day-h"><span>DAY</span><b>${i + 1}</b>${d.label ? " · " + esc(d.label) : ""}</div><div class="timeline">${(d.items || []).filter((t) => t && (t.time || t.text)).map((t) => `<div class="tl-item"><div class="tl-node"></div><div class="t">${esc(t.time)}</div><div class="d">${esc(t.text)}</div></div>`).join("")}</div></div>`).join("")}</div>` : "";
+
+    const gearHtml = (() => {
+      if (typeof matchGearProducts !== "function" || typeof gearRender !== "function") return "";
+      const gm = matchGearProducts(a);
+      return `<div class="dsec"><div class="dsec-h"><h3>装备建议</h3></div><div class="gear-list">${gearRender(a, true, gm.gearProduct)}${gearRender(a, false, gm.gearProduct)}</div></div>`;
+    })();
+
+    const notesHtml = (typeof pipelineNotesHtml === "function") ? pipelineNotesHtml(a) : "";
+    const suitHtml = (typeof blockSuitability === "function") ? blockSuitability(a) : "";
+
+    // 完整内容页：已确认服务 / 领队与安全 / 往期评价 / 活动视频（有则出，与简洁页同源，避免半新半旧）
+    const guaranIcons = { "专业领队": "user-check", "活动保险": "shield", "小团控量": "users", "应急保障": "life-buoy", "正规机构": "award", "安全装备": "tool", "食宿安排": "coffee", "摄影跟拍": "camera", "交通接驳": "truck" };
+    const guaran = [];
+    const servicesConfirmed = (typeof confirmedFacts === "function") && confirmedFacts(a).some((f) => f.key === "services");
+    if (servicesConfirmed && a.includeLeader) guaran.push("专业领队");
+    if (servicesConfirmed && a.includeInsurance) guaran.push("活动保险");
+    if (servicesConfirmed && a.includeGear) guaran.push("活动装备");
+    if (servicesConfirmed && a.includeTransport) guaran.push("交通接驳");
+    if (servicesConfirmed && a.includeMeal) guaran.push("餐食");
+    const servicesHtml = guaran.length ? `<div class="dsec"><div class="dsec-h"><h3>已确认服务</h3></div><div class="service-chips">${guaran.map((g) => `<div class="service-chip"><span class="sc-ic">${ICON(guaranIcons[g] || "check")}</span><span>${esc(g)}</span></div>`).join("")}</div></div>` : "";
+    const extraHtml = ((typeof blockVideo === "function") ? blockVideo(a) : "")
+      + servicesHtml
+      + ((typeof blockLeader === "function") ? blockLeader(a) : "")
+      + ((typeof blockReviews === "function") ? blockReviews(a) : "");
+
+    const decisionHtml = `<section class="xh-ed-decision" id="xhDecision"><div class="xh-ed-decision-h"><span class="xh-ed-decision-kicker">DECISION</span><h2>报名信息</h2></div>${metaHtml}${(typeof departuresBlockHtml === "function") ? departuresBlockHtml(a) : ""}${itinHtml}${feeHtml}${gearHtml}${suitHtml}${notesHtml}${extraHtml}</section>`;
+
+    const ctaHtml = `<section class="xh-ed-cta"><div class="xh-ed-cta-theme">${esc(theme)}</div><div class="xh-ed-cta-price">${priceTxt}</div><button class="btn btn-primary btn-block" data-action="openSignup" data-id="${a.id}">${ICON("check")} 立即报名</button><div class="tiny muted">${a.days > 1 ? a.days + " 天行程" : "单日行程"} · ${a.limit ? "限 " + a.limit + esc(a.limitUnit) : "名额不限"}</div></section>`;
+
+    // 末尾「现场影像」长图组（预占的 3 张，若不足则用章节未用到的余图）
+    const remain = reserveIdx.length ? reserveIdx.slice().sort((x, y) => x - y) : photos.map((_, i) => i).filter((i) => !usedSet.has(i));
+    let galleryHtml = "";
+    if (remain.length) {
+      const groups = [];
+      const rr = remain.slice();
+      while (rr.length) groups.push(rr.splice(0, Math.min(3, rr.length)));
+      galleryHtml = `<section class="xh-ed-sec xh-ed-gallery" data-sec="gallery"><div class="xh-ed-num">${String(outline.length + 1).padStart(2, "0")} / GALLERY</div><h2 class="xh-ed-h">现场影像</h2>${groups.map((g) => `<div class="xh-ed-figs ${g.length >= 3 ? "three" : g.length === 2 ? "two" : "one"}">${g.map((i) => xhFig(a, i, nextCap())).join("")}</div>`).join("")}</section>`;
+    }
+    // 机构页脚（长图文末尾落款）
+    const orgHtml = (typeof state !== "undefined" && state && state.brand) ? `<section class="xh-ed-org"><div class="xh-ed-org-mark">${esc(state.brand.name || "")}</div>${state.brand.intro ? `<p>${esc(state.brand.intro)}</p>` : ""}<div class="xh-ed-org-meta">客服微信：${esc(state.brand.wechat || "-")} · ${esc(state.brand.phone || "-")}</div></section>` : "";
+
+    return `
+      <div class="activity-page xh-ed">
+      <div class="ps-topbar">${psLogo()}</div>
+      ${detailModeSwitch()}
+      <header class="xh-ed-hero" ${coverSrc ? `style="background-image:url('${coverSrc}')"` : `style="background:${ac.grad}"`}>
+        <div class="xh-ed-hero-mask"></div>
+        ${!coverSrc ? `<div class="xh-ed-hero-empty">${isAdminMode() ? "待上传主视觉" : "活动图片待机构补充"}</div>` : ""}
+        <div class="xh-ed-hero-txt">
+          <div class="xh-ed-eyebrow">${esc(eyebrow || "OUTDOOR")}</div>
+          <h1 class="xh-ed-title">${esc(a.title)}</h1>
+          ${sub ? `<p class="xh-ed-sub">${esc(sub)}</p>` : ""}
+          <div class="xh-ed-pill">${ICON("calendar")} ${esc(a.date || a.dateMD || "日期待定")}<span class="xh-ed-pill-div"></span>${ICON("map-pin")} ${esc(a.meeting || "集合点待定")}</div>
+        </div>
+      </header>
+      <div class="xh-ed-body">
+        ${kvHtml}
+        ${leadHtml}
+        ${secHtml}
+        ${quoteHtml}
+        ${galleryHtml}
+        ${decisionHtml}
+        ${ctaHtml}
+        ${orgHtml}
+      </div>
+      <div class="bottom-bar">
+        <div class="price">${priceTxt}</div>
+        <div class="bottom-actions"><button class="btn btn-ghost btn-sm" data-action="contactOrg">${ICON("message")} 咨询</button><button class="btn btn-primary" data-action="openSignup" data-id="${a.id}">立即报名</button></div>
+      </div></div>`;
+  }
+
   function renderActivityPhone(a) {
     if (!a) return "";
+    // P0-4：详情页支持两种输出——简洁报名详情（默认）/ AI 图文长页
+    if (detailModeOf() === "editorial" && typeof renderActivityEditorial === "function") return renderActivityEditorial(a);
     // P0-3/P0-4：注入页面级图片智能（自动筛图 / 角色 / 安全裁切），供媒体块与编排层消费
     if (typeof setPagePhotoIntel === "function") setPagePhotoIntel(a);
     const ac = styleAccent(a);
@@ -203,6 +363,7 @@
     return `
       <div class="activity-page composition-${composition}">
       <div class="ps-topbar">${psLogo()}</div>
+      ${detailModeSwitch()}
       <div class="cover type-${a.pageStyle} composition-${composition}" style="${hasPhoto ? "" : `background:${ac.grad}`}">
         ${hasPhoto ? `<img class="cover-img" data-smart-img src="${coverSrc}" alt="${esc(a.place || a.type)}活动主视觉" style="object-position:${smartPos(coverSrc)}">` : `<div class="cover-pattern"></div><div class="cover-missing">${isAdminMode() ? "待上传主视觉" : "活动图片待机构补充"}</div>`}
         <div class="scrim"></div>

@@ -3588,6 +3588,107 @@
     return out;
   }
 
+  /* ===== P0-4「AI 图文活动详情页」：图文故事大纲（事实+行程+图片+补充资料 → 章节序列）=====
+     与「简洁报名详情」并存的第二种输出，目标是接近公众号/活动宣传长图文，而非固定 SaaS 详情页。 */
+  const EDITORIAL_KIND_LABEL = { scenic: "SCENERY", experience: "EXPERIENCE", route: "ROUTE", people: "PEOPLE", gear: "GEAR", info: "INFO" };
+  function buildEditorialOutline(a) {
+    a = a || {};
+    const dna = (typeof activityDNAOf === "function") ? activityDNAOf(a) : null;
+    const fb = (typeof dnaCopyFor === "function") ? dnaCopyFor(dna || {}) : {};
+    const theme = (dna && dna.mainTheme) || a.storyPurpose || a.editorialTitle || a.title || "这一程";
+    const sig = (dna && dna.sceneSignature) || "";
+    const angles = (dna && dna.copyAngles) || [];
+    const envLabel = (dna && dna.environmentLabel) || a.place || "山野";
+    const lines = (t) => String(t || "").split(/\n+/).map((s) => s.trim()).filter(Boolean);
+    const pick = (v, f) => (lines(v).length ? lines(v) : lines(f));
+    const secs = [];
+    const push = (key, kind, heading, paras) => {
+      const list = (paras || []).map((p) => String(p || "").trim()).filter(Boolean);
+      if (!list.length) return;
+      secs.push({ num: secs.length + 1, key, kind, heading: heading || theme, paras: list });
+    };
+    const st = a.sectionTitles || {};
+
+    // 01 为什么值得去（风景/氛围）
+    push("why", "scenic", st.whyGo || "为什么值得去", pick(a.whyGo, fb.whyGo));
+    // 02 来了会体验什么（体验）
+    push("experience", "experience", st.experience || "来了会体验什么", pick(a.experience, fb.experience));
+    // 03 这一天会怎么过（行程）——多日：每天一节；单日：一节总览
+    const days = a.itineraryDays || [];
+    const dayHasContent = days.some((d) => (d.items || []).some((t) => t && (t.time || t.text)));
+    if (dayHasContent) {
+      let narTxt = "";
+      if (typeof structureItinerary === "function" && typeof buildItineraryNarrative === "function") {
+        const itin = structureItinerary(a) || {};
+        const nar = buildItineraryNarrative(a, itin.timeline || []);
+        if (nar && nar.paras && nar.paras.length) narTxt = nar.paras.join("");
+      }
+      if (days.length > 1) {
+        days.forEach((d, i) => {
+          const items = (d.items || []).filter((t) => t && (t.time || t.text));
+          if (!items.length) return;
+          push("day" + (i + 1), "route", "DAY " + (i + 1) + (d.label ? " · " + d.label : ""),
+            [items.map((t) => (t.time ? t.time + " " : "") + t.text).join("；")]);
+        });
+      } else {
+        const items = (days[0].items || []).filter((t) => t && (t.time || t.text));
+        push("route", "route", "这一天会怎么过", [narTxt, items.map((t) => (t.time ? t.time + " " : "") + t.text).join("；")]);
+      }
+    }
+    // 04 参加完能得到什么（收获/人）
+    push("gain", "people", st.gain || "参加完能得到什么", pick(a.gain, fb.gain));
+    // 05 适合谁
+    push("fit", "people", "适合谁", pick(a.fitFor, fb.fitFor || (a.targetAudience ? a.targetAudience + "，都能找到自己的步频。" : "")));
+    // 06 这场活动的几个理由（卖点 → 图文页的「N 个理由」节）
+    const sp = (a.sellingPoints || []).filter((s) => s && (s.title || s.desc));
+    if (sp.length) push("reasons", "info", "这场活动的几个理由",
+      sp.slice(0, 6).map((s) => ((s.title ? s.title : "") + (s.title && s.desc ? "：" : "") + (s.desc || "")).trim()).filter(Boolean));
+    // 06 现场纪实（补充资料 / 正文 body）
+    const bodyParas = (a.body || []).map((p) => String(p || "").trim()).filter(Boolean);
+    if (bodyParas.length) {
+      const half = bodyParas.length > 3 ? Math.ceil(bodyParas.length / 2) : bodyParas.length;
+      push("field1", "scenic", "现场纪实", bodyParas.slice(0, half));
+      if (bodyParas.length > half) push("field2", "scenic", "路上的细节", bodyParas.slice(half));
+    }
+    // 兜底：内容极薄时用 DNA 主题 + 标志场景 + 推荐角度撑起大纲，避免长页空壳
+    if (secs.length < 3) {
+      const extra = [];
+      if (theme) extra.push(theme + "。");
+      if (sig) extra.push(sig + "。");
+      if (angles.length) extra.push(angles.slice(0, 3).join("；") + "。");
+      if (extra.length) push("theme", "scenic", a.editorialTitle || theme, extra);
+      if (envLabel) push("env", "scenic", envLabel + "的这一天",
+        [sig || (envLabel + "会给你一个不重复的现场。"), (dna && dna.season ? dna.season + "的" + envLabel + "，值得用脚步丈量。" : "")]);
+    }
+    return secs;
+  }
+
+  /* P0-4：图文详情页的图片匹配——按章节语义（kind）从页面图片智能里取图（scenic/experience/route/people…），
+     不足时从「未用过的图」按序补；最多 3 张，构成「图片组合」（1 整幅 / 2 对开 / 3 三联）。 */
+  function editorialPhotosFor(a, sec, usedSet) {
+    const photos = (a && a.photos) || [];
+    const out = [];
+    const addSrc = (src) => { const i = photos.indexOf(src); if (i >= 0 && out.indexOf(i) < 0 && !usedSet.has(i)) out.push(i); };
+    const intel = (typeof pagePhotoIntel === "function") ? pagePhotoIntel() : null;
+    if (intel && intel.matched && intel.matched.length) {
+      const meta = (typeof pagePhotoSections === "function") ? pagePhotoSections(a) : [];
+      for (let i = 0; i < meta.length; i++) {
+        if (meta[i].kind !== sec.kind) continue;
+        ((intel.matched[i] && intel.matched[i].photos) || []).forEach((p) => addSrc(p.src));
+      }
+      if ((sec.kind === "route" || /^day/.test(sec.key)) && typeof pageItineraryPhotos === "function") {
+        const ip = pageItineraryPhotos(a);
+        if (ip && ip.byDay) Object.keys(ip.byDay).forEach((k) => (ip.byDay[k] || []).forEach((p) => addSrc(p && p.src)));
+      }
+    }
+    if (!out.length) {
+      for (let i = 0; i < photos.length && out.length < 2; i++) if (!usedSet.has(i)) out.push(i);
+    }
+    const res = out.slice(0, 3);
+    res.forEach((i) => usedSet.add(i));
+    return res;
+  }
+
   // 适合 / 不适合人群：只依据已确认事实，不做医疗或安全承诺
   function blockSuitability(a) {
     const fit = [], unfit = [];
