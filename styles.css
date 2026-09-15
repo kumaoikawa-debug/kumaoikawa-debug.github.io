@@ -5129,6 +5129,12 @@ body{
 .xh-ed.tone-social .xh-ed-cta { border-top: 3px solid #3f6aa8; }
 .xh-ed.tone-album .xh-ed-cta { border-top: 3px solid #7a5aa0; }
 .xh-ed.tone-gallery .xh-ed-cta { border-top: 3px solid #a0506a; }
+/* Case 1：暖调照片 → 页面整体转暖（强调色 / 遮罩 / 段落底），与 tone-* 叠加生效 */
+.xh-ed.warm-tone .xh-ed-num { color: #b8632e; }
+.xh-ed.warm-tone .xh-ed-cta { border-top: 3px solid #d98a3d; }
+.xh-ed.warm-tone .xh-ed-hero-mask { background: linear-gradient(180deg, rgba(140,72,16,.08) 0%, rgba(104,52,14,.30) 45%, rgba(48,24,8,.78) 100%); }
+.xh-ed.warm-tone .xh-ed-sec:nth-child(even) { background: linear-gradient(180deg, rgba(255,238,214,.55), rgba(255,248,238,0)); border-radius: 10px; padding: 14px 12px; }
+.xh-ed.warm-tone .xh-ed-quote { background: rgba(255,240,222,.6); border-left: 3px solid #d98a3d; }
 
 .xh-ed-sec { margin: 34px 0 0; }
 .xh-ed-num { font-size: 10.5px; letter-spacing: .2em; color: var(--muted); margin-bottom: 8px; font-weight: 700; }

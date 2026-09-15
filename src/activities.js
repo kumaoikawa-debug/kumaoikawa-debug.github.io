@@ -215,7 +215,7 @@
     const imgCfg = (typeof EDITORIAL_IMG !== "undefined" && EDITORIAL_IMG[variant.img]) || { hero: "full" };
     const heroCls = imgCfg.hero === "band" ? " band" : "";
     return `
-      <div class="activity-page xh-ed typo-${esc(layout.typo)} tone-${esc(style.family)}">
+      <div class="activity-page xh-ed typo-${esc(layout.typo)} tone-${esc(style.family)}${ac.warm ? " warm-tone" : ""}">
       <div class="ps-topbar">${psLogo()}</div>
       ${detailModeSwitch()}
       ${editorialVariantSwitch(a)}

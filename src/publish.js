@@ -325,11 +325,17 @@ function analyzeOnePhoto(src, i, phashSeen) {
   const recommendedUse = sig.recommended_use || ["story"];
   const cropRisk = sig.cropRisk || null;
   // P0-6：完整 11 字段 schema + tags + 重复/低质量标记
+  // Case 1：额外暴露「色调/曝光/肤色」信号（warm/blue/skin/lum），供照片驱动的暖感判定使用；
+  //   这些字段来自内容识别（metaToSignals / fallbackMeta），依旧不引用上传下标 i。
   return {
     imageId: "ph_" + i, src: src, index: i,
     orientation: sig.orientation, quality: sig.quality,
     scene: scene, sceneLabel: PI_SCENE_LABEL[scene] || scene,
     subject: subject, people: people, action: action, emotion: emotion,
+    warm: (sig.warmRatio != null) ? sig.warmRatio : 0,
+    blue: (sig.blueRatio != null) ? sig.blueRatio : 0,
+    skin: (sig.skinRatio != null) ? sig.skinRatio : 0,
+    lum: (sig.avgLum != null) ? sig.avgLum : 128,
     tags: tags, category: sig.category || "内容识别",
     safeTextArea: safeTextArea, recommendedUse: recommendedUse,
     focal: sig.focal_point || { x: 0.5, y: 0.45 },
@@ -3804,7 +3810,17 @@ function applyVisionBatch(map) {
     travel: { grad: "linear-gradient(135deg,#2a3a4a,#4a5a6a)", accent: "#4DB6AC", vibe: "综合旅行 · 去远方" },
     outdoor:{ grad: "linear-gradient(135deg,#233a2c,#3f5e3a)", accent: "#9CCC65", vibe: "户外探索 · 把周末交给自然" },
   };
-  function styleAccent(a) { return STYLE_ACCENT[a.pageStyle] || STYLE_ACCENT.outdoor; }
+  /* Case 1：暖调照片（暖占比达标且横向风景为主）→ 页面强调色/氛围整体调暖。
+     不改动活动类型带来的基础渐变与字号体系，只把 accent 与 hero 遮罩调暖，肉眼可辨。 */
+  const STYLE_ACCENT_WARM = { accent: "#D98A3D" };
+  function styleAccent(a) {
+    const base = STYLE_ACCENT[(a && a.pageStyle)] || STYLE_ACCENT.outdoor;
+    const cp = photoContentProfile((a && a.photos) || []);
+    if (cp.warmthLabel === "暖调" && cp.landscapeRatio >= 0.6) {
+      return { grad: base.grad, accent: STYLE_ACCENT_WARM.accent, vibe: base.vibe + " · 暖调", warm: true };
+    }
+    return base;
+  }
   function emotionLine(a) {
     if (a.headline) return a.headline;
     const T = a.type || "";
@@ -4634,6 +4650,36 @@ function applyVisionBatch(map) {
     const m = EDITORIAL_VARIANT_LEGACY_BY_OLD[k];
     EDITORIAL_VARIANT_LEGACY[m.layout + "|" + m.style] = k;
   });
+  /* Case 1 / Case 2（页面层）：活动未显式指定版式/风格时，按「照片画像」自动选轴。
+     优先级（与 §六 期待一致）：
+       ① 亲子 / 竖图人物为主 → 陪伴·画册（竖图对/原比例展示，不横裁孩子）
+       ② 高强度挑战（海拔/难度/类型）→ 挑战·纪实（大图 + 硬指标，配合 Case 7 专业文案权重）
+       ③ 人物主导 → 社交·体验（体验前置、图组为主，页面明显转人物/体验主导）
+       ④ 暖调横图风景 → 季节·杂志（大图通栏 + 拼图，暖调杂志结构）
+     显式指定 editorialLayoutId / editorialStyleId / editorialVariantId 时永不覆盖（用户选择优先）。 */
+  function autoEditorialPick(a) {
+    a = a || {};
+    if (a.editorialLayoutId || a.editorialStyleId || a.editorialVariantId) return null;
+    const cp = photoContentProfile(a.photos || []);
+    if (!cp.count) return null;
+    const t = String((a.type || "") + (a.title || ""));
+    const parentChild = /亲子|研学|儿童|少年|遛娃|自然教育/.test(t);
+    const hard = /雪山|高海拔|登山|越野|攀岩|挑战/.test(t)
+      || (+a.elevation >= 2500) || /挑战|高强度|进阶/.test(String(a.difficulty || ""));
+    if (parentChild || (cp.peopleRatio >= 0.6 && cp.portraitRatio >= 0.5)) {
+      return { layout: "L-thumbs-social", style: "S-companion-album", why: "亲子/竖图人物：陪伴画册，竖图原比例不裁孩子" };
+    }
+    if (hard) {
+      return { layout: "L-solo-route", style: "S-challenge-doc", why: "高强度挑战：挑战纪实，大图 + 硬指标更专业" };
+    }
+    if (cp.peopleRatio >= 0.5) {
+      return { layout: "L-strip-exp", style: "S-social-conv", why: "人物主导：社交体验，体验前置、图组为主" };
+    }
+    if (cp.warmthLabel === "暖调" && cp.landscapeRatio >= 0.6) {
+      return { layout: "L-mosaic-story", style: "S-season-mag", why: "暖调横图风景：季节杂志，大图通栏 + 拼图" };
+    }
+    return null;
+  }
   function editorialLayoutOf(a) {
     a = a || {};
     if (a.editorialLayoutId) {
@@ -4643,6 +4689,12 @@ function applyVisionBatch(map) {
     if (a.editorialVariantId) {
       const m = EDITORIAL_VARIANT_LEGACY_BY_OLD[a.editorialVariantId];
       if (m) return EDITORIAL_LAYOUTS.filter(function (x) { return x.id === m.layout; })[0] || EDITORIAL_LAYOUTS[0];
+    }
+    // Case 1/2：未显式指定时，按照片画像自动选版式轴（亲子/人物/挑战/暖调各有对应版式）
+    const autoL = autoEditorialPick(a);
+    if (autoL) {
+      const AL = EDITORIAL_LAYOUTS.filter(function (x) { return x.id === autoL.layout; })[0];
+      if (AL) return AL;
     }
     return EDITORIAL_LAYOUTS[0];
   }
@@ -4655,6 +4707,12 @@ function applyVisionBatch(map) {
     if (a.editorialVariantId) {
       const m = EDITORIAL_VARIANT_LEGACY_BY_OLD[a.editorialVariantId];
       if (m) return EDITORIAL_STYLES.filter(function (x) { return x.id === m.style; })[0] || EDITORIAL_STYLES[0];
+    }
+    // Case 1/2：未显式指定时，按照片画像自动选风格轴（角度/密度/Family → 页面 tone 明显不同）
+    const autoS = autoEditorialPick(a);
+    if (autoS) {
+      const AS = EDITORIAL_STYLES.filter(function (x) { return x.id === autoS.style; })[0];
+      if (AS) return AS;
     }
     return EDITORIAL_STYLES[0];
   }
@@ -5166,6 +5224,7 @@ function describePhotoProfile(intel) {
     landscapeRatio: 0, portraitRatio: 0, squareRatio: 0,
     peopleRatio: 0, groupRatio: 0, actionRatio: 0, detailRatio: 0, scenicRatio: 0,
     lowQualityCount: 0, repeatedCount: 0,
+    warmthRatio: 0, coolRatio: 0, warmthLabel: "未判定",
     heroCandidates: [], safeFullWidthCandidates: [], collageCandidates: [],
     strategy: "", layoutMode: "", simulated: false,
   };
@@ -5182,6 +5241,11 @@ function describePhotoProfile(intel) {
   (((intel.cropSafety && intel.cropSafety.highRiskIds) || [])).forEach((id) => { highRisk[id] = true; });
   const isLandscape = (p) => p.orientation === "landscape";
   const isPortrait = (p) => p.orientation === "portrait";
+  // Case 1：暖感也属于「图片画像」——由已选图的色调信号汇总（warm/blue），无信号时为中性
+  const avgSig = (k) => (used.length ? Number((used.reduce((s, p) => s + (p[k] || 0), 0) / used.length).toFixed(2)) : 0);
+  const warmthRatio = avgSig("warm"), coolRatio = avgSig("blue");
+  const warmthLabel = (warmthRatio >= 0.42 && warmthRatio - coolRatio >= 0.12) ? "暖调"
+    : ((coolRatio >= 0.34 && coolRatio - warmthRatio >= 0.14) ? "冷调" : "中性");
 
   return {
     total: total,
@@ -5197,6 +5261,7 @@ function describePhotoProfile(intel) {
     scenicRatio: ratio((p) => p.scene === "scenic"),
     lowQualityCount: used.filter((p) => (p.quality || 0) < 0.5).length,
     repeatedCount: repeated,
+    warmthRatio: warmthRatio, coolRatio: coolRatio, warmthLabel: warmthLabel,
     // Hero 候选：横图 + 非高危裁切 + 非多人合影（合影主体大图易裁坏）
     heroCandidates: used.filter((p) => isLandscape(p) && !highRisk[p.imageId] && (p.people || 0) <= 1).map((p) => p.imageId),
     // 安全全幅候选：非高危 + 画质达标（可放心做通栏大图）
@@ -5361,6 +5426,12 @@ if (typeof window !== "undefined") {
     photoDayNight: photoDayNight, // Case 4：昼夜素材判定（昼→夜节奏）
     generateSectionCopy: generateSectionCopy,
     heuristicDirection: heuristicDirection,
+    photoContentProfile: photoContentProfile, // Case 1/2：照片色调/主体构成信号（暖调、人物占比）
+    photoDominance: photoDominance,           // Case 2：人物主导 / 风景主导判定
+    autoEditorialPick: autoEditorialPick,     // Case 1/2：按照片自动选版式轴 + 风格轴
+    styleAccent: styleAccent,                 // Case 1：暖调 accent
+    recapHasActualEvidence: recapHasActualEvidence,           // Case 10：回顾是否存在真实来源
+    stripFabricatedRecapEvents: stripFabricatedRecapEvents,   // Case 10：无来源现场事件阻断
     validateClaims: validateClaims,
     validateLayout: validateLayout,
     renderActivityStoryPage: renderActivityStoryPage,
@@ -5688,8 +5759,73 @@ function photoProfileBase(a, photos) {
     note: list.length === 0 ? "未上传照片，建议补充 3-6 张活动照以增强排版" : "",
   };
 }
+/* Case 1/2（照片信号 → 内容方向）：photoContentProfile(photos)
+   从「内容识别信号」汇总色调与主体构成（同步 / 纯函数 / 只读内容，不读上传顺序）。
+   与 photoProfileBase 的区别：base 只按分类计数，这里带真实色调（warm/blue）与人物、竖图占比，
+   供「暖感排版」「人物主导」这类照片驱动决策使用（§六 Case 1 / Case 2）。 */
+let _photoContentMemo = { key: "", val: null };
+function photoContentProfile(photos) {
+  const list = (photos || []).filter(Boolean);
+  const key = list.join("|");
+  if (_photoContentMemo.key === key && _photoContentMemo.val) return _photoContentMemo.val;
+  const out = {
+    count: 0, peopleRatio: 0, groupRatio: 0, portraitRatio: 0, landscapeRatio: 0,
+    actionRatio: 0, nightRatio: 0, warmthRatio: 0, coolRatio: 0, warmthLabel: "未判定",
+  };
+  try {
+    const an = analyzePhotos(list);
+    const used = (selectPhotos(an).used || []);
+    if (used.length) {
+      const n = used.length;
+      const ratio = (fn) => Number((used.filter(fn).length / n).toFixed(2));
+      const avg = (k) => Number((used.reduce((s, p) => s + (p[k] || 0), 0) / n).toFixed(2));
+      out.count = n;
+      out.peopleRatio = ratio((p) => (p.people || 0) > 0);
+      out.groupRatio = ratio((p) => (p.people || 0) > 1);
+      out.portraitRatio = ratio((p) => p.orientation === "portrait");
+      out.landscapeRatio = ratio((p) => p.orientation === "landscape");
+      out.actionRatio = ratio((p) => !!p.action);
+      out.nightRatio = ratio((p) => p.scene === "night");
+      out.warmthRatio = avg("warm");
+      out.coolRatio = avg("blue");
+      // 暖调判定：暖占比达标且明显高于冷占比；冷调同理；两者都不达标 → 中性（不硬套暖感）
+      out.warmthLabel = (out.warmthRatio >= 0.42 && out.warmthRatio - out.coolRatio >= 0.12) ? "暖调"
+        : ((out.coolRatio >= 0.34 && out.coolRatio - out.warmthRatio >= 0.14) ? "冷调" : "中性");
+    }
+  } catch (e) { /* 保持默认「未判定」，照片层异常绝不影响方向生成 */ }
+  _photoContentMemo = { key: key, val: out };
+  return out;
+}
+/* Case 2：主体主导判定 —— 让内容方向真正由照片决定（人物主导 / 风景主导 / 均衡）。
+   两种口径合并：分类口径(photoProfileBase.peopleRatio) 与 信号口径(signalPeopleRatio) 取高者。 */
+function photoDominance(pp) {
+  const p = pp || {};
+  const pr = Math.max(p.peopleRatio || 0, p.signalPeopleRatio || 0);
+  const lr = Math.max(p.landscapeRatio || 0, p.usedLandscapeRatio || 0);
+  const mood = p.mood || p.aiMood || "";
+  const peopleLed = (mood === "人物主导") || pr >= 0.5;
+  const sceneLed = !peopleLed && ((mood === "风景主导") || (lr >= 0.6 && pr < 0.35));
+  return {
+    peopleLed: peopleLed, sceneLed: sceneLed,
+    groupLed: Math.max(p.groupRatio || 0, p.signalGroupRatio || 0) >= 0.4,
+    portraitLed: (p.usedPortraitRatio || 0) >= 0.5,
+    peopleRatio: pr, landscapeRatio: lr,
+    warmthLabel: p.warmthLabel || "未判定", warmthRatio: p.warmthRatio || 0, mood: mood,
+  };
+}
 async function photoProfile(a, photos, scenario) {
   const base = photoProfileBase(a, photos);
+  // Case 1/2：并入「内容识别」层的色调与主体构成信号（与分类口径分开命名，互不覆盖），
+  //   使 heuristicDirection 能按照片做方向/结构决策（暖调排版、人物主导）。
+  const cp = photoContentProfile(photos);
+  base.signalPeopleRatio = cp.peopleRatio;
+  base.signalGroupRatio = cp.groupRatio;
+  base.usedLandscapeRatio = cp.landscapeRatio;
+  base.usedPortraitRatio = cp.portraitRatio;
+  base.actionRatio = cp.actionRatio;
+  base.warmthRatio = cp.warmthRatio;
+  base.coolRatio = cp.coolRatio;
+  base.warmthLabel = cp.warmthLabel;
   // 有 Key：调用 AI 做更细的照片理解（场景/情绪/人物/动作），回退到启发式
   if (aiAuthMode()) {
     try {
@@ -5918,6 +6054,11 @@ function pickVariant(family, scenario, seed) {
 
 /* ---------- 阶段一：Content Strategy + Photo Analysis + Editorial Direction ---------- */
 function heuristicDirection(a, p, family, scenario, photoProfile) {
+  // Case 1/2：把「照片画像」纳入方向决策 —— 人物主导 / 暖调 都由照片真实信号驱动；
+  //   无信号（如未上传照片、或离线夹具未提供画像）时维持家族默认，绝不错判。
+  const ppSafe = photoProfile || {};
+  const dom = photoDominance(ppSafe);
+  const warmLed = dom.warmthLabel === "暖调";
   const angleMap = {
     route_editorial: "这一程，值得被认真记录", visual_campaign: "这周末，去山里当个本地人",
     challenge_editorial: "我们真的把这座山走完了", brand_journal: "走得慢一点，才看得见山",
@@ -5948,21 +6089,65 @@ function heuristicDirection(a, p, family, scenario, photoProfile) {
     photo_documentary: ["开场", "九张图的回看", "镜头里的真实", "照片回顾", "下一期预告"],
     outdoor_lookbook:  ["本季回顾", "出片合集", "同款清单", "照片墙", "下一期"],
   };
-  const structRecruit = structRecruitByFamily[family] || ["为什么值得去", "来了会体验什么", "参加完你能得到什么", "适不适合我", "真实信息", "怎么报名"];
-  const structRecap = structRecapByFamily[family] || ["开场", "本次活动核心记忆", "本次参与体验", "值得记住的瞬间", "参与者收获", "照片回顾", "下一期预告"];
+  // Case 2｜同一活动换「人物图」→ 页面明显转成人物/体验主导。
+  //   与 Case 9（换家族结构不同）不冲突：这里是「同一家族内」按照片主体切换结构，
+  //   家族差异依旧保留（6 家族各一套人物版结构）。每个标题仍内嵌 legacy 触发词，
+  //   确保 sectionBody 路由到正确正文桶，不会产出空段。
+  const structRecruitPeople = {
+    route_editorial:    ["同行的人为什么值得一起出发", "路上你会体验什么", "这些人把路线走成了故事", "走完能收获什么", "适不适合你", "怎么报名"],
+    visual_campaign:    ["这群人为什么值得一起玩", "现场是什么体验", "同行伙伴有多出片", "怎么报名"],
+    challenge_editorial:["我们要一起挑战什么", "同行的人会经历什么", "走完能收获什么", "适不适合你", "报名 & 下一程"],
+    brand_journal:     ["为什么值得和这些人走一趟", "路上你会体验什么", "同行的人是什么样", "走完能收获什么", "怎么报名"],
+    photo_documentary: ["这些面孔为什么值得看", "镜头里的你会体验什么", "拍完能收获什么", "适不适合你来拍", "报名占位"],
+    outdoor_lookbook:  ["他们为什么值得一起入镜", "同行穿搭怎么拍", "这些角度最出片", "适不适合你", "报名 & 同款"],
+  };
+  const structRecapPeople = {
+    route_editorial:    ["开场", "同行的人构成核心记忆", "现场体验与互动", "值得记住的瞬间", "我们的收获", "照片回顾", "下一期预告"],
+    visual_campaign:    ["先放结论", "人是今天的主角", "最爱的几个瞬间", "大家玩嗨了", "照片墙", "下一期"],
+    challenge_editorial:["开场", "一起完成的硬核数据", "同行者的登顶时刻", "装备 & 体能复盘", "我们的成长", "照片回顾", "下一程"],
+    brand_journal:     ["开场", "山里同行的人", "我们记住的画面", "想说的话", "照片回顾", "下一期见"],
+    photo_documentary: ["开场", "九张图里的面孔", "镜头里的真实", "照片回顾", "下一期预告"],
+    outdoor_lookbook:  ["本季回顾", "同行出片合集", "同款清单", "照片墙", "下一期"],
+  };
+  // Case 2：人物主导时的角度/钩子（换图不换事实，只换表达重心）
+  const peopleAngleMap = {
+    route_editorial: "这一程，人才是主角", visual_campaign: "这一群人，把周末过成了节日",
+    challenge_editorial: "不是山赢了，是我们一起走到了", brand_journal: "同行的人，才是山的注解",
+    photo_documentary: "这一程的脸，比风景更值得看", outdoor_lookbook: "并肩的样子，最上镜",
+  };
+  const peopleHookMap = {
+    route_editorial: "这一程，人比风景好看", visual_campaign: "谁懂啊，这群人太会玩了",
+    challenge_editorial: "一起走到那一步，值了", brand_journal: "山一直在，人刚好都在",
+    photo_documentary: "九张图，全是人", outdoor_lookbook: "九张图，全是并肩的样子",
+  };
+  const baseRecruit = dom.peopleLed ? structRecruitPeople[family] : structRecruitByFamily[family];
+  const baseRecap = dom.peopleLed ? structRecapPeople[family] : structRecapByFamily[family];
+  const structRecruit = baseRecruit || structRecruitByFamily[family] || ["为什么值得去", "来了会体验什么", "参加完你能得到什么", "适不适合我", "真实信息", "怎么报名"];
+  const structRecap = baseRecap || structRecapByFamily[family] || ["开场", "本次活动核心记忆", "本次参与体验", "值得记住的瞬间", "参与者收获", "照片回顾", "下一期预告"];
+  // Case 1/2：照片驱动的最终表达（人物主导 > 暖调 > 家族默认）
+  const finalAngle = dom.peopleLed ? (peopleAngleMap[family] || angleMap[family] || p.themeA) : (angleMap[family] || p.themeA);
+  const finalHook = dom.peopleLed ? (peopleHookMap[family] || hookMap[family] || "周末就该这么过") : (hookMap[family] || "周末就该这么过");
+  const finalComp = dom.peopleLed ? "网格画廊" : compMap[family];
+  const finalColor = dom.peopleLed ? "暖米" : (warmLed ? "山系橙" : colorMap[family]);
+  const finalMood = dom.peopleLed ? "人物主导" : (warmLed ? "暖调" : (ppSafe.mood || ""));
+  const finalReadingMood = dom.peopleLed ? "热闹陪伴"
+    : (warmLed ? (scenario === "recap" ? "暖调回看" : "暖调向往")
+      : (ppSafe.mood || (scenario === "recap" ? "温暖回看" : "松弛向往")));
   return {
     family: family, variant: pickVariant(family, scenario, styleSeed()),
     styleSeed: styleSeed(),
-    angle: angleMap[family] || p.themeA,
-    tone: p.tone,
+    angle: finalAngle,
+    tone: warmLed ? (p.tone ? p.tone + "、暖调" : "暖调") : p.tone,
     voice: scenario === "recap" ? "第一人称、认真回看" : "第一人称、像朋友安利",
-    hook: hookMap[family] || "周末就该这么过",
+    hook: finalHook,
     structure: scenario === "recap" ? structRecap : structRecruit,
-    editorialConcept: angleMap[family] || p.themeA,
-    visualFocus: compMap[family],
-    readingMood: photoProfile.mood || (scenario === "recap" ? "温暖回看" : "松弛向往"),
+    editorialConcept: finalAngle,
+    visualFocus: finalComp,
+    readingMood: finalReadingMood,
     imagePriority: scenario === "recap" ? "high" : "medium",
-    storyStyle: family === "challenge_editorial" ? "纪实推进" : (family === "visual_campaign" ? "种草叙事" : "沉浸叙述"),
+    storyStyle: dom.peopleLed ? "人物推进" : (family === "challenge_editorial" ? "纪实推进" : (family === "visual_campaign" ? "种草叙事" : "沉浸叙述")),
+    // Case 1/2：方向决策的照片依据（可追踪：为什么这版是人物主导/暖调）
+    photoLed: { people: dom.peopleLed, scene: dom.sceneLed, warmth: dom.warmthLabel, peopleRatio: dom.peopleRatio, warmthRatio: dom.warmthRatio },
     informationStyle: family === "challenge_editorial" ? "数据化" : "场景化",
     titleTone: family === "route_editorial" ? "克制" : "亲和",
     ctaStrength: scenario === "recruit" ? "strong" : "soft",
@@ -5971,7 +6156,7 @@ function heuristicDirection(a, p, family, scenario, photoProfile) {
     textDensity: "medium",
     whitespace: (family === "brand_journal" || family === "photo_documentary") ? "generous" : (family === "route_editorial" ? "medium" : "generous"),
     imageRatio: scenario === "recap" ? 0.68 : 0.55,
-    visual: { mood: photoProfile.mood, emotion: photoProfile.emotion, scene: photoProfile.dominantScene || (photoProfile.sceneTypes || []).join(""), color: avoidRecentColor(colorMap[family], family), composition: avoidRecentComposition(compMap[family]), coverHint: photoProfile.cover ? "用已上传封面" : "建议补充 1 张大图", typographic: family === "route_editorial" ? "衬线大标题" : "无衬线粗体" },
+    visual: { mood: finalMood, emotion: ppSafe.emotion, scene: ppSafe.dominantScene || (ppSafe.sceneTypes || []).join(""), color: avoidRecentColor(finalColor, family), composition: avoidRecentComposition(finalComp), coverHint: ppSafe.cover ? "用已上传封面" : "建议补充 1 张大图", typographic: (warmLed || family === "route_editorial") ? "衬线大标题" : "无衬线粗体" },
     copyDirectives: { avoid: ["硬销", "名额仅剩", "最后机会"], must: ["地点真实感", "基于已确认事实"] },
   };
 }
@@ -6314,7 +6499,22 @@ async function genRecap(a, m, strategy, photos, notes) {
     }
   }
   if (!out || !out.gzh || !out.gzh.sections) out = fallbackRecapCopy(a, m, dir, photos, notes, type, actual);
-  out = qualityCheck(out, dir, "recap", f) || out;
+  // §六 Case 10：回顾只有现场照片（无补充资料、无已确认实际信息）时，先阻断一切无来源的
+  //   「现场事件 / 参与者反应」叙述，再走质量检查 —— 从「检测并提示」升级为「直接删除」。
+  const fabEvents = stripFabricatedRecapEvents(out, notes, actual);
+  if (fabEvents.length && out.gzh && (out.gzh.sections || []).length < 3) {
+    // 叙事被清空 → 退回「照片现场记录」安全版（宁少写，不编造）
+    out = fallbackRecapCopy(a, m, dir, photos, notes, type, actual);
+  }
+  // 末次质检必须带上已确认实际信息（此前漏传 actual，会把用户确认过的反馈/人数误判为无依据并删除）
+  out = qualityCheck(out, dir, "recap", f, actual) || out;
+  if (fabEvents.length && state.xf && state.xf.quality) {
+    const q = state.xf.quality;
+    q.fabricationGuard = fabEvents;
+    q.removed = (q.removed || []).concat(fabEvents).filter((v, i, arr) => arr.indexOf(v) === i);
+    if (q.flag === "ok") q.flag = "fabrication_blocked";
+    q.note = (q.note || "") + " 已阻断无来源的现场事件叙述（" + fabEvents.join("、") + "）。";
+  }
   if (out && out.xhs) out.xhs = normalizeXhs(out.xhs);
   return out;
 }
@@ -6353,7 +6553,7 @@ function claimDetectors(facts, adv) {
     { w: "实际人数", re: /(\d+)\s*(人|位|名)\s*(参加|到场|实到|出席)|共\s*\d+\s*人|实际参加\s*\d+/, ok: A.actualParticipants != null },
     { w: "登顶", re: /(登顶|到达顶峰|登顶成功|成功登顶|全员登顶|把山踩在脚下|站在山顶)/, ok: /登顶|顶峰|山顶/.test(summitText) },
     { w: "完成路线", re: /(走完|完成)(了)?(全程|整条|整段|路线)|一个不落/, ok: !!A.completionSummary },
-    { w: "用户反馈", re: /(有人说|大家(都)?(表示|说)|大家纷纷表示|(队员|学员|家长|参与者)(们)?(都)?(表示|反馈|说)|好评如潮|纷纷点赞|纷纷(表示|说|反馈)|大家一致)/, ok: hasList(A.actualFeedback) },
+    { w: "用户反馈", re: /(有人说|大家(都)?(表示|说)|大家纷纷表示|(队员|学员|家长|参与者)(们)?(都)?(表示|反馈|说|觉得|认为)|不少人(说|表示|觉得)|好评如潮|好评(一片|满满|不断)|赞不绝口|纷纷(点赞|表示|说|反馈|夸|称赞)|大家一致|都说不虚此行|反馈(很好|特别好|超好))/, ok: hasList(A.actualFeedback) },
     { w: "路线成熟度", re: /(路线(很|非常)?成熟|成熟的?(路线|线路)|老少皆宜|男女皆宜|毫无难度|闭眼可走|零门槛)/, ok: !!f.routeMaturity },
     { w: "安全保障", re: /(安全保障|全程保障|安全无忧|安全放心|专业保障|安全措施完善|全程安全|安全保障到位)/, ok: !!(f.safetyMeasures || f.insurance) },
     { w: "风景判断", re: /(风景(绝美|绝佳|美到)|美到窒息|人间仙境|宛如仙境|震撼人心|美得不像话|此生必去)/, ok: false },
@@ -6424,6 +6624,72 @@ function stripUnsupportedClaims(out, facts, adv) {
     if (typeof out.wechat === "string") out.wechat = stripText(out.wechat);
     else ["recruit", "brief"].forEach((k) => { if (out.wechat[k]) out.wechat[k] = stripText(out.wechat[k]); });
   }
+  return removed;
+}
+
+/* §六 Case 10｜回顾「只有现场照片」时的现场故事闸门 —— 阻断，而非仅检测。
+   当回顾没有任何「用户补充资料」与「已确认实际信息」（天气/人数/完成情况/精彩瞬间/反馈/路线变化）时，
+   正文只允许做「照片现场记录」：一切具体现场事件叙述与参与者反应断言都必须被删除。
+   与 claimDetectors 的分工：claimDetectors 管 12 类「无依据承诺」（保险/领队/人数/天气…），
+   这里管「无依据叙事」（大家一起做了什么、现场气氛如何）——这正是 Case 10 的验收点。 */
+const RECAP_EVENT_PATTERNS = [
+  // ① 主体 + 事件推进：把「队伍/大家/孩子们」写成故事主角
+  /(队伍|大家|队友|队员|孩子们?|小朋友们?|家长们?|同学们?)[^。！？；\n]{0,16}(一起|陆续|轮流|互相|纷纷|开始|依次|接着)[^。！？；\n]{0,16}(走|爬|登|玩|唱|笑|聊|分享|热身|合影|拍照|收拾|用餐|干杯|围坐|出发|返程|席地而坐|做起|练起)/,
+  // ② 具体现场环节：未经补充资料确认的流程/环节
+  /(热身|破冰游戏|破冰环节|自我介绍环节|交换联系方式|围坐|篝火晚会|露天电影|生日蛋糕|才艺展示|拉歌|集体照|合影留念|分发物资|讲解装备)/,
+  // ③ 参与者反应 / 现场气氛断言
+  /((大家|队员们?|家长们?|孩子们?|小朋友们?)[^。！？；\n]{0,10}(意犹未尽|依依不舍|玩得很|玩得特别|舍不得|流连忘返|念念不忘)|(现场|气氛|氛围)[^。！？；\n]{0,6}(很|特别|格外)(热闹|温馨|欢乐|融洽))/,
+];
+/* 回顾是否存在「真实来源」：用户补充资料 或 任一已确认实际信息 */
+function recapHasActualEvidence(notes, actual) {
+  const A = actual || {};
+  const txt = ((notes != null && notes !== "") ? notes : (A.providedNotes || "")) + "";
+  const has = (x) => (Array.isArray(x) ? x.filter(Boolean).length > 0 : !!x);
+  return !!(txt.trim() || has(A.actualWeather) || has(A.actualHighlights) || has(A.memorableMoments)
+    || has(A.actualFeedback) || has(A.completionSummary) || has(A.actualRouteChange));
+}
+/* 返回被阻断的类别清单（去重）；有真实来源时返回空数组（绝不干预有依据的回顾） */
+function stripFabricatedRecapEvents(out, notes, actual) {
+  if (!out) return [];
+  if (recapHasActualEvidence(notes, actual)) return [];
+  const removed = [];
+  const hitOf = (t) => RECAP_EVENT_PATTERNS.some((re) => re.test(t));
+  const drop = (t) => { if (hitOf(t)) { if (removed.indexOf("现场事件") < 0) removed.push("现场事件"); return true; } return false; };
+  const cleanHtml = (html) => (html || "").replace(/<(p|li|blockquote|h[1-6])([^>]*)>([\s\S]*?)<\/\1>/g,
+    (m, tag, attrs, inner) => {
+      const kept = splitSentences(inner).filter((s) => {
+        const t = stripTags(s).trim();
+        return !t || !drop(t);
+      });
+      const h = kept.join("");
+      return h.trim() ? `<${tag}${attrs}>${h}</${tag}>` : "";
+    });
+  const stripText = (text) => {
+    const kept = String(text || "").split(/(?<=[。！？；])/).filter((s) => {
+      const t = stripTags(s).trim();
+      return !t || !drop(t);
+    });
+    return kept.join("");
+  };
+  (out.gzh && out.gzh.sections || []).forEach((sec) => { if (sec && sec.html) sec.html = cleanHtml(sec.html); });
+  if (out.gzh) {
+    if (out.gzh.sections) out.gzh.sections = out.gzh.sections.filter((s) => s && s.html && stripTags(s.html).trim().length > 0);
+    ["title", "subtitle", "summary", "next"].forEach((k) => { if (out.gzh[k]) out.gzh[k] = stripText(out.gzh[k]); });
+  }
+  if (out.xhs) {
+    if (out.xhs.body) out.xhs.body = out.xhs.body.split("\n").map(stripText).filter((l) => l.trim()).join("\n");
+    if (out.xhs.coverText) out.xhs.coverText = stripText(out.xhs.coverText);
+    if (Array.isArray(out.xhs.titles)) out.xhs.titles = out.xhs.titles.map(stripText).filter((t) => t.trim());
+  }
+  if (out.moments) {
+    if (typeof out.moments === "string") out.moments = stripText(out.moments);
+    else ["warm", "formal", "last"].forEach((k) => { if (out.moments[k]) out.moments[k] = stripText(out.moments[k]); });
+  }
+  if (out.wechat) {
+    if (typeof out.wechat === "string") out.wechat = stripText(out.wechat);
+    else ["recruit", "brief"].forEach((k) => { if (out.wechat[k]) out.wechat[k] = stripText(out.wechat[k]); });
+  }
+  if (out.next) out.next = stripText(out.next);
   return removed;
 }
 
