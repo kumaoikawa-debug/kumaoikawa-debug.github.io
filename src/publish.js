@@ -5018,7 +5018,7 @@ function applyVisionBatch(map) {
      validateLayout          → editorialQuality
      renderActivityStoryPage → renderActivityPhone
      describePhotoProfile    → 新增：输出文档 P0-7 要求的完整图片画像字段
-     buildActivityAiState    → 新增：聚合文档 §五 的 15 个状态位
+     buildActivityAiState    → 新增：聚合文档 §五 的 14 个状态位（严格对齐推荐状态结构）
 */
 
 /* ---------- §四 事实层 ---------- */
@@ -5213,11 +5213,11 @@ function renderActivityStoryPage(a) {
 function pageCompositionOf(a) { return (typeof pageComposition === "function") ? pageComposition(a) : ""; }
 function editorialSectionTitleOf(a) { return (typeof editorialSectionTitle === "function") ? editorialSectionTitle(a) : ""; }
 
-/* ---------- §五 聚合状态 ----------
+/* ---------- §五 聚合状态（严格对齐文档推荐状态结构，14 字段） ----------
    buildActivityAiState(a, opts) → 文档推荐的单一状态对象。
    opts: { photos, scenario, dir, out, master, sections }
-   注意：仅聚合「已产出」的内容 —— finalCopy/claimValidation 等在未生成时保持 null，
-        不做任何占位编造（宁可为 null，也不给假数据）。 */
+   仅聚合「已产出」的内容 —— finalCopy/claimValidation 等在未生成时保持 null，
+   不做任何占位编造（宁可为 null，也不给假数据）；返回键集精确等于文档 §五 的 14 项。 */
 function buildActivityAiState(a, opts) {
   const o = opts || {};
   const photos = o.photos || (a && a.photos) || [];
@@ -5225,29 +5225,22 @@ function buildActivityAiState(a, opts) {
   const intel = buildPhotoLayoutIntelligence(photos, a, o.sections || [], scenario);
 
   return {
-    /* 事实与置信度 */
+    /* §五 推荐状态结构（文档对照层：严格 14 字段，零额外派生键，顺序与文档一致）
+       publishCheck / photoLayout / cropSafety / photoToSections / photoIntel 等原始派生数据
+       不纳入聚合状态 —— 仍可通过 CLUBOS_PIPELINE.publishCheck / evaluateCropSafety /
+       matchPhotosToSections / buildAdaptiveLayout / describePhotoProfile 独立取得。 */
     confirmedFacts: extractFacts(a, photos),
     missingFacts: detectMissingFacts(a),
     confidenceMap: confidenceMap(a),
-    publishCheck: publishCheck(a),
-    /* 活动基因 */
     activityDNA: activityDNAFor(a, photos),
-    /* 行程 */
     itineraryStructure: itineraryStructure(a),
-    /* 图片智能 */
     photoProfile: describePhotoProfile(intel),
     selectedPhotos: intel.used || [],
     photoRoles: intel.roles || {},
-    photoLayout: intel.layout || null,
-    cropSafety: intel.cropSafety || null,
-    photoToSections: intel.matched || [],
-    photoIntel: intel,
-    /* 表达（需显式传入产物才有值） */
     storyOutline: buildPageStoryOutline(a),
     editorialDirection: o.dir || null,
     finalCopy: o.out || null,
     layoutPlan: (o.dir && (o.dir.layout || o.dir.visual)) || null,
-    /* 校验 */
     claimValidation: o.out ? validateClaims(o.out, o.master && o.master.confirmedFacts ? o.master.confirmedFacts : extractFacts(a, photos), (o.master && o.master.actualActivityData) || {}) : null,
     layoutValidation: validateLayout(o.dir, scenario),
   };
