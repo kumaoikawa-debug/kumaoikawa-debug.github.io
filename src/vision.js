@@ -16,10 +16,14 @@ const VISION_LS = {
 
 /* OpenAI 兼容类基本都支持 { messages:[{content:[{type:"text"},{type:"image_url"}]}] } 结构 */
 const VISION_PROVIDERS = {
-  openai: { label: "OpenAI 兼容（GPT-4o / Qwen-VL / GLM-4V）", defaultBase: "https://api.openai.com/v1", defaultModel: "gpt-4o-mini", kind: "openai" },
-  qwen: { label: "通义千问 Qwen-VL（DashScope 兼容模式）", defaultBase: "https://dashscope.aliyuncs.com/compatible-mode/v1", defaultModel: "qwen-vl-max", kind: "openai" },
-  glm: { label: "智谱 GLM-4V", defaultBase: "https://open.bigmodel.cn/api/paas/v4", defaultModel: "glm-4v-flash", kind: "openai" },
-  gemini: { label: "Google Gemini", defaultBase: "https://generativelanguage.googleapis.com/v1beta", defaultModel: "gemini-2.0-flash", kind: "gemini" },
+  openai: { label: "OpenAI 兼容（GPT-4o / Qwen-VL / GLM-4V）", defaultBase: "https://api.openai.com/v1", defaultModel: "gpt-4o-mini", kind: "openai",
+    models: ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1"] },
+  qwen: { label: "通义千问 Qwen-VL（DashScope 兼容模式）", defaultBase: "https://dashscope.aliyuncs.com/compatible-mode/v1", defaultModel: "qwen3-vl-plus", recommended: "qwen3-vl-plus（均衡）/ qwen3-vl-flash（省钱批量）/ qwen-vl-max（最强）", kind: "openai",
+    models: ["qwen3-vl-plus", "qwen3-vl-flash", "qwen-vl-max", "qwen2.5-vl-max"] },
+  glm: { label: "智谱 GLM-4V", defaultBase: "https://open.bigmodel.cn/api/paas/v4", defaultModel: "glm-4v-flash", recommended: "glm-4v-flash（免费）/ glm-4v-plus", kind: "openai",
+    models: ["glm-4v-flash", "glm-4v-plus", "glm-4v"] },
+  gemini: { label: "Google Gemini", defaultBase: "https://generativelanguage.googleapis.com/v1beta", defaultModel: "gemini-2.0-flash", recommended: "gemini-2.0-flash（推荐）/ gemini-2.0-pro", kind: "gemini",
+    models: ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-2.0-pro", "gemini-1.5-flash"] },
 };
 
 function visionGet(k, def) {

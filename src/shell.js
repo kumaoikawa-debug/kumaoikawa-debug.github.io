@@ -387,6 +387,25 @@
       /* ---------- 视觉模型设置（v151） ---------- */
       case "saveVision": saveVisionSettings(); break;
       case "testVision": { testVisionConnection(); break; }
+      case "visionProviderChange": {
+        if (typeof VISION_PROVIDERS === "undefined") break;
+        const newP = el.value;
+        const oldP = (typeof visionProvider === "function") ? visionProvider() : "openai";
+        const def = VISION_PROVIDERS[newP] || VISION_PROVIDERS.openai;
+        const modelEl = $("#visionModel");
+        const baseEl = $("#visionBaseUrl");
+        const oldModels = (VISION_PROVIDERS[oldP] && VISION_PROVIDERS[oldP].models) || [];
+        const curModel = modelEl ? modelEl.value.trim() : "";
+        /* 仅在模型框为空或仍等于旧供应商预设时自动带出新默认模型，避免覆盖用户自定义模型名 */
+        if (modelEl && (!curModel || oldModels.indexOf(curModel) >= 0)) modelEl.value = def.defaultModel;
+        if (baseEl && !baseEl.value.trim()) baseEl.value = def.defaultBase;
+        const dl = document.getElementById("visionModelList");
+        if (dl) dl.innerHTML = (def.models || []).map((m) => `<option value="${m}" />`).join("");
+        const hint = document.getElementById("visionModelHint");
+        if (hint) hint.textContent = def.recommended ? ("推荐：" + def.recommended) : "";
+        toast("已切换至 " + def.label.split("（")[0] + "，模型默认：" + def.defaultModel);
+        break;
+      }
       case "uploadLogo": { const li = $("#logoInput"); if (li) li.click(); break; }
       case "delLogo": { state.brand.logo = ""; saveState(); rerenderBrand(); break; }
       case "addGear": {
@@ -1653,15 +1672,17 @@
       <div class="eyebrow">视觉模型</div>
       <h3 class="section-title" style="margin:6px 0 4px;font-size:18px">照片识别设置（可选）</h3>
       <p class="muted small" style="margin:0 0 14px">用于把照片的「场景 / 人数 / 动作 / 裁切风险 / 文字安全区」从规则推断升级为<b>真实视觉识别</b>。不配置也能用：系统会走本地像素分析 + 规则推断（结果标注为「模拟分析」）。</p>
-      <div class="field"><label>服务商</label>
-        <select class="input" id="visionProvider">
+      <div class="field"><label>服务商（选择即带出默认模型与接口）</label>
+        <select class="input" id="visionProvider" data-action="visionProviderChange">
           ${Object.keys(VISION_PROVIDERS).map((k) => `<option value="${k}" ${vp === k ? "selected" : ""}>${VISION_PROVIDERS[k].label}</option>`).join("")}
         </select>
       </div>
       <div class="row gap-10" style="margin-top:6px">
-        <input class="input" id="visionModel" placeholder="模型名（如 gpt-4o-mini / qwen-vl-max / gemini-2.0-flash）" value="${esc(vm)}" style="flex:1">
+        <input class="input" id="visionModel" list="visionModelList" placeholder="模型名（选服务商后自动带出，也可手改）" value="${esc(vm)}" style="flex:1">
         <input class="input" id="visionBaseUrl" placeholder="Base URL（可选，默认按服务商）" value="${esc(vb)}" style="flex:1">
       </div>
+      <datalist id="visionModelList">${(VISION_PROVIDERS[vp] ? VISION_PROVIDERS[vp].models : []).map((m) => `<option value="${m}">${m}</option>`).join("")}</datalist>
+      <div class="hint" id="visionModelHint">${(VISION_PROVIDERS[vp] && VISION_PROVIDERS[vp].recommended) ? "推荐：" + VISION_PROVIDERS[vp].recommended : ""}</div>
       <div class="field" style="margin-top:10px"><label>视觉模型 Key</label>
         <input class="input" id="visionKeyInput" type="password" placeholder="视觉模型 Key（仅未接后端时生效）" value="${esc(vk)}" autocomplete="off">
       </div>
