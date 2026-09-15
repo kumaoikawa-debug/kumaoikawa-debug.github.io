@@ -236,41 +236,78 @@ function piSelect(analysis) {
   const n = analysis.length;
   const strat = piStrategy(n);
   const cap = strat.cap(n);
-  // P0-6：弃用/降权依据改为「内容识别结果」（重复图/低质量图），不再依赖上传下标 dupKey
-  const scored = analysis.map((p) => {
-    let score = p.quality * 100;
-    if (p.orientation === "landscape") score += 6;
-    if (["scenic", "people", "group", "action", "water"].indexOf(p.scene) >= 0) score += 5;
-    if (p.lowQuality) score -= 30;        // 低质量图：强降权
-    if (p.dupOf) score -= 40;             // 重复图：几乎必弃
-    return Object.assign({}, p, { score: Math.round(score) });
+  // P0-7：AI 先筛素材，再排版。绝不让 20+ 张无脑全塞进页面。
+  //   弃用精确分为三类：① 重复（近邻 pHash 命中，每组仅留首张代表）
+  //                     ② 质量较低（quality<0.5）
+  //                     ③ 内容重复 / 与主题弱相关（可用池超出 cap 的剩余张数）
+  //   注意：重复图与低质量图一律不进「使用」池，避免劣图抢占版面。
+  const dups = [], lows = [], candidates = [];
+  analysis.forEach((p) => {
+    if (p.dupOf) dups.push(p);
+    else if (p.lowQuality) lows.push(p);
+    else candidates.push(p);
   });
-  const ranked = scored.slice().sort((a, b) => b.score - a.score);
-  const used = ranked.slice(0, cap).sort((a, b) => a.index - b.index);
-  const usedIds = {};
-  used.forEach((p) => { usedIds[p.imageId] = true; });
-  const discarded = ranked.filter((p) => !usedIds[p.imageId]).map((p, k) => ({
-    imageId: p.imageId, src: p.src,
-    reason: p.lowQuality ? "画质偏低" : (p.dupOf ? "与其他图重复/近似" : (n > 20 ? "与主题相关性较弱" : "超出推荐张数")),
-  }));
-  return { strategy: strat.label, cap: cap, total: n, usedIds: used.map((p) => p.imageId), used: used, discarded: discarded };
+  const STRONG = ["scenic", "people", "group", "action", "water", "hike", "camp", "meal", "gear", "night", "route"];
+  const scoreOf = (p) => Math.round((p.quality || 0) * 100 + (p.orientation === "landscape" ? 6 : 0) + (STRONG.indexOf(p.scene) >= 0 ? 5 : 0));
+  const ranked = candidates.slice().sort((a, b) => scoreOf(b) - scoreOf(a));
+  const used = ranked.slice(0, cap);
+  const usedIds = {}; used.forEach((p) => { usedIds[p.imageId] = true; });
+  const weak = ranked.slice(cap);
+  const discarded = dups.map((p) => ({ imageId: p.imageId, src: p.src, reason: "重复（与其他图近似）" }))
+    .concat(lows.map((p) => ({ imageId: p.imageId, src: p.src, reason: "质量较低" })))
+    .concat(weak.map((p) => ({ imageId: p.imageId, src: p.src, reason: "内容重复 / 与主题弱相关" })));
+  return {
+    strategy: strat.label, cap: cap, total: n,
+    usedIds: used.map((p) => p.imageId), used: used, discarded: discarded,
+    reasons: { dup: dups.length, low: lows.length, weak: weak.length },
+  };
 }
 
 /* ---------- P0-8：图片角色系统 ---------- */
+/* P0-7：角色预算（按「使用张数」比例分配，对齐案例 14 张 = Hero1+主图5+辅助图6+细节图2）
+   约束：hero 恒为 1（有图时）；lead≈35%、detail≈14%，其余归辅助图。 */
+function piRoleBudget(n) {
+  if (n <= 0) return { hero: 0, lead: 0, support: 0, detail: 0 };
+  if (n === 1) return { hero: 1, lead: 0, support: 0, detail: 0 };
+  const hero = 1;
+  const lead = Math.max(1, Math.min(Math.round(n * 0.35), n - 2));               // 主图（段落主图）
+  const detail = Math.max(0, Math.min(Math.round(n * 0.14), n - hero - lead - 1)); // 细节图
+  const support = Math.max(0, n - hero - lead - detail);                        // 辅助图
+  return { hero: hero, lead: lead, support: support, detail: detail };
+}
 function piAssignRoles(used) {
   const roles = {};
   if (!used.length) return { heroId: null, roles: roles };
-  const hero = used.find((p) => p.orientation !== "portrait" && p.scene === "scenic")
-    || used.find((p) => p.orientation !== "portrait")
-    || used[0];
-  let leadBudget = Math.max(1, Math.min(3, Math.round(used.length * 0.35)));
-  used.forEach((p, i) => {
-    if (p.imageId === hero.imageId) { roles[p.imageId] = "HeroImage"; return; }
-    if (leadBudget > 0 && p.quality >= 0.6 && i <= 4) { roles[p.imageId] = "SectionLeadImage"; leadBudget--; return; }
-    if (p.scene === "detail" || p.quality < 0.62) { roles[p.imageId] = "DetailImage"; return; }
-    if (p.orientation === "portrait" && i >= used.length - 2) { roles[p.imageId] = "SupportImage"; return; }
-    roles[p.imageId] = "GalleryImage";
+  const b = piRoleBudget(used.length);
+  const STRONG = ["scenic", "people", "group", "action", "water", "hike", "camp", "meal", "gear", "night", "route"];
+  const rankOf = (p) => (p.quality || 0) * 100 + (p.orientation === "landscape" ? 6 : 0) + (STRONG.indexOf(p.scene) >= 0 ? 5 : 0) + (p.lowQuality ? -30 : 0) + (p.dupOf ? -40 : 0);
+  const ranked = used.slice().sort((a, b) => rankOf(b) - rankOf(a));
+  // Hero：最优选横幅风景（避免竖图强裁主体）
+  const hero = ranked.find((p) => p.orientation !== "portrait" && p.scene === "scenic")
+    || ranked.find((p) => p.orientation !== "portrait")
+    || ranked[0];
+  roles[hero.imageId] = "HeroImage";
+  const rest = ranked.filter((p) => p.imageId !== hero.imageId);
+  // 主图（段落主图）：次优候选（used 内已排除重复/低质量，此处仅作安全守卫）
+  let leadN = 0;
+  for (const p of rest) {
+    if (leadN >= b.lead) break;
+    if (p.dupOf || p.lowQuality) continue;
+    roles[p.imageId] = "SectionLeadImage"; leadN++;
+  }
+  // 细节图：细节场景优先，其次画质偏低者
+  const remain = rest.filter((p) => !roles[p.imageId]);
+  const detailCands = remain.slice().sort((a, b) => {
+    const d = (p) => (p.scene === "detail" ? 100 : 0) + (1 - (p.quality || 0)) * 50;
+    return d(b) - d(a);
   });
+  let detailN = 0;
+  for (const p of detailCands) {
+    if (detailN >= b.detail) break;
+    roles[p.imageId] = "DetailImage"; detailN++;
+  }
+  // 辅助图：其余全部
+  remain.filter((p) => !roles[p.imageId]).forEach((p) => { roles[p.imageId] = "SupportImage"; });
   return { heroId: hero.imageId, roles: roles };
 }
 
@@ -463,9 +500,13 @@ function buildPhotoIntelligence(photos, a, sections, scenario) {
   const layout = piAdaptiveLayout(used);
   const matched = sections && sections.length ? piMatchSections(sections, used, roleInfo.roles) : [];
   const dnaEnv = (a && a.activityDNA && a.activityDNA.environment) || "";
+  // P0-7：角色计数 + 弃用三类汇总（供 UI 文案与验收展示）
+  const roleCounts = {};
+  used.forEach((p) => { const r = roleInfo.roles[p.imageId] || "SupportImage"; roleCounts[r] = (roleCounts[r] || 0) + 1; });
+  const rc = selection.reasons || { dup: 0, low: 0, weak: 0 };
   return {
     analysis: analysis, selection: selection, used: used,
-    heroId: roleInfo.heroId, roles: roleInfo.roles, roleLabel: PI_ROLE_LABEL,
+    heroId: roleInfo.heroId, roles: roleInfo.roles, roleLabel: PI_ROLE_LABEL, roleCounts: roleCounts,
     layout: layout, cropSafety: crops, matched: matched,
     orientation: {
       landscape: used.filter((p) => p.orientation === "landscape").length,
@@ -474,7 +515,7 @@ function buildPhotoIntelligence(photos, a, sections, scenario) {
     },
     dnaEnv: dnaEnv,
     simulated: analysis.some((p) => p.simulated),
-    summary: `${analysis.length} 张 → 建议使用 ${used.length} 张（弃用 ${selection.discarded.length}）`,
+    summary: `${analysis.length} 张 → 使用 ${used.length} 张（弃用 ${selection.discarded.length}：重复 ${rc.dup} / 质量较低 ${rc.low} / 内容重复·弱相关 ${rc.weak}）；角色 Hero ${roleCounts.HeroImage || 0} · 主图 ${roleCounts.SectionLeadImage || 0} · 辅助图 ${roleCounts.SupportImage || 0} · 细节图 ${roleCounts.DetailImage || 0}`,
   };
 }
 

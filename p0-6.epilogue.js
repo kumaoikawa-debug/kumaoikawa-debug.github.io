@@ -88,7 +88,7 @@ const intel = buildPhotoIntelligence(photos, null, null, "recruit");
 const reasons = intel.selection.discarded.map((d) => d.reason);
 checks.push({
   name: "筛选层按内容弃用(重复/低质量)",
-  pass: reasons.indexOf("与其他图重复/近似") >= 0 && reasons.indexOf("画质偏低") >= 0,
+  pass: reasons.indexOf("重复（与其他图近似）") >= 0 && reasons.indexOf("质量较低") >= 0,
   detail: "弃用理由=" + reasons.join(" | "),
 });
 
