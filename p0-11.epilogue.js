@@ -15,41 +15,41 @@ const add = (name, pass, detail) => checks.push({ name: name, pass: !!pass, deta
 
 /* ---------- 1) 受保护主体识别（6 类）---------- */
 const pp = mkPhoto(0, { orientation: "portrait", people: 1, tags: ["人物"] });
-const subP = piProtectedSubjects(pp);
+const subP = protectedSubjects(pp);
 add("受保护主体：竖图单人 → 人脸/人体/主体（不含合影人物）",
   subP.indexOf("人脸") >= 0 && subP.indexOf("人体") >= 0 && subP.indexOf("主体") >= 0 && subP.indexOf("合影人物") < 0,
   JSON.stringify(subP));
 
 const gp = mkPhoto(1, { orientation: "landscape", people: 3, tags: ["合影"] });
-const subG = piProtectedSubjects(gp);
+const subG = protectedSubjects(gp);
 add("受保护主体：合影(≥2人) → 含 合影人物 + 人脸",
   subG.indexOf("合影人物") >= 0 && subG.indexOf("人脸") >= 0, JSON.stringify(subG));
 
 const ap = mkPhoto(2, { orientation: "landscape", people: 1, tags: ["动作", "人物"], action: "攀岩" });
 add("受保护主体：动作图 → 含 动作主体",
-  piProtectedSubjects(ap).indexOf("动作主体") >= 0, JSON.stringify(piProtectedSubjects(ap)));
+  protectedSubjects(ap).indexOf("动作主体") >= 0, JSON.stringify(protectedSubjects(ap)));
 
 const sp = mkPhoto(3, { orientation: "landscape", people: 0, tags: ["风景"] });
-const subS = piProtectedSubjects(sp);
+const subS = protectedSubjects(sp);
 add("受保护主体：风景(无人) → 含 关键景物（不含人脸）",
   subS.indexOf("关键景物") >= 0 && subS.indexOf("人脸") < 0, JSON.stringify(subS));
 
 /* ---------- 2) safePatterns（该图可安全 cover 进入的版式集合）---------- */
-const safePP = piSafePatternsOf(pp, piCropSafety(pp));
+const safePP = safePatternsOf(pp, evaluateCropSafety(pp));
 add("安全版式：竖图单人 → 仅 PortraitPair/AspectPreserved（不进 FullWidth/ImagePair/Mosaic/GalleryStrip）",
   safePP.indexOf("FullWidth") < 0 && safePP.indexOf("ImagePair") < 0 && safePP.indexOf("Mosaic") < 0 && safePP.indexOf("GalleryStrip") < 0 && safePP.indexOf("PortraitPair") >= 0 && safePP.indexOf("AspectPreserved") >= 0,
   JSON.stringify(safePP));
 
-const safeLP = piSafePatternsOf(gp, piCropSafety(gp));
+const safeLP = safePatternsOf(gp, evaluateCropSafety(gp));
 add("安全版式：横图合影 → 进 ImagePair（4/3轻裁安全），不进 FullWidth",
   safeLP.indexOf("ImagePair") >= 0 && safeLP.indexOf("FullWidth") < 0, JSON.stringify(safeLP));
 
-const safeS = piSafePatternsOf(sp, piCropSafety(sp));
+const safeS = safePatternsOf(sp, evaluateCropSafety(sp));
 add("安全版式：横图风景(无人) → 全部安全（含 FullWidth）",
   safeS.indexOf("FullWidth") >= 0 && safeS.length === PI_LAYOUT_PATTERNS.length, JSON.stringify(safeS));
 
 const hp = mkPhoto(4, { orientation: "portrait", people: 2, tags: ["合影"], cropRisk: "high" });
-const safeH = piSafePatternsOf(hp, piCropSafety(hp));
+const safeH = safePatternsOf(hp, evaluateCropSafety(hp));
 add("安全版式：模型判定 high → 仅 AspectPreserved（绝不 cover 强裁）",
   safeH.length === 1 && safeH[0] === "AspectPreserved", JSON.stringify(safeH));
 
@@ -59,7 +59,7 @@ const used = [
   mkPhoto(11, { orientation: "portrait", people: 1, tags: ["人物"] }),
   mkPhoto(12, { orientation: "portrait", people: 3, tags: ["合影"] }),
 ];
-const planHero = piAdaptiveLayout(used, 3);
+const planHero = buildAdaptiveLayout(used, 3);
 const heroComp = planHero.components.find((c) => c.pattern === "FullWidth");
 add("排版路由：Hero 优先取对 FullWidth 安全的横图风景（不强制竖图人物/合影进横幅）",
   heroComp && heroComp.photos[0] && heroComp.photos[0].imageId === "ph_10",
@@ -73,7 +73,7 @@ const plan2 = {
     { pattern: "PortraitPair", photos: [mkPhoto(21, { orientation: "portrait", people: 1, tags: ["人物"] }), mkPhoto(22, { orientation: "portrait", people: 2, tags: ["合影"] })] },
   ],
 };
-const html2 = piLayoutHtml(plan2);
+const html2 = layoutHtml(plan2);
 const safeCount = (html2.match(/ph-safe/g) || []).length;
 add("渲染：FullWidth 中的竖图人物 → ph-safe + object-fit:contain（宁留白不裁）",
   html2.indexOf("s20.jpg") >= 0 && html2.indexOf("object-fit:contain") >= 0 && safeCount === 1,
@@ -85,12 +85,12 @@ add("渲染：竖图人物在 PortraitPair(安全版式) → 走 cover，不标 
 /* ---------- 5) 验收：一批人物/亲子/合影照片，无「人物图在不安全版式被 cover 强裁」---------- */
 function assertNoBadCrop(oris, total, label) {
   const u = oris.map((o, i) => mkPhoto(i, o));
-  const plan = piAdaptiveLayout(u, total != null ? total : oris.length);
-  const html = piLayoutHtml(plan);
+  const plan = buildAdaptiveLayout(u, total != null ? total : oris.length);
+  const html = layoutHtml(plan);
   let bad = 0; const detail = [];
   plan.components.forEach((c) => {
     c.photos.forEach((p) => {
-      const safe = piCropSafety(p).safePatterns;
+      const safe = evaluateCropSafety(p).safePatterns;
       const unsafe = safe.indexOf(c.pattern) < 0;
       if (!unsafe) return; // 安全版式：cover 没问题
       // 该图渲染卡片是否标了 ph-safe（=原比例 contain，未强裁）
@@ -141,7 +141,7 @@ assertNoBadCrop([
 /* ---------- 6) pagePhotoContain 接线（通用 4/3 卡片：含人物→contain，风景→cover）---------- */
 PAGE_PHOTO_INTEL = {
   analysis: [mkPhoto(30, { people: 1, orientation: "portrait", tags: ["人物"] }), mkPhoto(31, { people: 0, tags: ["风景"] })],
-  cropSafety: piEvaluateCrops([mkPhoto(30, { people: 1, orientation: "portrait", tags: ["人物"] }), mkPhoto(31, { people: 0, tags: ["风景"] })]),
+  cropSafety: evaluateCropSafetyAll([mkPhoto(30, { people: 1, orientation: "portrait", tags: ["人物"] }), mkPhoto(31, { people: 0, tags: ["风景"] })]),
   roles: {}, used: [],
 };
 add("pagePhotoContain：竖图人物 true（原比例）/ 风景图 false（可 cover）",

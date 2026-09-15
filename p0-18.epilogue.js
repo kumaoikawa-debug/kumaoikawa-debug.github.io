@@ -8,7 +8,7 @@ const PUNCT = /[，。！？；、\n\s]/g;
 function norm(s) { return (s || "").replace(PUNCT, ""); }
 
 function mkOut(sentences) {
-  // section1 额外带一句安全句，确保删除后 section 不空（xfQualityCheck 要求 sections>=3）
+  // section1 额外带一句安全句，确保删除后 section 不空（qualityCheck 要求 sections>=3）
   const sec1 = sentences.concat(["（本场信息以发布页为准）"]).map((s) => "<p>" + s + "</p>").join("");
   return {
     gzh: {
@@ -59,10 +59,10 @@ const checks = [];
 function chk(name, pass, detail) { checks.push({ name: name, pass: !!pass, detail: detail || "" }); }
 const claimNorm = (s) => norm(s);
 
-// 1) 无依据 → 删除：每类单独构造 out，跑 xfStripUnsupportedClaims，断言 claim 文本消失且 removed 含该类别
+// 1) 无依据 → 删除：每类单独构造 out，跑 stripUnsupportedClaims，断言 claim 文本消失且 removed 含该类别
 CASES.forEach((c) => {
   const out = mkOut([c.claim]);
-  const removed = xfStripUnsupportedClaims(out, {}, {});
+  const removed = stripUnsupportedClaims(out, {}, {});
   const gone = norm(allText(out)).indexOf(claimNorm(c.claim)) < 0;
   chk("删除-无依据-" + c.w, gone && removed.indexOf(c.w) >= 0,
     "removed=" + JSON.stringify(removed) + " 文本残留=" + (!gone));
@@ -74,7 +74,7 @@ CASES.forEach((c) => {
   const f = {}, a = {};
   c.fact(f, a);
   const out = mkOut([c.claim]);
-  const removed = xfStripUnsupportedClaims(out, f, a);
+  const removed = stripUnsupportedClaims(out, f, a);
   const kept = norm(allText(out)).indexOf(claimNorm(c.claim)) >= 0;
   chk("保留-有依据-" + c.w, kept && removed.indexOf(c.w) < 0,
     "removed=" + JSON.stringify(removed) + " 被误删=" + (!kept));
@@ -83,20 +83,20 @@ CASES.forEach((c) => {
 // 3) 住宿否定句「不含住宿」即使无事实也应保留（事实陈述，非无依据承诺）
 {
   const out = mkOut(["活动不含住宿，需自行预订。"]);
-  const removed = xfStripUnsupportedClaims(out, {}, {});
+  const removed = stripUnsupportedClaims(out, {}, {});
   const kept = norm(allText(out)).indexOf("活动不含住宿需自行预订") >= 0;
   chk("住宿-否定句保留", kept && removed.indexOf("住宿") < 0, "removed=" + JSON.stringify(removed));
 }
 
-// 4) 整合路径：xfQualityCheck 在删除后置 removed 且 flag=unsupported_removed
+// 4) 整合路径：qualityCheck 在删除后置 removed 且 flag=unsupported_removed
 {
   state.xf = { quality: {} };
   const f = {}, a = {};
   const out = mkOut(CASES.map((c) => c.claim));
-  xfQualityCheck(out, { family: "recruit", structure: ["a", "b", "c", "d"] }, "recruit", f, a);
+  qualityCheck(out, { family: "recruit", structure: ["a", "b", "c", "d"] }, "recruit", f, a);
   const q = state.xf.quality || {};
   const allRemoved = CASES.every((c) => q.removed && q.removed.indexOf(c.w) >= 0);
-  chk("整合-xfQualityCheck-删除并报告", allRemoved && q.flag === "unsupported_removed",
+  chk("整合-qualityCheck-删除并报告", allRemoved && q.flag === "unsupported_removed",
     "flag=" + q.flag + " removed=" + JSON.stringify(q.removed));
 }
 
@@ -109,7 +109,7 @@ CASES.forEach((c) => {
   a.actualWeather = "晴"; a.actualParticipants = 12;
   a.completionSummary = "全员成功登顶、走完全程"; a.actualFeedback = ["好评"];
   const out = mkOut(CASES.map((c) => c.claim));
-  xfQualityCheck(out, { family: "recruit", structure: ["a", "b", "c", "d"] }, "recruit", f, a);
+  qualityCheck(out, { family: "recruit", structure: ["a", "b", "c", "d"] }, "recruit", f, a);
   const q = state.xf.quality || {};
   const noFalseDelete = CASES.filter((c) => c.w !== "风景判断").every((c) => q.removed.indexOf(c.w) < 0);
   chk("整合-有依据不误删", noFalseDelete && q.removed.indexOf("风景判断") >= 0,

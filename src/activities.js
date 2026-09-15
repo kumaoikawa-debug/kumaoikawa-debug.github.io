@@ -195,8 +195,8 @@
     if (intel && intel.used && intel.used.length) {
       const gPhotos = intel.used.filter((p) => p.imageId !== intel.heroId && !usedSet.has(p.index));
       if (gPhotos.length) {
-        const plan = (typeof piAdaptiveLayout === "function") ? piAdaptiveLayout(gPhotos, (a.photos || []).length) : null;
-        const lay = (plan && typeof piLayoutHtml === "function") ? piLayoutHtml(plan) : "";
+        const plan = (typeof buildAdaptiveLayout === "function") ? buildAdaptiveLayout(gPhotos, (a.photos || []).length) : null;
+        const lay = (plan && typeof layoutHtml === "function") ? layoutHtml(plan) : "";
         // P0-12：末尾图廊版式由变体 img 结构决定（拼图 / 通栏 / 大图 / 缩略图），肉眼可见不同
         const gMode = (typeof editorialGalleryMode === "function") ? editorialGalleryMode(variant.img) : "mosaic";
         if (lay) galleryHtml = `<section class="xh-ed-sec xh-ed-gallery g-mode-${esc(gMode)}" data-sec="gallery"><div class="xh-ed-num">${String(outline.length + 1).padStart(2, "0")} / GALLERY</div><h2 class="xh-ed-h">现场影像</h2>${lay}</section>`;
@@ -392,7 +392,7 @@
     }
 
     // V2.2：按信息类型分组，配合顶部 Tab 导航
-    const outlineBlocks = buildPageOutline(a).map((b) => ({ ...b, html: renderBlock(b) })).filter((b) => b.html);
+    const outlineBlocks = buildPageStoryOutline(a).map((b) => ({ ...b, html: renderBlock(b) })).filter((b) => b.html);
     const groups = { highlights: [], story: [], itinerary: [], notes: [], org: [] };
     outlineBlocks.forEach((b) => {
       if (b.type === "selling_points") groups.highlights.push(b.html);
@@ -1660,7 +1660,7 @@ function channelMeta(ch) {
   function visualTabHtml(a) {
     const photos = a.photos || [];
     const cover = a.coverIndex || 0;
-    const outline = buildPageOutline(a);
+    const outline = buildPageStoryOutline(a);
     const emptyPhotoSvg = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>';
     const emptyCoverSvg = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M3 10h18"/></svg>';
     return `<div class="vis-tab">
@@ -1711,7 +1711,7 @@ function channelMeta(ch) {
     const cover = a.coverIndex || 0;
     // P0-8：每张图先做完整图片智能（含 7 角色分配），缩略图展示「识别标签 + 角色徽标」
     const intel = (typeof buildPhotoIntelligence === "function") ? buildPhotoIntelligence(a.photos, a, null, "recruit") : null;
-    const analysis = intel ? intel.analysis : ((typeof piAnalyze === "function") ? piAnalyze(a.photos) : []);
+    const analysis = intel ? intel.analysis : ((typeof analyzePhotos === "function") ? analyzePhotos(a.photos) : []);
     const tagMap = {};
     const roleMap = {};
     analysis.forEach((p) => {

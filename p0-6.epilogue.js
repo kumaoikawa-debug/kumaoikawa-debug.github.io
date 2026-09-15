@@ -1,11 +1,11 @@
 // P0-6 冒烟验收（epilogue）：证明图片按「内容」识别 14 类，而非按上传顺序轮流套分类。
-// 通过 piApplyVision 为每张图注入不同内容的视觉元信息，断言：
+// 通过 applyVision 为每张图注入不同内容的视觉元信息，断言：
 //  ① 每张图都输出完整 11 字段 schema + tags；
 //  ② 14 类识别（风景/人物/合影/动作/水上/徒步/露营/餐食/装备/夜景/细节/路线/重复图/低质量图）全部覆盖；
 //  ③ 重复图（pHash 近邻）与低质量图（quality<0.5）被正确标记；
 //  ④ 同一张图无论排第几，识别结果一致（与上传下标无关）。
-if (typeof piAnalyze === "undefined" || typeof piApplyVision === "undefined" || typeof buildPhotoIntelligence === "undefined") {
-  return { ok: false, reason: "P0-6 依赖函数未加载(piAnalyze/piApplyVision/buildPhotoIntelligence)", results: [], checks: [{ name: "函数就绪", pass: false }] };
+if (typeof analyzePhotos === "undefined" || typeof applyVision === "undefined" || typeof buildPhotoIntelligence === "undefined") {
+  return { ok: false, reason: "P0-6 依赖函数未加载(analyzePhotos/applyVision/buildPhotoIntelligence)", results: [], checks: [{ name: "函数就绪", pass: false }] };
 }
 
 // —— 为每张图注入不同内容的视觉元信息（模拟真实视觉模型写回）——
@@ -33,9 +33,9 @@ const M = RAW.map((o, i) => Object.assign({}, BASE, o, { pHash: phFor(i) }));
 M[13].pHash = M[12].pHash; // 重复图副帧与 idx12 共享哈希
 
 const photos = M.map((m, i) => "p0-6://img" + i);
-photos.forEach((src, i) => piApplyVision(src, M[i]));
+photos.forEach((src, i) => applyVision(src, M[i]));
 
-const analysis = piAnalyze(photos);
+const analysis = analyzePhotos(photos);
 const byIndex = {};
 analysis.forEach((p) => { byIndex[p.index] = p; });
 
@@ -66,7 +66,7 @@ checks.push({ name: "低质量图检出(quality<0.5)", pass: !!(lowImg && lowImg
 // ④ 与上传顺序无关：把图片数组顺序打乱后再分析，逐图「内容识别」应一致。
 //    允许的唯一差异是「重复图」标记（去重时哪一张被保留取决于先后顺序，属正常行为）。
 const shuffled = photos.slice().reverse();
-const analysis2 = piAnalyze(shuffled);
+const analysis2 = analyzePhotos(shuffled);
 const bySrc1 = {}; analysis.forEach((p) => { bySrc1[p.src] = new Set(p.tags); });
 const bySrc2 = {}; analysis2.forEach((p) => { bySrc2[p.src] = new Set(p.tags); });
 let orderOk = true, orderDetail = [];

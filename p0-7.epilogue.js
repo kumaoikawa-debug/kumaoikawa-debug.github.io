@@ -2,12 +2,12 @@
 // 且每张图按「内容」精确分入 使用/弃用 两类，弃用再细分为 重复/质量较低/内容重复·弱相关。
 // 构造：28 张 = 5 张同哈希重复图(弃 4 留 1) + 3 张低质量 + 20 张正常唯一图。
 //   期望：使用 14（Hero1 / 主图5 / 辅助图6 / 细节图2）；弃用 14（重复 4 / 质量较低 3 / 内容重复·弱相关 7）。
-if (typeof piSelect === "undefined" || typeof piAssignAllRoles === "undefined" || typeof buildPhotoIntelligence === "undefined" || typeof piApplyVision === "undefined") {
+if (typeof selectPhotos === "undefined" || typeof assignAllRoles === "undefined" || typeof buildPhotoIntelligence === "undefined" || typeof applyVision === "undefined") {
   return { ok: false, reason: "P0-7 依赖函数未加载", results: [], checks: [{ name: "函数就绪", pass: false }] };
 }
 
 // 注入一张图的内容元信息（模拟真实视觉模型写回）。dup 图显式给相同 pHash；其余不写 pHash→走确定性代理哈希，互不碰撞。
-function inject(src, meta) { piApplyVision(src, meta); }
+function inject(src, meta) { applyVision(src, meta); }
 const SIGN = (extra) => Object.assign({ orientation: "landscape", safe_text_area: "top-right", recommended_use: ["story"], category: "内容识别", emotion: "真实", focal_point: { x: 0.5, y: 0.45 }, cropRisk: null, sat: 0.3, edge: 14, blueRatio: 0.1, warmRatio: 0.2, skinRatio: 0, motionScore: 0, avgLum: 130 }, extra || {});
 
 const checks = [];

@@ -4,8 +4,8 @@
      1) 配置了总平台后端 → 走后端 /api/pay/membership/ai-vision（Key 在服务端，按 AI 积分计量）；
      2) 未配置后端但填了「视觉模型 Key」→ 浏览器直连（演示 / 自测 / 小体量）；
      3) 都没有 → 返回 null，上层继续使用本地像素分析 + 规则推断（simulated 标记）。
-   结果统一经 piApplyVision() 写回缓存 → piAnalyze / piSelect / piAssignRoles / piAdaptiveLayout /
-   piCropSafety / piMatchSections 自动采用，业务代码零改动。 */
+   结果统一经 applyVision() 写回缓存 → analyzePhotos / selectPhotos / assignPhotoRoles / buildAdaptiveLayout /
+   evaluateCropSafety / matchPhotosToSections 自动采用，业务代码零改动。 */
 
 const VISION_LS = {
   provider: "clubos_vision_provider",
@@ -116,13 +116,13 @@ function visionNormalize(raw) {
 /* ---------- P2-4：标准化视觉模型接口（Mock / 真实 共用同一归一化契约） ----------
    契约（VISION_NORMALIZED_SCHEMA）：模型只需返回这组字段（见 VISION_FIELD_WHITELIST），
    与后端 / 浏览器直连 / 未来任意供应商无关。本层负责把它映射成 photo.js 内部的
-   photoMeta 形态（metaToSignals 读取的字段名），使 piAnalyzeOne → piSelect → piAssignRoles
-   → piAdaptiveLayout 等全部下游「零改动」即可消费真实视觉结果。
-   写回入口统一为 piApplyVision(src, meta)（meta.simulated 强制置 false）。
+   photoMeta 形态（metaToSignals 读取的字段名），使 analyzeOnePhoto → selectPhotos → assignPhotoRoles
+   → buildAdaptiveLayout 等全部下游「零改动」即可消费真实视觉结果。
+   写回入口统一为 applyVision(src, meta)（meta.simulated 强制置 false）。
    切换路径：
-     ① Demo（无模型）：photoMeta 返回 null → piAnalyzeOne 走像素启发式（simulated=true），UI 标「模拟分析」；
-     ② 真实模型：visionAnalyzeBatch → piApplyVisionNormalized 写回 PHOTO_FOCUS_CACHE
-       → 下次 piAnalyze 经 photoMeta 读到 simulated=false，自动采用真实字段。 */
+     ① Demo（无模型）：photoMeta 返回 null → analyzeOnePhoto 走像素启发式（simulated=true），UI 标「模拟分析」；
+     ② 真实模型：visionAnalyzeBatch → applyVisionNormalized 写回 PHOTO_FOCUS_CACHE
+       → 下次 analyzePhotos 经 photoMeta 读到 simulated=false，自动采用真实字段。 */
 const VISION_NORMALIZED_SCHEMA = {
   orientation: "landscape|portrait|square",
   quality_score: "0-1 数字",
@@ -138,7 +138,7 @@ const VISION_NORMALIZED_SCHEMA = {
 };
 /* 归一化视觉 JSON → photoMeta 形态（metaToSignals 读取的字段名）。
    关键：把模型的 scene 映射成内部布尔信号（isWater/isNight/isHike/...），
-   使 piTagPhoto / piPrimaryScene 能正确归类，避免真实模型结果在标签层被丢弃。 */
+   使 tagPhoto / primaryScene 能正确归类，避免真实模型结果在标签层被丢弃。 */
 function visionToPhotoMeta(norm) {
   if (!norm || typeof norm !== "object") return null;
   const n = norm;
@@ -172,10 +172,10 @@ function visionToPhotoMeta(norm) {
   return sig;
 }
 /* 写回入口（标准化）：把真实模型归一化结果映射成 photoMeta 后写回缓存 */
-function piApplyVisionNormalized(src, norm) {
+function applyVisionNormalized(src, norm) {
   const meta = visionToPhotoMeta(norm);
   if (!meta) return false;
-  return (typeof piApplyVision === "function") ? piApplyVision(src, meta) : false;
+  return (typeof applyVision === "function") ? applyVision(src, meta) : false;
 }
 
 function visionParseJson(text) {
@@ -312,7 +312,7 @@ async function visionAnalyzeBatch(photos, opts) {
       const i = cursor++;
       const src = targets[i];
       const data = await visionAnalyzeOne(src);
-      if (data && piApplyVisionNormalized(src, data)) { result.analyzed++; result.results[src] = data; }
+      if (data && applyVisionNormalized(src, data)) { result.analyzed++; result.results[src] = data; }
       else result.failed++;
       done++;
       if (opts.onProgress) opts.onProgress(done, targets.length);

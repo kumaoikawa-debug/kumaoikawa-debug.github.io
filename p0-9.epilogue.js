@@ -1,14 +1,14 @@
 /* P0-9 冒烟：图片↔行程/章节 语义匹配 —— 绝不"文字说徒步、配图却是餐食" */
-if (typeof piApplyVision === "undefined" || typeof piAnalyze === "undefined" ||
+if (typeof applyVision === "undefined" || typeof analyzePhotos === "undefined" ||
     typeof buildPhotoIntelligence === "undefined" || typeof structureItinerary === "undefined" ||
-    typeof pagePhotoSections === "undefined" || typeof piMatchItinerary === "undefined") {
-  return { ok: false, error: "P0-9 所需函数未定义（piApplyVision/piAnalyze/buildPhotoIntelligence/structureItinerary/pagePhotoSections/piMatchItinerary）" };
+    typeof pagePhotoSections === "undefined" || typeof matchItineraryPhotos === "undefined") {
+  return { ok: false, error: "P0-9 所需函数未定义（applyVision/analyzePhotos/buildPhotoIntelligence/structureItinerary/pagePhotoSections/matchItineraryPhotos）" };
 }
 
-const inject = (src, sig) => piApplyVision(src, Object.assign({ simulated: false }, sig));
+const inject = (src, sig) => applyVision(src, Object.assign({ simulated: false }, sig));
 
-/* 注入 5 张「内容各不相同」的图（驱动 piTagPhoto 产出不同 14 类标签）。
-   注意：pHash 必须用两两汉明距离 >4 的位模式，否则 piSelect 的重复检测会把它们合并成一组（测试数据坑，非代码缺陷）。 */
+/* 注入 5 张「内容各不相同」的图（驱动 tagPhoto 产出不同 14 类标签）。
+   注意：pHash 必须用两两汉明距离 >4 的位模式，否则 selectPhotos 的重复检测会把它们合并成一组（测试数据坑，非代码缺陷）。 */
 inject("p0-9://water", { isWater: true, blueRatio: 0.5, avgLum: 140, people_count: 0, quality_score: 0.79, pHash: { lo: 0x000000FF, hi: 1 } }); // 水上（桨板）；质量略低于 hike，避免被选为封面 Hero 而被排除在行程匹配外
 inject("p0-9://meal",  { warmRatio: 0.5, avgLum: 130, people_count: 2, blueRatio: 0.05, quality_score: 0.82, pHash: { lo: 0x0000FF00, hi: 1 } }); // 餐食
 inject("p0-9://group", { people_count: 4, avgLum: 130, quality_score: 0.80, pHash: { lo: 0x00FF0000, hi: 1 } });                                 // 合影/人物互动
@@ -41,7 +41,7 @@ else checks.push({ name: "生成 matchedItinerary（逐段匹配）", pass: true
 
 /* 工具：src → 其 14 类标签的英文键集合 */
 const analysisMap = {};
-piAnalyze(photos).forEach((p) => { analysisMap[p.src] = p; });
+analyzePhotos(photos).forEach((p) => { analysisMap[p.src] = p; });
 const keysOf = (src) => {
   const p = analysisMap[src]; if (!p) return [];
   const ks = (p.tags || []).map((t) => ({ "风景": "scenic", "人物": "people", "合影": "group", "动作": "action", "水上": "water", "徒步": "hike", "露营": "camp", "餐食": "meal", "装备": "gear", "夜景": "night", "细节": "detail", "路线": "route" }[t])).filter(Boolean);

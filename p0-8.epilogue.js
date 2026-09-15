@@ -1,12 +1,12 @@
 /* P0-8 冒烟：图片角色系统（7 类角色 + 重要度阶梯）
    验收：每张图必须先确定角色；不能再让所有图片在页面中拥有同等重要性。
-   通过注入不同内容的视觉元信息（piApplyVision），验证：
+   通过注入不同内容的视觉元信息（applyVision），验证：
      ① 全部图片都落在 7 角色之一，且每张恰属一个角色；
      ② 7 角色的重要度（importance）互不相同——不存在「同等重要性」；
      ③ 弃用池全部标记为 DiscardCandidate（重要度 0，不进版面）；
      ④ 使用池服从预算（14 张：Hero1/主图5/辅助图6/细节图2，其中辅助图含图廊+信息背景）；
      ⑤ 角色由「内容」驱动，与上传顺序无关（乱序后逐图角色一致，且强图>弱图）。 */
-const inject = (src, meta) => piApplyVision(src, meta);
+const inject = (src, meta) => applyVision(src, meta);
 const SIGN = (o) => Object.assign({ orientation: "landscape", safe_text_area: "top-right", recommended_use: ["story"], category: "内容识别", emotion: "真实", focal_point: { x: 0.5, y: 0.45 }, cropRisk: null, sat: 0.2, edge: 10, blueRatio: 0.1, warmRatio: 0.2, skinRatio: 0, motionScore: 0, pHash: { lo: (Math.floor(Math.random() * 1e6) + 1), hi: 1 } }, o);
 
 /* 构造 28 张：5 同哈希重复 + 3 低质量 + 20 正常（混合风景/人物以产生角色差异） */

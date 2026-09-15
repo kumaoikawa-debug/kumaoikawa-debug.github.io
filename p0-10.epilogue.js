@@ -4,7 +4,7 @@ state = loadState();
 function mk(orients, total) {
   return orients.map((o, i) => ({ src: "s" + i + ".jpg", orientation: o, imageId: "ph_" + i, index: i }));
 }
-function planOf(orients, total) { return piAdaptiveLayout(mk(orients, total != null ? total : orients.length), total != null ? total : orients.length); }
+function planOf(orients, total) { return buildAdaptiveLayout(mk(orients, total != null ? total : orients.length), total != null ? total : orients.length); }
 const checks = [];
 const add = (name, pass, detail) => checks.push({ name, pass: !!pass, detail: detail || "" });
 const has = (arr, x) => arr.indexOf(x) >= 0;
@@ -50,19 +50,19 @@ const uniq = new Set([s2, s6, s15, s25]);
 add("数量驱动：2/6/15/25 四组版式签名互不相同", uniq.size === 4, "s2=" + s2 + " s6=" + s6 + " s15=" + s15 + " s25=" + s25);
 
 // 9) 渲染 HTML 反映版式：竖图组出 ly-PortraitPair、横图组出 ly-ImagePair、20+ 出 ly-GalleryStrip
-const htmlPort = piLayoutHtml(p8Port);
-const htmlLand = piLayoutHtml(p8Land);
-const htmlHuge = piLayoutHtml(pHuge);
+const htmlPort = layoutHtml(p8Port);
+const htmlLand = layoutHtml(p8Land);
+const htmlHuge = layoutHtml(pHuge);
 add("渲染：竖图组 HTML 含 ly-PortraitPair", /ly-PortraitPair/.test(htmlPort) && /data-tier="mid"/.test(htmlPort), "has=" + /ly-PortraitPair/.test(htmlPort));
 add("渲染：横图组 HTML 含 ly-ImagePair(无 ly-PortraitPair)", /ly-ImagePair/.test(htmlLand) && !/ly-PortraitPair/.test(htmlLand), "has=" + /ly-ImagePair/.test(htmlLand));
 add("渲染：20+ HTML 含 ly-GalleryStrip", /ly-GalleryStrip/.test(htmlHuge), "has=" + /ly-GalleryStrip/.test(htmlHuge));
 
 // 10) 空输入不崩、返回空组件
-const pEmpty = piAdaptiveLayout([], 0);
+const pEmpty = buildAdaptiveLayout([], 0);
 add("空输入 → empty + 无组件", pEmpty.mode === "empty" && pEmpty.components.length === 0, "mode=" + pEmpty.mode);
 
 // 11) 渲染接线集成：用真实 buildPhotoIntelligence 产出的 intel 形状，复刻 activities.js:170-176 的画廊构造
-//     验证「现场影像」画廊确实走 piAdaptiveLayout + piLayoutHtml，输出 .photo-layout + 正确 .ly-* + data-tier
+//     验证「现场影像」画廊确实走 buildAdaptiveLayout + layoutHtml，输出 .photo-layout + 正确 .ly-* + data-tier
 function buildIntel(oris, heroIdx) {
   const used = oris.map((o, i) => ({ imageId: "ph_" + i, src: "s" + i + ".jpg", index: i, orientation: o, quality: 0.8, scene: "scenic", tags: ["scenic"] }));
   return { used: used, heroId: "ph_" + (heroIdx || 0), roles: {}, analysis: used, cropSafety: { byId: {} } };
@@ -76,8 +76,8 @@ function galleryConstruct(oris, total, reserved) {
   if (read && read.used && read.used.length) {
     const gPhotos = read.used.filter((p) => p.imageId !== read.heroId && !usedSet.has(p.index));
     if (gPhotos.length) {
-      const plan = piAdaptiveLayout(gPhotos, total);
-      const lay = piLayoutHtml(plan);
+      const plan = buildAdaptiveLayout(gPhotos, total);
+      const lay = layoutHtml(plan);
       if (lay) galleryHtml = `<section class="xh-ed-sec xh-ed-gallery" data-sec="gallery"><div class="xh-ed-num">12 / GALLERY</div><h2 class="xh-ed-h">现场影像</h2>${lay}</section>`;
     }
   }

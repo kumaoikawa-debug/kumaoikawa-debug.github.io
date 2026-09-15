@@ -4,7 +4,7 @@
 //   2) 只有照片、没有备注时：回顾只描述照片现场，绝不回显类型推断的 scenicValue/experienceValue/participationValue（那是招募视角）
 //   3) 无照片、无备注时：回顾只留占位说明，不编造现场故事
 //   4) 用户补充的 notes（actualActivityData 来源）才允许进入回顾正文
-//   5) 质量检查 xfContentQuality 能捕获上述禁止故事断言（防御纵深）
+//   5) 质量检查 contentQuality 能捕获上述禁止故事断言（防御纵深）
 
 function mkAct(extra) {
   return Object.assign({
@@ -40,8 +40,8 @@ var a = mkAct({});
 var photos5 = ["p1.jpg", "p2.jpg", "p3.jpg", "p4.jpg", "p5.jpg"];
 var m = buildContentMaster(a, photos5);
 var dir = mkDir();
-var type = xfRecapType(a, photos5);
-var out = xfFallbackRecap(a, m, dir, photos5, "", type, null);
+var type = recapType(a, photos5);
+var out = fallbackRecapCopy(a, m, dir, photos5, "", type, null);
 var t = allText(out);
 BANNED.forEach(function (w) {
   check(t.indexOf(w) < 0, "仅照片·无备注：Fallback 无禁止故事「" + w + "」", t.indexOf(w) < 0 ? "absent" : "FOUND");
@@ -56,7 +56,7 @@ check(out.gzh.sections.length >= 5, "仅照片·无备注：结构完整(gzh.sec
 
 // --- 无照片、无备注：只留占位说明，不编造现场故事 ---
 var m0 = buildContentMaster(a, []);
-var out0 = xfFallbackRecap(a, m0, mkDir(), [], "", xfRecapType(a, []), null);
+var out0 = fallbackRecapCopy(a, m0, mkDir(), [], "", recapType(a, []), null);
 var t0 = allText(out0);
 BANNED.forEach(function (w) {
   check(t0.indexOf(w) < 0, "无照片·无备注：Fallback 无禁止故事「" + w + "」", t0.indexOf(w) < 0 ? "absent" : "FOUND");
@@ -67,8 +67,8 @@ check(t0.indexOf(m0.scenicValue) < 0 && t0.indexOf(m0.experienceValue) < 0 && t0
 
 // --- 用户补充 notes（actualActivityData 来源）才允许进入回顾正文 ---
 var notesTxt = "当天其实放晴了，小朋友第一次自己爬上来，大家最满意的是晚餐。";
-var ad = xfActualActivityData(a, notesTxt);
-var outN = xfFallbackRecap(a, m, mkDir(), photos5, notesTxt, type, ad);
+var ad = extractActualActivityData(a, notesTxt);
+var outN = fallbackRecapCopy(a, m, mkDir(), photos5, notesTxt, type, ad);
 var tN = allText(outN);
 // 用户确认的现场（在 notes 里）应出现在「值得记住的瞬间」等节
 check(tN.indexOf("小朋友第一次自己爬上来") >= 0, "有备注：用户确认现场(notes)进入回顾正文", "notes surfaced");
@@ -82,11 +82,11 @@ var fakeOut = {
   gzh: { title: "回顾", summary: "x", sections: [{ h: "a", html: "我们完成全程，大家玩得尽兴" }], next: "y" },
   xhs: { body: "有人说合照那一刻，返程车上下雨了，大家互相照顾" }
 };
-var q = xfContentQuality(fakeOut, mkDir(), "recap", m.confirmedFacts, xfActualActivityData(a, ""));
+var q = contentQuality(fakeOut, mkDir(), "recap", m.confirmedFacts, extractActualActivityData(a, ""));
 check(q.fiction > 0, "质量检查捕获 P0-16 禁止故事断言", "fiction=" + q.fiction + " flags=" + (q.flags || []).join(","));
 
 // --- actualActivityData 默认不确认天气/完成/人数（避免回退到虚构）---
-var adDef = xfActualActivityData(a, "");
+var adDef = extractActualActivityData(a, "");
 check(!adDef.actualWeather && !adDef.completionSummary && adDef.actualParticipants == null,
   "actualActivityData 默认不确认天气/完成/人数", JSON.stringify({ w: adDef.actualWeather, c: adDef.completionSummary, p: adDef.actualParticipants }));
 

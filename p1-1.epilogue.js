@@ -12,7 +12,7 @@ const xf = {
   quality: { fictionRisk: false, unsupported: [], content: { score: 88 }, editorial: { score: 76 } },
   _styleHistory: [],
 };
-const html = xfStyleBar(xf);
+const html = styleBar(xf);
 
 // 1) 默认可见：当前风格 / 换一种版式 / 换一种风格
 chk("默认含-当前风格", html.indexOf("当前风格") >= 0);

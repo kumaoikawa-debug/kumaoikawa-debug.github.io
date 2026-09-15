@@ -89,7 +89,7 @@
     }
   }
   function bindFabuExtras() {
-    const inp = $("#xfPhotoInput");
+    const inp = $("#photoInput");
     if (inp && !inp._bound) {
       inp._bound = true;
       inp.addEventListener("change", (e) => {
@@ -102,7 +102,7 @@
             const src = ev.target.result;
             (typeof analyzeImageFocus === "function" ? analyzeImageFocus(src) : Promise.resolve(null)).then((focus) => {
               if (typeof PHOTO_FOCUS_CACHE !== "undefined" && focus) PHOTO_FOCUS_CACHE.set(src, focus);
-              const xf = xfState();
+              const xf = publishState();
               xf.photos = xf.photos || [];
               xf.photos.push(src);
               if (--pending === 0) showView(state.view);
@@ -118,7 +118,7 @@
       if (el && !el._xfBound) {
         el._xfBound = true;
         el.addEventListener("input", (e) => {
-          const xf = xfState();
+          const xf = publishState();
           xf.customRecap = xf.customRecap || {};
           xf.customRecap[k.replace("custom", "").toLowerCase()] = e.target.value;
         });
@@ -1359,45 +1359,45 @@
         showView("membershipAdmin"); break;
       }
       /* ---- AI 宣发中心（v112） ---- */
-      case "xfGoScenario": {
-        const xf = xfState();
+      case "goScenario": {
+        const xf = publishState();
         xf.photoOverrides = { cover: null, excluded: {} };
         if (d.s === "back") { xf.scenario = null; xf.step = null; xf.aid = null; xf.out = null; xf.recap = null; }
         else { xf.scenario = d.s; xf.step = null; xf.aid = null; xf.out = null; xf.recap = null; }
         showView(state.view);
         break;
       }
-      case "xfFromTask": {
-        const xf = xfState();
+      case "fromTask": {
+        const xf = publishState();
         xf.scenario = "recruit"; xf.step = null; xf.aid = d.aid; xf.out = null;
         showView(state.view);
         break;
       }
-      case "xfPickActivity": {
-        const xf = xfState();
+      case "pickActivity": {
+        const xf = publishState();
         xf.aid = d.aid; xf.step = "pick";
         const a = (state.activities || []).find((x) => x.id === xf.aid);
         if (a) toast(`已选择：${a.title || "未命名活动"}`);
         showView(state.view);
         break;
       }
-      case "xfDelPhoto": {
-        const xf = xfState();
+      case "delPhoto": {
+        const xf = publishState();
         xf.photos = (xf.photos || []).filter((_, i) => i !== (+d.i));
         xf.photoOverrides = { cover: null, excluded: {} }; // 索引已变，清空轻确认覆盖
         showView(state.view);
         break;
       }
-      case "xfSetCover": {
-        const xf = xfState();
+      case "setCover": {
+        const xf = publishState();
         xf.photoOverrides = xf.photoOverrides || { cover: null, excluded: {} };
         xf.photoOverrides.cover = +d.i;
         toast("已设为封面");
         showView(state.view);
         break;
       }
-      case "xfToggleExclude": {
-        const xf = xfState();
+      case "toggleExclude": {
+        const xf = publishState();
         const i = +d.i;
         const src = (xf.photos || [])[i];
         if (!src) break;
@@ -1409,16 +1409,16 @@
         showView(state.view);
         break;
       }
-      case "xfUseRecommended": {
-        const xf = xfState();
+      case "useRecommended": {
+        const xf = publishState();
         xf.photoOverrides = { cover: null, excluded: {} };
         toast("已采用 AI 推荐（封面与筛选）");
         showView(state.view);
         break;
       }
       /* v151：真实视觉模型批量识别（结果写回缓存 → 筛图/角色/排版/裁切自动采用） */
-      case "xfVisionAnalyze": {
-        const xf = xfState();
+      case "visionAnalyze": {
+        const xf = publishState();
         if (typeof visionAvailable !== "function" || !visionAvailable()) { toast("请先在「设置 → AI 设置 → 视觉模型」配置"); break; }
         if (xf._visionBusy) break;
         if (!(xf.photos || []).length) { toast("请先上传照片"); break; }
@@ -1438,94 +1438,94 @@
         showView(state.view);
         break;
       }
-      case "xfPlatTab": { xfState().platTab = d.k; showView(state.view); break; }
-      case "xfSwitchFamily": {
-        const xf = xfState();
+      case "platformTab": { publishState().platTab = d.k; showView(state.view); break; }
+      case "switchFamily": {
+        const xf = publishState();
         xf.family = d.f;
         const vs = (XF_FAMILIES[xf.family] && XF_FAMILIES[xf.family].variants) || [""];
         if (xf.variant >= vs.length) xf.variant = 0;
         showView(state.view);
         break;
       }
-      case "xfSwitchVariant": {
-        const xf = xfState();
+      case "switchVariant": {
+        const xf = publishState();
         xf.variant = (+d.v) || 0;
         showView(state.view);
         break;
       }
-      case "xfNextVariant": {
+      case "nextVariant": {
         // P1-2「换一种版式」：只切换 Layout Variant，不改文案 / 家族 / 风格
-        const xf = xfState();
+        const xf = publishState();
         const vs = (XF_FAMILIES[xf.family] && XF_FAMILIES[xf.family].variants) || [""];
         xf.variant = ((xf.variant || 0) + 1) % vs.length;
         if (xf.strategy && xf.strategy.editorialDirection) xf.strategy.editorialDirection.variant = xf.variant;
         xf._styleHistory = xf._styleHistory || [];
-        xf._styleHistory.push((typeof xfStyleSig === "function") ? xfStyleSig(xf) : { family: xf.family, variant: xf.variant });
+        xf._styleHistory.push((typeof styleSignature === "function") ? styleSignature(xf) : { family: xf.family, variant: xf.variant });
         toast("已换一种版式");
         showView(state.view);
         break;
       }
-      case "xfQuickStyle": { xfQuickStyle(d.k); break; }
+      case "quickStyle": { quickStyle(d.k); break; }
       /* P2-1 局部重生成：只动被点的那一处，其余文案与事实保持不变 */
-      case "xfRegenTitle": { xfRegenTitle(); break; }
-      case "xfRegenCta": { xfRegenCta(); break; }
-      case "xfShufflePhotos": { xfShufflePhotos(); break; }
-      case "xfRegenSection": { await xfRegenSection(+(d.i || 0)); break; }
-      case "xfSwitchStyle": {
-        const xf = xfState();
+      case "regenTitle": { regenTitle(); break; }
+      case "regenCta": { regenCta(); break; }
+      case "shufflePhotos": { shufflePhotos(); break; }
+      case "regenSection": { await regenSection(+(d.i || 0)); break; }
+      case "switchStyle": {
+        const xf = publishState();
         const a = xf._a || (state.activities || []).find((x) => x.id === xf.aid);
         if (!a) { toast("请先重新选择活动再换风格"); break; }
         xf.styleSeed = Math.floor(Date.now() % 1000000) + Math.floor(Math.random() * 1000);
         xf.genState = "loading"; showView(state.view);
         try {
-          const swPhotos = (typeof xfActivePhotos === "function") ? xfActivePhotos(xf) : (xf.photos || []); // P1-2：换风格时也尊重轻确认里的「删除某图」
+          const swPhotos = (typeof activePhotos === "function") ? activePhotos(xf) : (xf.photos || []); // P1-2：换风格时也尊重轻确认里的「删除某图」
           xf.strategy = await genStrategy(a, swPhotos, xf.notes || xf.recapNotes, xf.scenario);
-          xfApplyCoverOverride(xf); // P1-2：老板选的封面落到生成的 hero
+          applyCoverOverride(xf); // P1-2：老板选的封面落到生成的 hero
           if (xf.scenario === "recruit") xf.out = await genRecruit(a, xf.master, xf.strategy);
           else xf.recap = await genRecap(a, xf.master, xf.strategy, swPhotos, xf.recapNotes);
           xf.family = xf.strategy.editorialDirection.family;
           xf.variant = xf.strategy.editorialDirection.variant;
-          xf._styleHistory.push((typeof xfStyleSig === "function") ? xfStyleSig(xf) : { family: xf.family, variant: xf.variant });
+          xf._styleHistory.push((typeof styleSignature === "function") ? styleSignature(xf) : { family: xf.family, variant: xf.variant });
           xf.genState = "idle"; xf.platTab = "gzh";
           toast("已换风格重生成");
         } catch (e) { xf.genState = "idle"; toast("换风格失败：" + (e && e.message ? e.message : e)); }
         showView(state.view);
         break;
       }
-      case "xfReset": { state.xf = null; showView(state.view); break; }
-      case "xfRecruitGen": {
-        const xf = xfState();
+      case "publishReset": { state.xf = null; showView(state.view); break; }
+      case "recruitGen": {
+        const xf = publishState();
         const ta = document.querySelector('[data-xf="note"]');
         if (ta) xf.notes = ta.value;
         const a = (state.activities || []).find((x) => x.id === xf.aid);
         if (!a) { toast("请先选择一场活动"); break; }
         xf._a = a;
-        const actPhotos = (typeof xfActivePhotos === "function") ? xfActivePhotos(xf) : (xf.photos || []);
+        const actPhotos = (typeof activePhotos === "function") ? activePhotos(xf) : (xf.photos || []);
         xf.master = buildContentMaster(a, actPhotos);
         xf.genState = "loading"; showView(state.view);
         try {
           xf.strategy = await genStrategy(a, actPhotos, xf.notes, "recruit");
-          xfApplyCoverOverride(xf); // P1-2：老板选的封面落到生成的 hero
-          xf.master.keyImages = await xfAttachPhotoCaptions(xf.master.keyImages, xf.master.confirmedFacts, xf.strategy.editorialDirection);
+          applyCoverOverride(xf); // P1-2：老板选的封面落到生成的 hero
+          xf.master.keyImages = await attachPhotoCaptions(xf.master.keyImages, xf.master.confirmedFacts, xf.strategy.editorialDirection);
           xf.out = await genRecruit(a, xf.master, xf.strategy);
           // §41：版式质量不达标 → 重选家族/变体（重生成 ED/Layout）一次
           if (aiAuthMode() && state.xf.quality && state.xf.quality.editorialRisk) {
             xf.strategy = await genStrategy(a, actPhotos, xf.notes, "recruit");
-            xfApplyCoverOverride(xf); // P1-2
+            applyCoverOverride(xf); // P1-2
             xf.out = await genRecruit(a, xf.master, xf.strategy);
           }
           xf.family = xf.strategy.editorialDirection.family;
           xf.variant = xf.strategy.editorialDirection.variant;
           xf.styleSeed = xf.strategy.editorialDirection.styleSeed;
-          xf._styleHistory.push((typeof xfStyleSig === "function") ? xfStyleSig(xf) : { family: xf.family, variant: xf.variant });
+          xf._styleHistory.push((typeof styleSignature === "function") ? styleSignature(xf) : { family: xf.family, variant: xf.variant });
           xf.step = "result"; xf.genState = "idle"; xf.platTab = "gzh";
           toast("已生成宣传内容");
         } catch (e) { xf.genState = "idle"; toast("生成失败：" + (e && e.message ? e.message : e)); }
         showView(state.view);
         break;
       }
-      case "xfRecapGen": {
-        const xf = xfState();
+      case "recapGen": {
+        const xf = publishState();
         const rt = document.querySelector('[data-xf="recapNotes"]');
         if (rt) xf.recapNotes = rt.value;
         const customFields = { title: "", date: "", place: "", type: "", signups: "", leader: "" };
@@ -1547,39 +1547,39 @@
           };
         }
         xf._a = a;
-        const actPhotos = (typeof xfActivePhotos === "function") ? xfActivePhotos(xf) : (xf.photos || []);
+        const actPhotos = (typeof activePhotos === "function") ? activePhotos(xf) : (xf.photos || []);
         xf.master = buildContentMaster(a, actPhotos);
         xf.genState = "loading"; showView(state.view);
         try {
           xf.strategy = await genStrategy(a, actPhotos, xf.recapNotes, "recap");
-          xfApplyCoverOverride(xf); // P1-2：老板选的封面落到生成的 hero
-          xf.master.keyImages = await xfAttachPhotoCaptions(xf.master.keyImages, xf.master.confirmedFacts, xf.strategy.editorialDirection);
+          applyCoverOverride(xf); // P1-2：老板选的封面落到生成的 hero
+          xf.master.keyImages = await attachPhotoCaptions(xf.master.keyImages, xf.master.confirmedFacts, xf.strategy.editorialDirection);
           xf.recap = await genRecap(a, xf.master, xf.strategy, xf.photos, xf.recapNotes);
           // §41：版式质量不达标 → 重选家族/变体（重生成 ED/Layout）一次
           if (aiAuthMode() && state.xf.quality && state.xf.quality.editorialRisk) {
             xf.strategy = await genStrategy(a, actPhotos, xf.recapNotes, "recap");
-            xfApplyCoverOverride(xf); // P1-2
+            applyCoverOverride(xf); // P1-2
             xf.recap = await genRecap(a, xf.master, xf.strategy, xf.photos, xf.recapNotes);
           }
-          xf.recapType = xfRecapType(a, xf.photos);
+          xf.recapType = recapType(a, xf.photos);
           xf.family = xf.strategy.editorialDirection.family;
           xf.variant = xf.strategy.editorialDirection.variant;
           xf.styleSeed = xf.strategy.editorialDirection.styleSeed;
-          xf._styleHistory.push((typeof xfStyleSig === "function") ? xfStyleSig(xf) : { family: xf.family, variant: xf.variant });
+          xf._styleHistory.push((typeof styleSignature === "function") ? styleSignature(xf) : { family: xf.family, variant: xf.variant });
           xf.step = "result"; xf.genState = "idle"; xf.platTab = "gzh";
           toast("已生成活动回顾");
         } catch (e) { xf.genState = "idle"; toast("生成失败：" + (e && e.message ? e.message : e)); }
         showView(state.view);
         break;
       }
-      case "xfCopyGzhHtml": {
-        const art = document.getElementById("xfGzhArticle");
+      case "copyGzhHtml": {
+        const art = document.getElementById("gzhArticle");
         if (!art) break;
         xbCopy(art.innerHTML);
         toast("已复制公众号 HTML，去微信后台粘贴即可");
         break;
       }
-      case "xfCopyText": { xbCopy(d.text || ""); break; }
+      case "copyText": { xbCopy(d.text || ""); break; }
       default: break;
     }
   }

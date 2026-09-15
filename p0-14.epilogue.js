@@ -5,7 +5,7 @@
 //   3) 活动类型推断(inferredContentKind)明确标记为推断、assertsScenes=false，绝不暗示具体景观
 //   4) consumerValue 同样不含现场事实
 //   5) 事实护栏 sanitizeCreativeContext 能把违规现场词剥离
-//   6) xfGzhHighlight 不再把未确认景观词当已确认事实高亮（类型词仍高亮）
+//   6) gzhHighlight 不再把未确认景观词当已确认事实高亮（类型词仍高亮）
 
 function mkAct(extra) {
   return Object.assign({
@@ -54,11 +54,11 @@ var res = sanitizeCreativeContext(dirty);
 check(!hasSceneClaim(JSON.stringify(res.value)), "护栏剥离现场词(星空)", "after=" + JSON.stringify(res.value.angles));
 check(res.stripped === true, "护栏标记 stripped=true", "");
 
-// 5) xfGzhHighlight：未确认景观词不再高亮，活动类型词仍高亮
-var hlScene = xfGzhHighlight("今晚有星空，溪流很凉", mkAct());
-check(hlScene.indexOf("gzh-hl") < 0, "xfGzhHighlight 不再高亮未确认景观词", "");
-var hlType = xfGzhHighlight("周末去露营最舒服", mkAct());
-check(hlType.indexOf("gzh-hl") >= 0, "xfGzhHighlight 仍高亮活动类型词", "");
+// 5) gzhHighlight：未确认景观词不再高亮，活动类型词仍高亮
+var hlScene = gzhHighlight("今晚有星空，溪流很凉", mkAct());
+check(hlScene.indexOf("gzh-hl") < 0, "gzhHighlight 不再高亮未确认景观词", "");
+var hlType = gzhHighlight("周末去露营最舒服", mkAct());
+check(hlType.indexOf("gzh-hl") >= 0, "gzhHighlight 仍高亮活动类型词", "");
 
 var allPass = checks.every(function (c) { return c.pass; });
 return { ok: allPass, total: checks.length, passed: checks.filter(function (c) { return c.pass; }).length, checks: checks };

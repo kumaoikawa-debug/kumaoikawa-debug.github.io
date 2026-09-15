@@ -4,7 +4,7 @@
 //   2) Fallback 内每一条事实都能在 confirmedFacts(活动字段) 找到来源——不凭空写现场事实/服务承诺
 //   3) 有领队名时只写真实领队名，绝不补默认「专业领队」
 //   4) 信息缺失(最小活动)时，Fallback 不臆造领队/保险/餐食/交通/装备/风景品质等
-//   5) xfFitText 不产生 专业领队/路线成熟/门槛友好 等无依据断言
+//   5) fitText 不产生 专业领队/路线成熟/门槛友好 等无依据断言
 
 function mkAct(extra) {
   return Object.assign({
@@ -35,7 +35,7 @@ function check(pass, name, detail) { checks.push({ name: name, pass: !!pass, det
 // --- 无领队名：默认 6 类断言一律不得出现 ---
 var a0 = mkAct({ leaderName: "", insurance: "" });
 var m0 = buildContentMaster(a0, []);
-var out0 = xfFallbackRecruit(a0, m0, {});
+var out0 = fallbackRecruitCopy(a0, m0, {});
 var t0 = allText(out0);
 BANNED.forEach(function (w) {
   check(t0.indexOf(w) < 0, "Fallback 无默认断言：「" + w + "」", t0.indexOf(w) < 0 ? "absent" : "FOUND");
@@ -47,7 +47,7 @@ var a1 = mkAct({
   gear: ["登山杖", "头灯"], feeInclude: ["领队", "保险", "午餐", "车费"]
 });
 var m1 = buildContentMaster(a1, []);
-var out1 = xfFallbackRecruit(a1, m1, {});
+var out1 = fallbackRecruitCopy(a1, m1, {});
 var t1 = allText(out1);
 BANNED.forEach(function (w) {
   check(t1.indexOf(w) < 0, "全字段活动 Fallback 仍无默认断言：「" + w + "」", t1.indexOf(w) < 0 ? "absent" : "FOUND");
@@ -69,22 +69,22 @@ check(out1.gzh.sections.length >= 4, "Fallback 结构完整(gzh.sections>=4)", "
 var aMin = mkAct({ place: "", date: "", price: "", days: 1, limit: "", difficulty: "", leaderName: "", insurance: "", meal: "", transport: "", gear: [], feeInclude: [] });
 aMin.title = "测试活动"; delete aMin.place; delete aMin.date; delete aMin.price; delete aMin.difficulty;
 var mMin = buildContentMaster(aMin, []);
-var outMin = xfFallbackRecruit(aMin, mMin, {});
+var outMin = fallbackRecruitCopy(aMin, mMin, {});
 var tMin = allText(outMin);
 // 这些「服务/品质」在无数据时不应凭空出现
 ["领队", "保险", "午餐", "晚餐", "大巴", "包车", "接送", "装备", "住宿", "路线成熟", "风景绝美", "专业领队"].forEach(function (w) {
   check(tMin.indexOf(w) < 0, "最小活动不臆造：「" + w + "」", tMin.indexOf(w) < 0 ? "absent" : "FOUND");
 });
 
-// --- xfFitText 不产生无依据断言 ---
-var fit0 = xfFitText(a0, m0);
+// --- fitText 不产生无依据断言 ---
+var fit0 = fitText(a0, m0);
 check(fit0.indexOf("专业领队") < 0 && fit0.indexOf("路线成熟") < 0 && fit0.indexOf("门槛友好") < 0,
-  "xfFitText 无 专业领队/路线成熟/门槛友好", fit0);
-var fit1 = xfFitText(a1, m1);
-check(fit1.indexOf("专业领队") < 0 && fit1.indexOf("王教练") >= 0, "xfFitText 仅写真实领队名", fit1);
+  "fitText 无 专业领队/路线成熟/门槛友好", fit0);
+var fit1 = fitText(a1, m1);
+check(fit1.indexOf("专业领队") < 0 && fit1.indexOf("王教练") >= 0, "fitText 仅写真实领队名", fit1);
 
 // --- 自定义 structure 路径同样事实安全 ---
-var out2 = xfFallbackRecruit(a0, m0, { structure: ["为什么值得去", "来了怎么玩", "适不适合我", "真实信息", "怎么报名"], angle: "去山里透口气" });
+var out2 = fallbackRecruitCopy(a0, m0, { structure: ["为什么值得去", "来了怎么玩", "适不适合我", "真实信息", "怎么报名"], angle: "去山里透口气" });
 var t2 = allText(out2);
 BANNED.forEach(function (w) { check(t2.indexOf(w) < 0, "自定义structure Fallback 无「" + w + "」", t2.indexOf(w) < 0 ? "absent" : "FOUND"); });
 
