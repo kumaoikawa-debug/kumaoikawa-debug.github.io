@@ -718,19 +718,21 @@ confirmedFacts：${JSON.stringify(f)}
 }
 
 /* ---------- 活动回顾 阶段二 ---------- */
-/* P0-4 回顾 Fallback 全量事实安全化：只输出「原活动事实 + 用户补充事实」，绝不虚构现场事件。
-   没有补充资料时宁可留白，也不写「走完全程 / 玩得尽兴 / 互相照应 / 合照那一刻 / 有人说来对了」等未经确认的现场。 */
+/* P0-4 + P0-16 回顾 Fallback 事实安全化：只输出「原活动事实 + 用户补充事实 + 照片现场记录」，绝不虚构现场事件/感受/故事。
+   没有补充资料、只有照片时：回顾只能做「照片现场记录」（描述照片里实际存在的画面），不得写
+   「我们完成全程 / 大家玩得尽兴 / 有人说… / 合照那一刻 / 返程车上… / 当天下雨 / 大家互相照顾」等未经 actualActivityData 确认的现场。
+   类型推断的 scenicValue/experienceValue/participationValue 一律不得作为回顾正文（那是招募视角，不是回顾事实）。 */
 function xfFallbackRecap(a, m, dir, photos, notes, type, actual) {
   const f = m.confirmedFacts;
   const act = actual || xfActualActivityData(a, notes);
   const notesTxt = (notes || "").trim();
   const struct = (dir.structure && dir.structure.length >= 5) ? dir.structure.slice(0, 7) : ["开场", "本次活动核心记忆", "本次参与体验", "值得记住的瞬间", "参与者收获", "照片回顾", "下一期预告"];
-  const sections = struct.map((h) => ({ h: h, html: xfRecapBody(h, a, m, act, notes, type) }));
+  const sections = struct.map((h) => ({ h: h, html: xfRecapBody(h, a, m, act, notes, type, photos) }));
   const angle = dir.angle || (type + "的一天");
   return {
     gzh: {
       title: `回顾｜${f.activityName || "这场活动"}`,
-      summary: `${f.date || "这场活动"}，${f.place ? f.place + "的" : ""}这场活动已结束。以下基于已确认的活动信息${notesTxt ? "与你补充的现场记录" : ""}整理。`,
+      summary: `${f.date || "这场活动"}，${f.place ? f.place + "的" : ""}这场活动已结束。以下基于已确认的活动信息${notesTxt ? "与你补充的现场记录" : ""}${photos && photos.length ? `、共 ${photos.length} 张现场照片` : ""}整理。`,
       sections: sections,
       next: xfNextText(a),
     },
@@ -746,17 +748,43 @@ function xfFallbackRecap(a, m, dir, photos, notes, type, actual) {
     next: xfNextText(a),
   };
 }
-function xfRecapBody(h, a, m, act, notes, type) {
+function xfRecapBody(h, a, m, act, notes, type, photos) {
   const f = m.confirmedFacts;
   const notesTxt = (notes || "").trim();
-  if (/开场|集结/.test(h || "")) return `${f.date || "那天"}，${f.place || "集合点"}，这场「${f.activityName || "活动"}」如期进行。`;
-  if (/核心记忆|风景|画面|景/.test(h || "")) return `${m.scenicValue}。`;
-  if (/参与体验|强度|节奏/.test(h || "")) return `${f.difficulty ? "本次活动强度为 " + f.difficulty + "。" : ""}${f.distance ? "路线约 " + f.distance + "。" : ""}`.trim() || "以下为本次活动的已确认信息。";
-  if (/瞬间|记得|特别/.test(h || "")) return notesTxt ? `这次特别记下：${notesTxt}` : "（如需补充现场瞬间，可在「补充资料」里填写。）";
-  if (/收获|得到/.test(h || "")) return `${m.participationValue}。`;
-  if (/照片|相册|回顾/.test(h || "")) return `以下为本次活动的现场照片。`;
+  // 照片现场记录：只描述照片里实际存在的画面，绝不虚构风景/体验/感受/故事
+  const photoList = autoClassifyPhotos(photos || []);
+  const photoCount = photoList.length;
+  const byCat = {};
+  photoList.forEach((p) => { (byCat[p.cat] = byCat[p.cat] || []).push(p); });
+  const has = (c) => (byCat[c] || []).length > 0;
+  const sceneCats = ["scenic", "route", "water", "camp", "cover", "detail"].filter(has);
+  const peopleCats = ["people", "team", "action"].filter(has);
+  const photoRecord = photoCount
+    ? `现场共 ${photoCount} 张照片${sceneCats.length ? "，记录了山野、路线与出发/到达等画面" : ""}${peopleCats.length ? "，也有同行伙伴与队伍的身影" : ""}。`
+    : "";
+  if (/开场|集结/.test(h || "")) return `${f.date || "那天"}，${f.place || "集合点"}，这场「${f.activityName || "活动"}」结束了。`;
+  if (/核心记忆|风景|画面|景/.test(h || "")) {
+    // 只做照片现场记录，不写类型推断的风景判断（scenicValue 属招募视角，非回顾事实）
+    if (photoCount) return photoRecord || `以下为本次活动的现场照片。`;
+    return notesTxt ? `本次核心记录：${notesTxt}` : `（暂无现场照片，可在「补充资料」填写现场记录后再生成。）`;
+  }
+  if (/参与体验|强度|节奏/.test(h || "")) {
+    const bits = [];
+    if (f.difficulty) bits.push("强度为 " + f.difficulty);
+    if (f.distance) bits.push("路线约 " + f.distance);
+    if (act && act.completionSummary) bits.push(act.completionSummary); // 仅用户确认的实际完成情况
+    return bits.length ? bits.join("，") + "。" : (photoCount ? `本次以现场照片为准，可看下方影像记录。` : `以下为本次活动的已确认信息。`);
+  }
+  if (/瞬间|记得|特别/.test(h || "")) return notesTxt ? `这次特别记下：${notesTxt}` : (photoCount ? `现场的照片里留住了当天的若干瞬间。` : "（如需补充现场瞬间，可在「补充资料」里填写。）");
+  if (/收获|得到/.test(h || "")) {
+    // 不写类型推断的「收获」判断；只有用户确认的实际反馈才呈现
+    if (act && act.actualFeedback && act.actualFeedback.length) return `参与者反馈：${act.actualFeedback.join("；")}。`;
+    return photoCount ? `本次的收获与体验以现场照片为准。` : `（参与者收获以现场记录为准；如需补充，请在补充资料填写。）`;
+  }
+  if (/照片|相册|回顾/.test(h || "")) return photoCount ? `以下为本次活动的现场照片（共 ${photoCount} 张）。` : `本次暂未上传现场照片。`;
   if (/预告|下一期|集结/.test(h || "")) return xfNextText(a);
-  return `${m.experienceValue}`;
+  // 兜底：只描述照片现场，绝不输出类型推断的体验/价值判断
+  return photoCount ? photoRecord : `（本节以现场照片与补充资料为准。）`;
 }
 
 async function genRecap(a, m, strategy, photos, notes) {
@@ -769,7 +797,7 @@ async function genRecap(a, m, strategy, photos, notes) {
     ? `实际参加 ${actual.actualParticipants} 人（用户已确认，可引用）`
     : `${actual.registeredParticipants ? "报名 " + actual.registeredParticipants + " 人；" : ""}实际参加人数未提供——禁止在正文中写出任何具体参加人数。`;
   const sys = `你是 ClubOS 户外俱乐部内容主笔，写活动回顾。像真正参加过的人认真回看这一天：真实、克制、有完成感。
-原则：允许创造表达，禁止创造事件——只基于给定事实与补充资料，不得虚构天气/事件/用户感受/领队行为/具体人数。
+原则：允许创造表达，禁止创造事件——只基于给定事实与补充资料，不得虚构天气/事件/用户感受/领队行为/具体人数。尤其禁止写「我们完成全程/大家玩得尽兴/有人说…/合照那一刻/返程车上…/当天下雨/大家互相照顾」等未经补充资料确认的现场；只有照片、没有备注时，回顾只能做「照片现场记录」（描述照片里实际存在的画面），绝不能虚构故事或感受。
 特别约束：未提供实际参加人数时，正文不得出现任何具体人数；报名人数不能被当作实际参加人数。
 按各平台输出：
 - gzh：公众号回顾 JSON {title,summary,sections:[{h,html}],next}
@@ -832,7 +860,7 @@ function xfContentQuality(out, dir, scenario, facts, adv) {
   const T = xfTextOf(out);
   const flags = [];
   let score = 100;
-  const FORBID = ["万里无云", "阳光明媚", "下起了雨", "突然放晴", "领队说", "大家纷纷表示", "据说", "据说当时", "不得不说", "说实话", "我们都很", "大家都说", "很多人都说", "风景绝好", "风景绝佳", "新手友好", "新手也能跟上", "不用担心跟不上", "强度友好", "我们登顶了", "把山踩在了脚下", "绝对值得", "必去", "guaranteed", "走完了全程", "走完全程", "把这条线走完了", "玩得超尽兴", "互相照应", "有人说来对了", "合照那一刻", "返程车上安静下来"];
+  const FORBID = ["万里无云", "阳光明媚", "下起了雨", "突然放晴", "领队说", "大家纷纷表示", "据说", "据说当时", "不得不说", "说实话", "我们都很", "大家都说", "很多人都说", "风景绝好", "风景绝佳", "新手友好", "新手也能跟上", "不用担心跟不上", "强度友好", "我们登顶了", "把山踩在了脚下", "绝对值得", "必去", "guaranteed", "走完了全程", "走完全程", "把这条线走完了", "玩得超尽兴", "玩得尽兴", "大家玩得尽兴", "我们完成全程", "互相照应", "互相照顾", "大家互相照顾", "有人说来对了", "有人说", "合照那一刻", "返程车上安静下来", "返程车上", "当天下雨"];
   let fiction = 0; FORBID.forEach((w) => { if (T.indexOf(w) >= 0) { fiction++; if (flags.indexOf("fiction:" + w) < 0) flags.push("fiction:" + w); } });
   if (fiction > 0) score -= Math.min(45, fiction * 14);
   // P0-8 Claim→Fact 硬校验：服务/保障类声明必须有对应已确认事实，否则标记为无依据声明并降分
