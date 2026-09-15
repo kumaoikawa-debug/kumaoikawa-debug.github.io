@@ -572,39 +572,120 @@ function piMatchItinerary(timeline, used, roles, dna) {
   return { byItem: byItem, byDay: byDay, byRole: byRole, note: "按行程内容语义匹配（图-文强相关）" };
 }
 
-/* ---------- P0-10：自适应排版（按数量 + 横竖比例选组件） ---------- */
-function piAdaptiveLayout(used) {
-  const n = used.length;
-  const land = used.filter((p) => p.orientation === "landscape").length;
-  const port = used.filter((p) => p.orientation === "portrait").length;
-  const sq = used.filter((p) => p.orientation === "square").length;
-  const plan = [];
-  // P2-4 少图降级：0/1/2/3/4-5 各自独立布局逻辑，绝不强行套复杂大图文
-  if (n === 0) return { mode: "empty", components: [], hint: "0 图：纯文字克制版式" };
-  if (n === 1) return { mode: "single", components: ["FullBleedImage"], hint: "1 图：单张大图 + 留白" };
-  if (n === 2) return { mode: "pair", components: ["FullBleedImage", port >= 1 ? "AspectPreservedImage" : "TwoImageGrid"], hint: "2 图：一大一插图，不重复用图" };
-  if (n === 3) return { mode: "trio", components: ["FullBleedImage", port >= 2 ? "PortraitPair" : "ThreeImageGrid"], hint: "3 图：大图 + 双/三图" };
-  if (n <= 5) {
-    plan.push("FullBleedImage");
-    if (land >= 2) plan.push("TwoImageGrid");
-    if (port >= 2) plan.push("PortraitPair");
-    if (n >= 5) plan.push("ThreeImageGrid");
-    return { mode: "hero_pairs", components: plan, hint: "4-5 图：Hero + 双图 / 三图穿插" };
+/* ---------- P0-10：Photo Layout Intelligence（按数量 + 横竖比例自动选版式） ---------- */
+// 6 种版式组件（与验收一一对应）：
+//   FullWidth      通栏大图（单张横图，留白）
+//   PortraitPair   竖图对（两张竖图并排，原比例）
+//   ImagePair      双图（两张横图/混合并排）
+//   Mosaic         拼贴网格（3-4 张混合）
+//   GalleryStrip   画廊横条（≥4 张统一缩略图横滑浏览）
+//   AspectPreserved 原比例展示（单/双张，不强裁，留白）
+const PI_LAYOUT_PATTERNS = ["FullWidth", "PortraitPair", "ImagePair", "Mosaic", "GalleryStrip", "AspectPreserved"];
+function piLayoutIs(p, o) { return (p.orientation || "landscape") === o; }
+function piLayoutPull(pool, pred, k) {
+  const out = [];
+  for (let i = pool.length - 1; i >= 0; i--) {
+    if (pred(pool[i])) { out.push(pool[i]); pool.splice(i, 1); if (out.length >= k) break; }
   }
-  if (n <= 8) {
-    plan.push("FullBleedImage");
-    if (land >= 2) plan.push("TwoImageGrid");
-    if (port >= 2) plan.push("PortraitPair");
-    if (n - 3 >= 3) plan.push("ThreeImageGrid");
-    return { mode: "hero_pairs", components: plan, hint: "中量：Hero + 双/三图组合" };
+  return out;
+}
+// used：筛选后待展示图（analysis 对象，含 orientation/src/imageId）；total：原始上传张数（决定数量分级）
+function piAdaptiveLayout(used, total) {
+  const m = (used || []).slice();
+  const n = total != null ? total : m.length;          // 数量分级按「原始上传张数」
+  const land0 = m.filter((p) => piLayoutIs(p, "landscape")).length;
+  const port0 = m.filter((p) => piLayoutIs(p, "portrait")).length;
+  const sq0 = m.filter((p) => piLayoutIs(p, "square")).length;
+  const tot = m.length || 1;
+  const dominant = (land0 / tot) >= 0.6 ? "landscape" : ((port0 / tot) >= 0.6 ? "portrait" : "mixed");
+  let tier, mode;
+  if (n <= 0) return { tier: "empty", mode: "empty", total: n, usedCount: m.length, orientation: { landscape: land0, portrait: port0, square: sq0, dominant: dominant }, components: [], patterns: [], hint: "0 图：纯文字克制版式" };
+  if (n <= 3) { tier = "few"; mode = "solo"; }
+  else if (n <= 8) { tier = "mid"; mode = "hero_grid"; }
+  else if (n <= 20) { tier = "many"; mode = "chapters"; }
+  else { tier = "huge"; mode = "curated"; }
+
+  const comps = [];
+  const add = (pattern, photos) => { if (photos && photos.length) comps.push({ pattern: pattern, photos: photos }); };
+  const isLand = (p) => piLayoutIs(p, "landscape");
+  const isPort = (p) => piLayoutIs(p, "portrait");
+  const isAny = () => true;
+  const pairPattern = () => (dominant === "portrait" ? "PortraitPair" : "ImagePair");
+
+  // 主图 / Hero：优先横图，否则任意
+  const hero = piLayoutPull(m, isLand, 1);
+  if (!hero.length) hero.push.apply(hero, piLayoutPull(m, isAny, 1));
+  add("FullWidth", hero);
+
+  if (tier === "few") {
+    // 1-3 张：大图 + 留白；剩余按横竖走双图或原比例
+    if (m.length >= 2) {
+      const wantPort = dominant === "portrait" || port0 >= 2;
+      const pair = wantPort ? piLayoutPull(m, isPort, 2) : piLayoutPull(m, isAny, 2);
+      if (pair.length === 2) add(wantPort ? "PortraitPair" : "ImagePair", pair);
+      else if (pair.length === 1) m.push(pair[0]);   // 不足一对则放回，走原比例
+    }
+    if (m.length === 1) add("AspectPreserved", piLayoutPull(m, isAny, 1));
+    while (m.length >= 2) {                            // 零散余图按横竖补一对
+      const pair = piLayoutPull(m, isPort, 2);
+      if (pair.length === 2) add("PortraitPair", pair);
+      else { if (pair.length) m.push(pair[0]); const pr = piLayoutPull(m, isAny, 2); if (pr.length < 2) { if (pr.length) m.push(pr[0]); break; } add(pairPattern(), pr); }
+    }
+    if (m.length === 1) add("AspectPreserved", piLayoutPull(m, isAny, 1));
+  } else if (tier === "mid") {
+    // 4-8 张：Hero + 双图/三图穿插；横图走 ImagePair、竖图走 PortraitPair、混合走 Mosaic
+    while (m.length >= 2 && land0 >= 2) { const lp = piLayoutPull(m, isLand, 2); if (lp.length < 2) { if (lp.length) m.push(lp[0]); break; } add("ImagePair", lp); }
+    while (m.length >= 2 && port0 >= 2) { const pp = piLayoutPull(m, isPort, 2); if (pp.length < 2) { if (pp.length) m.push(pp[0]); break; } add("PortraitPair", pp); }
+    if (m.length >= 3) add("Mosaic", piLayoutPull(m, isAny, Math.min(4, m.length)));
+    while (m.length >= 2) { const pr = piLayoutPull(m, isAny, 2); if (pr.length < 2) { if (pr.length) m.push(pr[0]); break; } add(pairPattern(), pr); }
+    if (m.length === 1) add("AspectPreserved", piLayoutPull(m, isAny, 1));
+  } else if (tier === "many") {
+    // 9-20 张：分章节图文——大图 + 精选双图/拼贴 + 余图画廊横条
+    // 预留 ≥4 张给章节画廊横条，避免被精选双图耗尽（用「实时剩余」而非固定总数做循环守卫）
+    const reserve = 4;
+    const room = () => m.length - reserve;
+    while (room() >= 2 && m.filter(isLand).length >= 2) { const lp = piLayoutPull(m, isLand, 2); if (lp.length < 2) { if (lp.length) m.push(lp[0]); break; } add("ImagePair", lp); }
+    while (room() >= 2 && m.filter(isPort).length >= 2) { const pp = piLayoutPull(m, isPort, 2); if (pp.length < 2) { if (pp.length) m.push(pp[0]); break; } add("PortraitPair", pp); }
+    if (room() >= 3) add("Mosaic", piLayoutPull(m, isAny, Math.min(4, room())));   // 精选拼贴作章节点缀
+    if (m.length >= 4) add("GalleryStrip", piLayoutPull(m, isAny, m.length));        // 余图统一横条浏览
+    else if (m.length === 3) add("Mosaic", piLayoutPull(m, isAny, 3));
+    else if (m.length === 2) { const pr = piLayoutPull(m, isAny, 2); if (pr.length === 2) add(pairPattern(), pr); else if (pr.length) m.push(pr[0]); }
+    if (m.length === 1) add("AspectPreserved", piLayoutPull(m, isAny, 1));
+  } else {
+    // 20+ 张：先筛图再排版——画廊横条为主，拼贴点缀，少强裁
+    if (m.length >= 4) add("GalleryStrip", piLayoutPull(m, isAny, m.length));
+    else if (m.length >= 3) add("Mosaic", piLayoutPull(m, isAny, m.length));
+    else if (m.length >= 2) { const pr = piLayoutPull(m, isAny, 2); if (pr.length === 2) add(pairPattern(), pr); else if (pr.length) m.push(pr[0]); }
+    if (m.length === 1) add("AspectPreserved", piLayoutPull(m, isAny, 1));
   }
-  if (n <= 20) {
-    plan.push("FullBleedImage", "ImagePair", "ThreeImageGrid", "GalleryGrid", "AspectPreservedImage");
-    if (sq >= 2) plan.push("MosaicGrid");
-    return { mode: "chapters", components: plan, hint: "多图：章节化，大图 + 图廊穿插" };
-  }
-  plan.push("FullBleedImage", "ImagePair", "GalleryGrid", "GalleryGrid", "MosaicGrid");
-  return { mode: "curated", components: plan, hint: "大量：先筛图再排版，图廊为主" };
+
+  const patterns = [];
+  comps.forEach((c) => { if (patterns.indexOf(c.pattern) < 0) patterns.push(c.pattern); });
+  const hintMap = { few: "1-3 张：大图 + 留白", mid: "4-8 张：Hero + 双图/三图", many: "9-20 张：分章节图文", huge: "20+ 张：先筛图再排版（画廊横条为主）", empty: "0 图" };
+  return {
+    tier: tier, mode: mode, total: n, usedCount: (used || []).length,
+    orientation: { landscape: land0, portrait: port0, square: sq0, dominant: dominant },
+    components: comps, patterns: patterns,
+    hint: hintMap[tier] + `（横 ${land0} / 竖 ${port0} / 方 ${sq0}，主 ${dominant}）`,
+  };
+}
+// 渲染：把排版计划输出为 6 种版式的 HTML（尊重角色重要度 + 安全裁切，复用 pagePhotoRole/pagePhotoRisk）
+function piLayoutHtml(plan) {
+  if (!plan || !plan.components || !plan.components.length) return "";
+  const roleClsOf = (src) => {
+    if (typeof pagePhotoRole === "function") { const r = pagePhotoRole(src); if (r && PI_ROLES && PI_ROLES[r]) return PI_ROLES[r].cls; }
+    return "";
+  };
+  const card = (p) => {
+    const src = p.src || p;
+    const risk = (typeof pagePhotoRisk === "function") ? pagePhotoRisk(src) : null;
+    const rc = roleClsOf(src);
+    const contain = risk === "high";
+    const port = (p.orientation === "portrait") ? " portrait" : "";
+    return `<div class="ph ${rc}${contain ? " ph-safe" : ""}${port}"><img class="ph-img" data-smart-img src="${esc(src)}" alt="" style="object-fit:${contain ? "contain" : "cover"}"></div>`;
+  };
+  const blocks = plan.components.map((c) => `<div class="ly ly-${c.pattern}">${c.photos.map(card).join("")}</div>`).join("");
+  return `<div class="photo-layout" data-tier="${plan.tier}" data-mode="${plan.mode}" data-patterns="${plan.patterns.join(",")}">${blocks}</div>`;
 }
 
 /* ---------- P0-11：安全裁切评估 ---------- */
@@ -675,7 +756,7 @@ function buildPhotoIntelligence(photos, a, sections, scenario) {
       }
     }
   }
-  const layout = piAdaptiveLayout(used);
+  const layout = piAdaptiveLayout(used, (photos || []).length);   // total=原始上传张数，决定数量分级（20+ 触发 curated）
   const dna = (a && a.activityDNA) || null;
   const matched = sections && sections.length ? piMatchSections(sections, used, roleInfo.roles, dna) : [];
   const itin = (a && typeof structureItinerary === "function") ? structureItinerary(a) : null;

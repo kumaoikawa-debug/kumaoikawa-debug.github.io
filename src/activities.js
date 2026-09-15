@@ -163,14 +163,17 @@
 
     const ctaHtml = `<section class="xh-ed-cta"><div class="xh-ed-cta-theme">${esc(theme)}</div><div class="xh-ed-cta-price">${priceTxt}</div><button class="btn btn-primary btn-block" data-action="openSignup" data-id="${a.id}">${ICON("check")} 立即报名</button><div class="tiny muted">${a.days > 1 ? a.days + " 天行程" : "单日行程"} · ${a.limit ? "限 " + a.limit + esc(a.limitUnit) : "名额不限"}</div></section>`;
 
-    // 末尾「现场影像」长图组（预占的 3 张，若不足则用章节未用到的余图）
-    const remain = reserveIdx.length ? reserveIdx.slice().sort((x, y) => x - y) : photos.map((_, i) => i).filter((i) => !usedSet.has(i));
+    // P0-10 Photo Layout Intelligence：按素材数量 + 横竖比例自动选版式（同一套模板不硬塞所有组合）
+    // 取「筛选后待展示图」中未被封面/章节占用的部分，按数量分级 + 横竖主导自动排成 6 种版式
+    const intel = (typeof pagePhotoIntel === "function") ? pagePhotoIntel() : null;
     let galleryHtml = "";
-    if (remain.length) {
-      const groups = [];
-      const rr = remain.slice();
-      while (rr.length) groups.push(rr.splice(0, Math.min(3, rr.length)));
-      galleryHtml = `<section class="xh-ed-sec xh-ed-gallery" data-sec="gallery"><div class="xh-ed-num">${String(outline.length + 1).padStart(2, "0")} / GALLERY</div><h2 class="xh-ed-h">现场影像</h2>${groups.map((g) => `<div class="xh-ed-figs ${g.length >= 3 ? "three" : g.length === 2 ? "two" : "one"}">${g.map((i) => xhFig(a, i, nextCap())).join("")}</div>`).join("")}</section>`;
+    if (intel && intel.used && intel.used.length) {
+      const gPhotos = intel.used.filter((p) => p.imageId !== intel.heroId && !usedSet.has(p.index));
+      if (gPhotos.length) {
+        const plan = (typeof piAdaptiveLayout === "function") ? piAdaptiveLayout(gPhotos, (a.photos || []).length) : null;
+        const lay = (plan && typeof piLayoutHtml === "function") ? piLayoutHtml(plan) : "";
+        if (lay) galleryHtml = `<section class="xh-ed-sec xh-ed-gallery" data-sec="gallery"><div class="xh-ed-num">${String(outline.length + 1).padStart(2, "0")} / GALLERY</div><h2 class="xh-ed-h">现场影像</h2>${lay}</section>`;
+      }
     }
     // 机构页脚（长图文末尾落款）
     const orgHtml = (typeof state !== "undefined" && state && state.brand) ? `<section class="xh-ed-org"><div class="xh-ed-org-mark">${esc(state.brand.name || "")}</div>${state.brand.intro ? `<p>${esc(state.brand.intro)}</p>` : ""}<div class="xh-ed-org-meta">客服微信：${esc(state.brand.wechat || "-")} · ${esc(state.brand.phone || "-")}</div></section>` : "";
