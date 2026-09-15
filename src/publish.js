@@ -555,57 +555,114 @@ async function genStrategy(a, photos, notes, scenario) {
 
 /* ---------- 阶段二：AI 完整文案（六平台，全部由 AI 生成） ---------- */
 function xfSectionBody(h, a, m) {
+  // P0-15：Fallback 章节正文只从 confirmedFacts(f) 推导，绝不把类型推断的
+  // scenicValue/experienceValue/participationValue 当作现场事实写入。
   const f = m.confirmedFacts;
-  if (/为什么|值得去|风景|景|地点|路线|地貌/.test(h || "")) return `${m.scenicValue}。${f.place ? "在" + f.place + "的" : ""}${f.season ? f.season + "，" : ""}风景不是手机壁纸能替代的——得自己走一趟才装得下。`;
-  if (/体验|玩|挑战|探索|运动|做/.test(h || "")) return `${m.experienceValue}。${f.days > 1 ? "两天一夜" : "一天"}的节奏里，你会暂时忘记待办清单，只剩下脚下的路和身边的人。`;
-  if (/收获|得到|适合|谁|陪伴|成长/.test(h || "")) return `${m.participationValue}。比起又刷了一天手机，这种踏实感更耐放。`;
-  if (/适合|谁|门槛/.test(h || "")) { const age = f.ageRange ? `适合 ${f.ageRange}。` : ""; const lead = f.leader ? `本场由 ${f.leader} 带队。` : ""; return `${age}${m.targetAudience}。${lead}`.trim(); }
-  if (/信息|报名|费用|详情/.test(h || "")) return `${f.date || "近期"} 出发，${f.price != null ? "费用 ¥" + f.price + "/" + (f.limitUnit || "人") : "费用详询"}${f.difficulty ? "，强度" + f.difficulty : ""}。${m.cta}`;
-  if (/预告|下一期|集结/.test(h || "")) return `咱们还会继续进山，下一期路线正在安排，留意群里接龙就能占位。`;
-  return `${m.scenicValue} ${m.experienceValue}`;
+  const T = h || "";
+  if (/信息|详情|报名|费用|时间|地点|怎么报名|出行/.test(T)) {
+    const rows = xfInfoRows(a).map((r) => `<b>${r.k}</b> ${r.v}`);
+    return `<p>${rows.length ? rows.join("；") + "。" : "活动详情以发布页为准。"}</p>`;
+  }
+  if (/玩|体验|行程|内容|安排|路线|活动/.test(T)) {
+    const parts = [];
+    if (f.days > 1) parts.push(f.days + " 天行程");
+    if (f.difficulty) parts.push("强度" + f.difficulty);
+    if (f.distance) parts.push("全程约 " + f.distance + " 公里");
+    if (f.elevation) parts.push("海拔约 " + f.elevation + " 米");
+    if (f.itinerary && f.itinerary.length) parts.push("已规划 " + f.itinerary.length + " 段行程");
+    if (f.gear && f.gear.length) parts.push("建议自备：" + f.gear.slice(0, 5).join("、"));
+    if (f.transport) parts.push("交通：" + f.transport);
+    if (f.meal) parts.push("含餐：" + f.meal);
+    if (f.includedServices && f.includedServices.length) parts.push("费用含：" + f.includedServices.join("、"));
+    return `<p>${parts.length ? parts.join("；") + "。" : "具体玩法与行程以发布页与现场说明为准。"}</p>`;
+  }
+  if (/适合|谁|门槛|匹配|友好/.test(T)) {
+    const parts = [];
+    if (f.ageRange) parts.push("适合 " + f.ageRange);
+    else if (f.audience) parts.push("面向 " + f.audience);
+    if (f.difficulty) parts.push("强度" + f.difficulty + "，报名前请确认与自身情况匹配");
+    if (f.leader) parts.push("本场由 " + f.leader + " 带队");
+    return `<p>${parts.length ? parts.join("；") + "。" : "具体是否适合你，请结合强度、时间与自身情况判断，或私信咨询。"}</p>`;
+  }
+  if (/值得|为什么|去|亮点|看点/.test(T)) {
+    const parts = [];
+    if (f.activityType) parts.push("活动类型：" + f.activityType);
+    if (f.place) parts.push("地点在" + f.place);
+    if (f.photosCount > 0) parts.push("已上传 " + f.photosCount + " 张活动照，可在详情页查看");
+    if (f.date) parts.push(f.date + " 出发");
+    return `<p>${parts.length ? parts.join("；") + "。" : "活动亮点与实拍见详情页。"}</p>`;
+  }
+  if (/得到|收获|意义|价值|陪伴|成长/.test(T)) {
+    return `<p>报名后可在群里获取集合、时间与行程提醒；活动信息以发布页为准。</p>`;
+  }
+  if (/预告|下一期|集结/.test(T)) return `咱们还会继续进山，下一期路线正在安排，留意群里接龙就能占位。`;
+  return `<p>${(f.place ? "在" + f.place + "的" : "") + (f.date || "近期") + "这场活动，信息以发布页为准。"}</p>`;
 }
 
 function xfFallbackRecruit(a, m, dir) {
   const f = m.confirmedFacts;
+  // P0-15：招募 Fallback 只生成事实安全版本。
+  // 仅使用 confirmedFacts(f) 与活动字段；类型推断的 scenicValue/experienceValue/participationValue
+  // 仅是「表达方向」，绝不作为事实断言写入正文——避免默认 专业领队/新手友好/路线成熟/轻装即可/风景绝美/安全放心。
   const struct = (dir.structure && dir.structure.length >= 4) ? dir.structure.slice(0, 6) : ["为什么值得去", "来了会体验什么", "参加完你能得到什么", "适不适合我", "真实信息", "怎么报名"];
   const sections = struct.map((h) => ({ h: h, html: xfSectionBody(h, a, m) }));
-  const angle = dir.angle || m.mainTheme;
+  const angle = dir.angle || (f.activityName || "这场活动"); // 表达方向（标题/邀约语气），非事实断言
+  const infoRows = xfInfoRows(a);
+  const feeTxt = f.price != null ? `¥${f.price}/${f.limitUnit || "人"}${f.limit ? `，限 ${f.limit}${f.limitUnit || "人"}` : ""}` : "详询";
+  const summary = [f.activityName || "这场活动", (f.place ? "在" + f.place : ""), (f.date || "近期") + "出发"].filter(Boolean).join("，") + "。以下基于已确认的活动信息整理，具体以发布页为准。";
+  const xhsInfo = [
+    "· 时间：" + (f.date || "近期"),
+    "· 地点：" + (f.place || "集合点群内发"),
+    (f.price != null ? "· 费用：¥" + f.price + "/" + (f.limitUnit || "人") : "· 费用：详询") + (f.difficulty ? "｜强度" + f.difficulty : ""),
+    (f.limit ? "· 名额：" + f.limit + (f.limitUnit || "人") : ""),
+    (f.gear && f.gear.length ? "· 装备：" + f.gear.slice(0, 4).join("、") : ""),
+    (f.includedServices && f.includedServices.length ? "· 含：" + f.includedServices.join("、") : ""),
+  ].filter((s) => s);
   return {
     gzh: {
-      title: `${f.activityName || "这场活动"}｜${m.mainTheme}`,
+      title: `${f.activityName || "这场活动"}｜${angle}`,
       subtitle: `${dir.hook ? dir.hook + " · " : ""}${f.place ? "在" + f.place + "的" : ""}${f.season ? f.season : ""}${f.date || "近期"}出发`,
-      summary: `${angle}。${m.scenicValue}本文讲清为什么值得去、来了体验什么、参加完能得到什么，以及真实的报名信息。`,
+      summary: summary,
       sections: sections,
-      info: xfInfoRows(a),
-      fee: f.price != null ? `¥${f.price}/${f.limitUnit || "人"}${f.limit ? `，限 ${f.limit}${f.limitUnit || "人"}` : ""}` : "详询",
+      info: infoRows,
+      fee: feeTxt,
       service: (f.includedServices && f.includedServices.length) ? f.includedServices.join("、") : "",
       cta: m.cta,
     },
     xhs: {
       titles: [xfXhsTitle(a, m, 1, dir), xfXhsTitle(a, m, 2, dir), xfXhsTitle(a, m, 3, dir)],
-      body: `谁懂啊😭 ${angle}这么玩也太舒服了\n\n📍 ${f.place ? "在" + f.place + "的" : ""}${f.season || ""}这一程，不是手机壁纸能替代的——得自己走一趟才装得下。\n\n✅ 为什么值得去\n${m.scenicValue}。呼吸、流汗、和朋友边走边聊，比刷一天手机耐放多了。\n\n🎒 怎么玩\n${m.experienceValue}。${f.days > 1 ? "两天一夜" : "一天"}的节奏，不用赶景点，时间全是自己的。\n\n💡 真心话\n${m.participationValue}。真实去一次，比收藏一百篇攻略都管用。\n\n📌 实用信息\n· 时间：${f.date || "近期"}\n· ${f.price != null ? "费用：¥" + f.price + "/" + (f.limitUnit || "人") : "费用详询"}${f.difficulty ? "\n· 强度：" + f.difficulty : ""}${(f.gear && f.gear.length) ? "\n· 装备：" + f.gear.slice(0, 4).join("、") : ""}\n\n码住这篇，周末约起来👀 评论区扣 1 我拉你进群～`,
+      body: [
+        (f.place ? "📍 " + f.place + (xfSeason(a) ? "·" + xfSeason(a) : "") : "📍 地点见发布页"),
+        "✅ 活动信息",
+        xhsInfo.join("\n"),
+        "",
+        "信息以发布页为准，想一起的评论区扣 1 或私信报名～",
+      ].join("\n"),
       coverText: `${f.place || "山里"}·${xfSeason(a) || ""}`,
       hashtags: xfTags(a),
       imageOrder: ["cover", "scenic", "people", "action", "detail"],
     },
     moments: {
-      warm: `${dir.hook ? dir.hook + " " : ""}周末想透口气的不妨看过来🌿 ${f.place ? "在" + f.place + "的" : ""}${f.season || ""}局又开了，${f.date || ""} 出发。不用做攻略，跟着走就行，想一起的私我占位～`,
-      formal: `【招募】${f.activityName || "本周活动"} · ${f.date || "近期"} 出发\n${angle}。名额不多，先把你那天的日历空出来☀️ 报名戳我或群里接龙。`,
-      last: `⏰ 最后几个名额！${f.activityName || "本周活动"} ${f.date || ""} 出发，${angle}。错过这期要等下个月，想来的抓紧私信，手慢无～`,
+      warm: `${dir.hook ? dir.hook + " " : ""}周末有空的不妨看过来🌿 ${f.place ? "在" + f.place + "的" : ""}${f.season || ""}局又开了，${f.date || ""} 出发。信息都在发布页，想一起的私我占位～`,
+      formal: `【招募】${f.activityName || "本周活动"} · ${f.date || "近期"} 出发\n${summary}\n名额有限，想一起的接龙或私信我留位～`,
+      last: `⏰ 最后几个名额！${f.activityName || "本周活动"} ${f.date || ""} 出发。信息见发布页，想来的抓紧私信，手慢无～`,
     },
     wechat: {
-      recruit: `各位群友好👋 ${f.activityName || "本周活动"} 开始招募啦，这趟真的别错过：\n🗓 时间：${f.date || "近期"}\n📍 地点：${f.place || "集合点群内发"}\n💰 ${f.price != null ? "费用：¥" + f.price + "/" + (f.limitUnit || "人") : "费用详询"}${f.difficulty ? "\n🔥 强度：" + f.difficulty : ""}\n\n${angle}。名额有限，想一起的直接接龙或私信我，我帮你留位～`,
-      brief: `【一句话】${f.activityName || "活动"} ${f.date || ""} 出发｜${angle}｜名额有限，戳我报名👇`,
+      recruit: `各位群友好👋 ${f.activityName || "本周活动"} 开始招募啦：\n🗓 时间：${f.date || "近期"}\n📍 地点：${f.place || "集合点群内发"}\n💰 ${f.price != null ? "费用：¥" + f.price + "/" + (f.limitUnit || "人") : "费用详询"}${f.difficulty ? "\n🔥 强度：" + f.difficulty : ""}\n\n信息以发布页为准，名额有限，想一起的直接接龙或私信我，我帮你留位～`,
+      brief: `【一句话】${f.activityName || "活动"} ${f.date || ""} 出发｜名额有限，戳我报名👇`,
     },
     voice: {
       s30: `大家好，这周末咱们去${f.place || "山里"}，主题是${angle}。${f.price != null ? "费用" + f.price + "一人" : "费用详询"}${f.difficulty ? "，强度" + f.difficulty : ""}。想一起的朋友私信我报名哈。`,
-      s60: `大家好，给大伙说个周末的好去处。咱们${f.date || "这周末"}去${f.place || "山里"}，这场活动的主题是${angle}。${m.experienceValue}，参加完${m.participationValue}。${f.price != null ? "费用" + f.price + "一人" : "费用详询"}${f.includedServices && f.includedServices.length ? "，含" + f.includedServices.join("、") : ""}${f.difficulty ? "，强度" + f.difficulty : ""}。名额不多，想一起的朋友现在就可以私信我报名。`,
+      s60: `大家好，给大伙说个周末的活动。咱们${f.date || "这周末"}去${f.place || "山里"}，这场活动的主题是${angle}。${f.price != null ? "费用" + f.price + "一人" : "费用详询"}${f.includedServices && f.includedServices.length ? "，含" + f.includedServices.join("、") : ""}${f.difficulty ? "，强度" + f.difficulty : ""}。名额不多，想一起的朋友现在就可以私信我报名。`,
     },
     poster: {
       title: f.activityName || "户外活动",
       sub: angle,
       place: f.place || "",
-      points: [m.scenicValue, m.experienceValue].map((s) => s.split("。")[0]).filter(Boolean).slice(0, 2),
+      points: [
+        (f.place ? "地点：" + f.place : "地点见发布页"),
+        (f.price != null ? "费用 ¥" + f.price + "/" + (f.limitUnit || "人") : (f.difficulty ? "强度" + f.difficulty : "信息见发布页")),
+      ].slice(0, 2),
       time: f.date || "近期",
       price: f.price != null ? "¥" + f.price + " 起/" + (f.limitUnit || "人") : "详询",
       cta: "扫码 / 私信报名",
@@ -871,15 +928,22 @@ function xfQualityCheck(out, dir, scenario, facts, adv) {
 /* ---------- 文案辅助（保留原有模板回退用） ---------- */
 function xfFitTitle(a) { return (a.audience && a.audience.length) ? `适合谁 · ${a.audience.join("/")}` : "适不适合我"; }
 function xfFitText(a, m) {
+  // P0-15：仅从 confirmedFacts 推导「适合谁」。不默认 专业领队/路线成熟/门槛友好 等无依据断言。
   const f = m.confirmedFacts;
-  const age = f.ageRange ? `适合 ${f.ageRange}` : "门槛友好";
-  return `${age}。${m.targetAudience}。${f.concern ? "你可能担心" + f.concern + "——" : ""}这场有${f.leader || "专业领队"}带队，路线成熟，按自己的节奏走就好。`;
+  const parts = [];
+  if (f.ageRange) parts.push("适合 " + f.ageRange);
+  else if (f.audience) parts.push("面向 " + f.audience);
+  if (f.difficulty) parts.push("强度" + f.difficulty + "，报名前请确认与自身情况匹配");
+  if (f.leader) parts.push("本场由 " + f.leader + " 带队");
+  return parts.length ? parts.join("；") + "。" : "具体是否适合你，请结合强度、时间与自身情况判断，或私信咨询。";
 }
 function xfInfoRows(a) {
   const rows = [];
   if (a.dateMD || a.date) rows.push({ k: "时间", v: a.dateMD || a.date });
   if (a.place) rows.push({ k: "地点", v: a.place });
   if (a.meeting) rows.push({ k: "集合", v: a.meeting + (a.meetTime ? " " + a.meetTime : "") });
+  if (a.transport) rows.push({ k: "交通", v: a.transport });
+  if (a.meal) rows.push({ k: "餐食", v: a.meal });
   if (a.days > 1) rows.push({ k: "天数", v: a.days + " 天" });
   if (a.elevation) rows.push({ k: "海拔", v: a.elevation + " 米" });
   if (a.difficulty) rows.push({ k: "强度", v: a.difficulty });
@@ -900,14 +964,15 @@ function xfTags(a) {
   return base;
 }
 function xfXhsTitle(a, m, n, dir) {
+  // P0-15：标题仅基于事实/表达方向，不做「风景绝美/好拍/松弛」等品质断言。
   const f = m.confirmedFacts;
-  const angle = (dir && dir.angle) ? dir.angle : m.mainTheme;
+  const name = f.activityName || "这场活动";
   const arr = [
-    `${f.place || "山里"}的${xfSeason(a) || ""}也太好拍了｜${angle}`,
-    `周末去哪？${f.activityName || "这场活动"}可以这样过`,
-    `谁懂啊，${f.place || "这儿"}才是${xfSeason(a) || "周末"}正确打开方式`,
-    `${angle}｜一次说走就走的户外充电`,
-    `${f.activityName || "活动"}实录：原来户外可以这么松弛`,
+    `${name}｜${(f.place ? f.place + "·" : "") + (xfSeason(a) || "周末")}招募`,
+    `周末去哪？${name}报名信息一览`,
+    `${f.place || "户外"}的${xfSeason(a) || ""}行程，报名看这里`,
+    `${name}｜${(f.date || "近期")}出发，详情见内文`,
+    `${name}活动信息：时间、地点、费用一次说清`,
   ];
   return arr[(n - 1) % arr.length];
 }
