@@ -27,6 +27,118 @@ const PI_TAG_TO_SCENE = { "风景": "scenic", "人物": "people", "合影": "gro
 const PI_TAGS = ["风景", "人物", "合影", "动作", "水上", "徒步", "露营", "餐食", "装备", "夜景", "细节", "路线", "重复图", "低质量图"];
 const PI_ROLE_LABEL = { HeroImage: "封面主图", SectionLeadImage: "段落主图", SupportImage: "辅助图", GalleryImage: "图廊", DetailImage: "细节图", InfoBackground: "信息区背景", DiscardCandidate: "建议弃用" };
 
+/* ---------- P0-9：图片↔行程/段落 语义匹配映射 ----------
+   目标：图片必须按「图片内容 + 行程内容 + 活动DNA + 内容章节」自动匹配，
+   杜绝「文字说徒步、配图却是餐食」的语义错配。
+   匹配键统一为英文场景键（scenic/people/group/action/water/hike/camp/meal/gear/night/detail/route），
+   图片 14 类中文标签经 PI_TAG_TO_SCENE 归一化后与之一致。 */
+const PI_ROLE_TAGS = {           // 行程 contentRole → 期望图片语义（强匹配区）
+  opening:  ["route", "scenic", "hike", "people", "group", "detail", "sky"],
+  arrival:  ["scenic", "route", "hike", "people", "detail"],
+  warmup:   ["people", "group", "gear", "detail", "action"],
+  core:     ["hike", "water", "action", "scenic", "camp", "people", "group", "route", "gear"],
+  meal:     ["meal", "people", "group", "detail"],
+  rest:     ["people", "group", "scenic", "detail", "action", "night"],
+  closing:  ["night", "scenic", "sky", "people", "group", "detail", "route"],
+};
+const PI_ROLE_FORBID = {         // 行程 contentRole → 硬禁忌图片（绝不放入该段）
+  opening:  ["meal", "night"],
+  arrival:  ["meal", "night"],
+  warmup:   ["meal", "night"],
+  core:     ["meal", "night"],                                 // 徒步/水上段绝不放餐食/夜景图
+  meal:     ["hike", "route", "water", "action", "camp", "night"], // 餐食段绝不放徒步/水上/动作/夜景图
+  rest:     ["meal", "hike", "route", "water", "camp"],       // 休息合影段不放餐食/徒步/水上图
+  closing:  ["meal", "hike", "route", "water", "action", "camp"], // 结尾氛围段只放夜景/风景/人物
+};
+const PI_KIND_TAGS = {           // 内容章节 kind → 期望图片语义
+  scenic:    ["scenic", "sky", "route", "hike", "night", "detail"],
+  experience:["action", "water", "people", "group", "hike", "camp", "scenic", "detail"],
+  people:    ["people", "group", "detail", "action"],
+  route:     ["route", "hike", "scenic", "detail", "action"],
+  gear:      ["gear", "detail", "people"],
+  info:      ["detail", "gear"],
+  meal:      ["meal", "people", "detail"],
+  night:     ["night", "scenic", "sky", "people"],
+  ending:    ["night", "scenic", "sky", "people", "group"],
+  detail:    ["detail", "gear"],
+  fit:       ["people", "group", "detail"],
+  reasons:   ["detail", "gear", "scenic", "people"],
+};
+const PI_KIND_FORBID = {         // 内容章节 kind → 硬禁忌图片
+  scenic:    ["meal"],
+  experience:["meal", "night"],
+  people:    ["meal", "hike", "route", "water", "night"],
+  route:     ["meal", "night"],
+  gear:      ["meal", "night", "water", "people", "group"],
+  info:      ["meal", "night", "water", "people", "group", "action"],
+  meal:      ["hike", "route", "water", "action", "camp", "night"],
+  night:     ["meal", "hike", "route", "water", "action", "camp"],
+  ending:    ["meal", "hike", "route", "water", "action", "camp"],
+  detail:    ["meal", "night", "water"],
+  fit:       ["meal", "hike", "route", "water", "night"],
+  reasons:   ["meal", "night", "water", "people", "group"],
+};
+/* 活动DNA 核心动机 → 匹配加分（让 DNA 真正驱动差异化匹配，而非统一套方向） */
+const PI_DNA_BONUS = {
+  release:    { water: 8, action: 4 },        // 清凉释放型：水上图更该进体验段
+  social:     { people: 6, group: 6 },        // 社交型：人物/合影更该进陪伴段
+  family:     { people: 5, group: 5, meal: 3 },
+  challenge:  { hike: 6, action: 5, route: 4 },// 挑战型：徒步/路线更该进核心段
+  sport:      { action: 6, hike: 4 },
+  photo:      { scenic: 6, night: 5, detail: 4 },
+  healing:    { scenic: 5, night: 4 },
+  scenery:    { scenic: 5, route: 3 },
+};
+/* 文本关键词 → 图片语义（从行程 fact / 章节 heading 显式提取语义） */
+const PI_TEXT_TAG_KW = [
+  ["water", /桨板|皮划艇|皮艇|溯溪|漂流|下水|玩水|游泳|清凉|溪降|冲浪|独木舟|桨|湖面/],
+  ["meal", /午餐|中餐|用餐|吃饭|野餐|补给|下午茶|早餐|晚餐|餐|美食|野炊|干饭|围炉/],
+  ["group", /合影|团建|集体照|合影留念|全家福|大合照|一起|队伍/],
+  ["people", /人|队友|领队|陪伴|故事|孩子|亲子|朋友|大家/],
+  ["night", /夜|星空|篝火|日落|晚霞|夜晚|夜景|星河|黄昏/],
+  ["hike", /徒步|登山|爬山|穿越|登顶|步道|山路|登山道|爬升/],
+  ["route", /路线|轨迹|里程|海拔|环线|垭口|垭口/],
+  ["camp", /露营|营地|帐篷|扎营|篝火/],
+  ["gear", /装备|物资|背包|护具|安全带|穿/],
+  ["action", /挑战|运动|爬|涉水|刺激|体验|滑行|划|攀登|跃/],
+  ["scenic", /风景|风光|景|自然|山|湖|林|雪山|云海|峡谷/],
+];
+function piTextTags(text) {
+  const s = String(text || ""); const out = [];
+  for (const m of PI_TEXT_TAG_KW) if (m[1].test(s)) out.push(m[0]);
+  return out;
+}
+/* 图片语义键集合（14 类中文标签 → 英文键，并入主场景 scene） */
+function piImageKeySet(p) {
+  const tags = (p && p.tags) || [];
+  const keys = tags.map((t) => PI_TAG_TO_SCENE[t]).filter(Boolean);
+  if (p && p.scene && keys.indexOf(p.scene) < 0) keys.push(p.scene);
+  return keys;
+}
+/* 片段（行程项 / 章节）期望语义 = 角色/类型默认表 ∪ 文本关键词提取；硬禁忌另列 */
+function piSegTarget(roleOrKind, text, forbidMap, tagMap) {
+  const base = (tagMap[roleOrKind] || ["scenic", "people", "detail"]).slice();
+  const txt = piTextTags(text);
+  const accept = base.slice();
+  txt.forEach((t) => { if (accept.indexOf(t) < 0) accept.push(t); });
+  const forbid = (forbidMap[roleOrKind] || []).slice();
+  return { accept: accept, forbid: forbid, textTags: txt };
+}
+/* 单图对单片段的语义契合分：契合为正、禁忌为 -∞（绝不放入）、其余中性偏画质。
+   textTags：该片段自身文本显式提到的语义（如行程 fact「合影拍照」→ group、章节标题「装备建议」→ gear），
+   命中则额外加成——让「文字说合影」的段真正绑定合影图，而非被泛用段抢走。 */
+function piSegScore(p, accept, forbid, dnaBonus, textTags) {
+  const keys = piImageKeySet(p);
+  for (const k of keys) if (forbid.indexOf(k) >= 0) return -Infinity; // 硬禁忌
+  let s = 0;
+  for (const k of keys) if (accept.indexOf(k) >= 0) s += 10;
+  if (textTags && textTags.length) { const tt = {}; textTags.forEach((t) => { tt[t] = 1; }); for (const k of keys) if (tt[k]) s += 6; }
+  if (dnaBonus) for (const k of keys) if (dnaBonus[k]) s += dnaBonus[k];
+  s += (p.quality || 0) * 4;
+  if (p.orientation === "landscape") s += 2;
+  return s;
+}
+
 /* ---------- P0-6：感知哈希（64 位，分 lo/hi 两段，避免 BigInt 依赖） ---------- */
 function piPhashHamming(a, b) {
   if (!a || !b) return 999;
@@ -376,69 +488,88 @@ function piKindFromText(txt) {
   if (/预告|下一期|结尾|收束/.test(h)) return "ending";
   return "";
 }
-function piMatchSections(sections, used, roles) {
-  const avail = used.slice();
-  const take = (prefer, count) => {
-    const picks = [];
-    for (const want of prefer) {
-      for (let i = 0; i < avail.length && picks.length < count; i++) {
-        const p = avail[i];
-        if (p.scene === want && !picks.includes(p)) picks.push(p);
-      }
-      if (picks.length >= count) break;
-    }
-    // 不足则按顺序补齐（但避免 Hero 抢位：Hero 优先留给需要大图的段落）
-    for (let i = 0; i < avail.length && picks.length < count; i++) if (!picks.includes(avail[i])) picks.push(avail[i]);
+/* P0-9：图片↔「内容章节」语义匹配（按 kind + 章节标题文本 + 活动DNA，逐段匹配） */
+function piMatchSections(sections, used, roles, dna) {
+  const avail = (used || []).slice();
+  const dnaBonus = (dna && dna.coreMotivation && PI_DNA_BONUS[dna.coreMotivation]) ? PI_DNA_BONUS[dna.coreMotivation] : null;
+  const taken = {};
+  const heroPic = avail.find((p) => roles[p.imageId] === "HeroImage");
+  const take = (kind, text, count) => {
+    const { accept, forbid, textTags } = piSegTarget(kind, text, PI_KIND_FORBID, PI_KIND_TAGS);
+    const cand = avail.filter((p) => !taken[p.imageId] && roles[p.imageId] !== "HeroImage")
+      .map((p) => ({ p: p, s: piSegScore(p, accept, forbid, dnaBonus, textTags) }))
+      .filter((x) => x.s > -Infinity)
+      .sort((a, b) => b.s - a.s);
+    const picks = cand.slice(0, count).map((x) => x.p);
+    picks.forEach((p) => { taken[p.imageId] = true; });
     return picks;
   };
   return (sections || []).map((sec, idx) => {
     const kind = sec.kind || piKindFromText(typeof sec === "string" ? sec : (sec.h || ""));
-    const prefer = PI_KIND_SCENES[kind] || ["scenic", "people", "detail"];
-    const heroPic = avail.find((p) => roles[p.imageId] === "HeroImage");
-    // 封面段（第一段）优先用 Hero
+    const text = typeof sec === "string" ? sec : ((sec.h || sec.heading || "") + " " + ((sec.paras || []).join(" ") || ""));
+    // 封面段（第一段）优先用 Hero；没有则用最契合开篇语义的图
     if (idx === 0 && heroPic) return { sectionIndex: idx, kind: kind, photos: [heroPic] };
     const want = (kind === "scenic" || kind === "experience") ? 2 : 1;
-    return { sectionIndex: idx, kind: kind, photos: take(prefer, want) };
+    return { sectionIndex: idx, kind: kind, photos: take(kind, text, want) };
   });
 }
 
-/* ---------- P0-9：图片↔「行程段落」匹配（按 contentRole 语义绑定） ---------- */
-const PI_ROLE_SCENES = {
-  opening: ["route", "scenic", "sky", "hike", "detail"],
-  arrival: ["route", "scenic", "hike", "detail"],
-  warmup: ["people", "group", "gear", "detail"],
-  core: ["action", "people", "group", "water", "camp", "scenic", "hike"],
-  meal: ["meal", "detail", "people", "group"],
-  rest: ["people", "group", "scenic", "detail"],
-  closing: ["sky", "scenic", "people", "group", "night", "detail"],
-};
-/* 输入 structureItinerary() 的 timeline（含 contentRole/day），输出「每天 → 匹配到的图」
-   语义优先、不重复用图；某天匹配不足时不再强行凑图（宁缺毋滥） */
-function piMatchItinerary(timeline, used, roles) {
-  const avail = (used || []).slice();
-  const taken = {};
-  const pickFor = (role, n) => {
-    const prefer = PI_ROLE_SCENES[role] || ["scenic", "people", "detail"];
-    const out = [];
-    for (const want of prefer) {
-      for (const p of avail) {
-        if (out.length >= n) break;
-        if (!taken[p.imageId] && p.scene === want) { out.push(p); taken[p.imageId] = true; }
-      }
-      if (out.length >= n) break;
-    }
-    return out;
-  };
-  const byDayRoles = {};
-  (timeline || []).forEach((t) => { const d = t.day || 1; (byDayRoles[d] = byDayRoles[d] || []).push(t.contentRole); });
-  const byDay = {};
-  Object.keys(byDayRoles).forEach((d) => {
-    const cnt = {};
-    byDayRoles[d].forEach((r) => { cnt[r] = (cnt[r] || 0) + 1; });
-    const dominant = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a])[0] || "core";
-    byDay[d] = pickFor(dominant, 2);
+/* ---------- P0-9：图片↔「行程段落」语义匹配（按 contentRole + 文本 + DNA，逐图归属最优段） ---------- */
+/* 输入 structureItinerary() 的 timeline（含 contentRole/day/fact），输出逐段匹配的图。
+   匹配严格语义化：每段期望语义 = 该 contentRole 默认表 ∪ fact 文本关键词（如「桨板」→ water、「午餐」→ meal、「夜」→ night）；
+   硬禁忌图片（如餐食图绝不放徒步段）一律排除。
+   关键：采用「逐图归属最优段」而非「逐段贪心」——避免开头的泛用段（集合/到达）把本应进
+   具体段（水上/陪伴/结尾）的图提前抢走；每张图落到「契合分最高」的段，平分时偏向语义更具体的段
+   （core/meal/rest/closing > opening/arrival/warmup），从而 桨板→水上段、餐食→午餐段、合影→陪伴段、夜景→结尾段。 */
+const PI_ROLE_SPEC = { opening: 0, arrival: 0, warmup: 1, rest: 2, core: 3, meal: 3, closing: 3 };
+function piMatchItinerary(timeline, used, roles, dna) {
+  const items = (timeline || []).filter((t) => t && (t.time || t.fact || t.text));
+  if (!items.length) return { byItem: [], byDay: {}, byRole: {}, note: "无行程可匹配" };
+  const dnaBonus = (dna && dna.coreMotivation && PI_DNA_BONUS[dna.coreMotivation]) ? PI_DNA_BONUS[dna.coreMotivation] : null;
+  const heroId = (roles && (function () { for (const k in roles) if (roles[k] === "HeroImage") return k; return null; })()) || null;
+  const avail = (used || []).filter((p) => p.imageId !== heroId); // Hero 留给封面，不占行程段
+  // 预计算每个段的期望语义与容量
+  const segInfo = items.map((t) => {
+    const role = t.contentRole || "core";
+    const text = (t.time || "") + " " + (t.fact || t.text || "");
+    const { accept, forbid, textTags } = piSegTarget(role, text, PI_ROLE_FORBID, PI_ROLE_TAGS);
+    return { role: role, accept: accept, forbid: forbid, textTags: textTags, want: (role === "meal" || role === "rest" || role === "warmup") ? 1 : 2 };
   });
-  return { byDay: byDay, note: "按行程段落语义匹配" };
+  // 每张图 → 其最优段（契合分最高；平分时偏向语义更具体的段）
+  const imgBest = {};
+  avail.forEach((p) => {
+    let best = -1, bestScore = -Infinity, bestSpec = -1;
+    segInfo.forEach((s, idx) => {
+      const sc = piSegScore(p, s.accept, s.forbid, dnaBonus, s.textTags);
+      if (sc > -Infinity) {
+        const spec = PI_ROLE_SPEC[s.role] || 0;
+        if (sc > bestScore || (sc === bestScore && spec > bestSpec)) { bestScore = sc; best = idx; bestSpec = spec; }
+      }
+    });
+    imgBest[p.imageId] = best >= 0 ? { segIdx: best, score: bestScore } : null;
+  });
+  // 强契合（高分）的图优先落位；段满则退到次优契合段
+  const takenCount = {}; segInfo.forEach((_, i) => { takenCount[i] = 0; });
+  const assign = {};
+  const ordered = avail.slice().sort((a, b) => (imgBest[b.imageId] ? imgBest[b.imageId].score : -1e9) - (imgBest[a.imageId] ? imgBest[a.imageId].score : -1e9));
+  ordered.forEach((p) => {
+    const best = imgBest[p.imageId];
+    if (!best) return; // 该图在所有段都被硬禁忌（如餐食图放进纯徒步行程）——宁缺毋滥，不强行错配
+    const cands = segInfo.map((s, idx) => ({ idx: idx, sc: piSegScore(p, s.accept, s.forbid, dnaBonus, s.textTags) }))
+      .filter((x) => x.sc > -Infinity)
+      .sort((a, b) => (b.sc - a.sc) || ((PI_ROLE_SPEC[segInfo[b.idx].role] || 0) - (PI_ROLE_SPEC[segInfo[a.idx].role] || 0)));
+    for (const c of cands) {
+      if (takenCount[c.idx] < segInfo[c.idx].want) { assign[p.imageId] = c.idx; takenCount[c.idx]++; break; }
+    }
+  });
+  const byDay = {};
+  const byRole = {};
+  const byItem = items.map((t, idx) => {
+    const picks = avail.filter((p) => assign[p.imageId] === idx);
+    picks.forEach((p) => { const day = t.day || 1; (byDay[day] = byDay[day] || []).push(p); (byRole[t.contentRole || "core"] = byRole[t.contentRole || "core"] || []).push(p); });
+    return { day: t.day || 1, time: t.time || "", fact: t.fact || t.text || "", contentRole: t.contentRole || "core", photos: picks, textTags: segInfo[idx].textTags, matched: picks.map((p) => p.src) };
+  });
+  return { byItem: byItem, byDay: byDay, byRole: byRole, note: "按行程内容语义匹配（图-文强相关）" };
 }
 
 /* ---------- P0-10：自适应排版（按数量 + 横竖比例选组件） ---------- */
@@ -545,7 +676,10 @@ function buildPhotoIntelligence(photos, a, sections, scenario) {
     }
   }
   const layout = piAdaptiveLayout(used);
-  const matched = sections && sections.length ? piMatchSections(sections, used, roleInfo.roles) : [];
+  const dna = (a && a.activityDNA) || null;
+  const matched = sections && sections.length ? piMatchSections(sections, used, roleInfo.roles, dna) : [];
+  const itin = (a && typeof structureItinerary === "function") ? structureItinerary(a) : null;
+  const matchedItinerary = (itin && itin.timeline && itin.timeline.length) ? piMatchItinerary(itin.timeline, used, roleInfo.roles, dna) : null;
   const dnaEnv = (a && a.activityDNA && a.activityDNA.environment) || "";
   // P0-8：角色计数覆盖「全部已分析图片」（含弃用池的 DiscardCandidate），供 UI 文案与验收展示
   const roleCounts = {};
@@ -560,7 +694,7 @@ function buildPhotoIntelligence(photos, a, sections, scenario) {
     heroId: roleInfo.heroId, roles: roleInfo.roles, roleLabel: PI_ROLE_LABEL,
     roleCounts: roleCounts, rolesMeta: PI_ROLES, roleOrder: PI_ROLE_ORDER,
     importanceOf: (imageId) => piImportanceOf(roleInfo.roles, imageId),
-    layout: layout, cropSafety: crops, matched: matched,
+    layout: layout, cropSafety: crops, matched: matched, matchedItinerary: matchedItinerary,
     orientation: {
       landscape: used.filter((p) => p.orientation === "landscape").length,
       portrait: used.filter((p) => p.orientation === "portrait").length,

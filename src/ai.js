@@ -2981,7 +2981,7 @@
     if (!PAGE_PHOTO_INTEL || typeof piMatchItinerary !== "function") return null;
     const itin = (typeof structureItinerary === "function") ? structureItinerary(a) : null;
     if (!itin || !itin.timeline.length) return null;
-    return piMatchItinerary(itin.timeline, PAGE_PHOTO_INTEL.used, PAGE_PHOTO_INTEL.roles);
+    return piMatchItinerary(itin.timeline, PAGE_PHOTO_INTEL.used, PAGE_PHOTO_INTEL.roles, (a && a.activityDNA) || null);
   }
   function pagePhotoRisk(src) {
     if (!PAGE_PHOTO_INTEL) return null;

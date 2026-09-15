@@ -5116,6 +5116,11 @@ body{
 .xh-ed-day-h { font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 8px; }
 .xh-ed-day-h span { font-size: 10px; letter-spacing: .14em; color: var(--muted); margin-right: 4px; }
 .xh-ed-day-h b { font-family: var(--display); font-size: 16px; color: var(--brand-700, #2F5D50); }
+/* P0-9：行程每段按内容语义匹配到的图，渲染在对应 DAY 旁 */
+.itin-day-photos { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.itin-day-photo { width: 96px; height: 72px; border-radius: 10px; overflow: hidden; background: #eee; box-shadow: 0 1px 6px rgba(0,0,0,.08); }
+.itin-day-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.itin-day-photo.ph-safe img { object-fit: contain; background: #f3f1ec; }
 
 .xh-ed-cta { margin: 34px 0 0; padding: 26px 20px; background: linear-gradient(135deg, var(--brand-700, #2F5D50), #24463C); border-radius: 20px; text-align: center; color: #fff; }
 .xh-ed-cta-theme { font-family: var(--display); font-size: 16px; line-height: 1.55; color: rgba(255,255,255,.94); margin-bottom: 10px; }
