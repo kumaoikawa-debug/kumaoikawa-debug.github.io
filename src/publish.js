@@ -1008,10 +1008,11 @@ function xfPhotoReview(xf) {
   return `<div class="xpr">
     <div class="xpr-head"><b>智能筛图结果</b><span class="tiny muted">上传 ${intel.analysis.length} 张 → 建议使用 ${intel.used.length} 张（弃用 ${intel.selection.discarded.length}）</span></div>
     <div class="xpr-chips">
-      <span class="xpr-chip">封面 1</span>
-      <span class="xpr-chip">段落主图 ${rc.SectionLeadImage || 0}</span>
-      <span class="xpr-chip">图廊 ${(rc.GalleryImage || 0) + (rc.SupportImage || 0)}</span>
-      <span class="xpr-chip">细节 ${rc.DetailImage || 0}</span>
+      ${(intel.roleOrder || PI_ROLE_ORDER).map((r) => {
+        const n = (intel.roleCounts && intel.roleCounts[r]) || 0;
+        if (r === "DiscardCandidate") return n ? `<span class="xpr-chip discard">${intel.roleLabel[r] || r} ${n}</span>` : "";
+        return `<span class="xpr-chip ${r === "HeroImage" ? "hl" : ""}">${intel.roleLabel[r] || r} ${n}</span>`;
+      }).join("")}
       ${intel.cropSafety.highRiskIds.length ? `<span class="xpr-chip warn">${intel.cropSafety.highRiskIds.length} 张不宜大图（已按原比例保护）</span>` : ""}
       <span class="xpr-chip ${intel.simulated ? "" : "ok"}">${intel.simulated ? "规则推断（模拟分析）" : "真实视觉识别"}</span>
     </div>

@@ -796,6 +796,17 @@ a { color: inherit; }
 .thumb-tags { position: absolute; left: 5px; right: 5px; bottom: 5px; display: flex; flex-wrap: wrap; gap: 3px; z-index: 2; }
 .thumb-tags .tchip { font-size: 10px; line-height: 1; padding: 3px 6px; border-radius: 20px; background: rgba(0,0,0,.55); color: #fff; backdrop-filter: blur(2px); white-space: nowrap; }
 .thumb-tags .tchip.warn { background: rgba(190,40,40,.78); }
+/* P0-8：缩略图角色徽标——按角色着色，直观呈现「每张图的重要性不同」 */
+.thumb-role { position: absolute; top: 5px; left: 5px; z-index: 3; font-size: 10px; line-height: 1; padding: 3px 7px; border-radius: 20px; font-weight: 600; letter-spacing: .3px; color: #fff; background: rgba(40,40,40,.62); backdrop-filter: blur(2px); white-space: nowrap; }
+.thumb-role[data-role="HeroImage"] { background: #b5471f; }
+.thumb-role[data-role="SectionLeadImage"] { background: #c8702a; }
+.thumb-role[data-role="SupportImage"] { background: #3a6ea5; }
+.thumb-role[data-role="GalleryImage"] { background: #4a7d5e; }
+.thumb-role[data-role="DetailImage"] { background: #6b6b6b; }
+.thumb-role[data-role="InfoBackground"] { background: #7a6f57; }
+.thumb-role.discard { background: rgba(190,40,40,.85); }
+.thumb.is-discard { opacity: .5; filter: grayscale(.55); }
+.thumb.is-discard .set-cover-btn, .thumb.is-discard .cover-badge { display: none; }
 
 /* ---------- Toast ---------- */
 .toast {
@@ -994,6 +1005,14 @@ a { color: inherit; }
 .ph-ph::after { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 22% 18%, rgba(255,255,255,.14), transparent 42%); pointer-events: none; }
 .ph-ic { width: 40px; height: 40px; border-radius: 12px; background: rgba(255,255,255,.18); display: grid; place-items: center; }
 .ph-lab { font-size: 13px; opacity: .92; padding: 0 12px; text-align: center; }
+/* P0-8：角色决定视觉重要度（全局 .ph 容器，mediaBlock 按角色打类） */
+.ph.ph-hero { margin: 20px 0; box-shadow: 0 26px 60px -26px rgba(20,32,25,.6); border-radius: 18px; }
+.ph.ph-lead { margin: 16px 0; box-shadow: 0 20px 46px -24px rgba(20,32,25,.5); }
+.ph.ph-support { margin: 14px 0; }
+.ph.ph-gallery { margin: 8px 0; box-shadow: 0 8px 20px -14px rgba(20,32,25,.4); border-radius: 12px; }
+.ph.ph-detail { margin: 8px 0; box-shadow: 0 8px 20px -16px rgba(20,32,25,.38); border-radius: 12px; }
+.ph.ph-info { margin: 6px 0; opacity: .42; filter: grayscale(.32); box-shadow: none; }
+.ph.ph-discard { display: none; }
 
 /* 画廊：双图 / 一大两小 */
 .gallery { display: grid; gap: 10px; margin: 14px 0; }
@@ -5023,6 +5042,8 @@ body{
 .xpr-reset { margin-top: 10px; font-size: 12px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line, #ece7df); background: #fff; color: var(--ink); cursor: pointer; }
 /* v151 真实视觉模型：识别入口与状态 */
 .xpr-chip.ok { background: #e8f3ec; color: #2F7D4F; }
+.xpr-chip.hl { background: #fbe9df; color: #b5471f; font-weight: 600; }
+.xpr-chip.discard { background: #fdecec; color: #c0392b; }
 .xpr-vision { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
 
 /* ============ P0-3 双层详情页：内容打包层（先打动人）→ 报名决策层（再帮决策） ============ */

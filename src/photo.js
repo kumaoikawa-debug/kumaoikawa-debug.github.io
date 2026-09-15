@@ -263,22 +263,46 @@ function piSelect(analysis) {
   };
 }
 
-/* ---------- P0-8：图片角色系统 ---------- */
-/* P0-7：角色预算（按「使用张数」比例分配，对齐案例 14 张 = Hero1+主图5+辅助图6+细节图2）
-   约束：hero 恒为 1（有图时）；lead≈35%、detail≈14%，其余归辅助图。 */
+/* ---------- P0-8：图片角色系统（7 类角色 + 重要度阶梯） ----------
+   每张图必须先确定角色，再进入排版；角色决定其在页面中的视觉权重，
+   绝不允许所有图片拥有同等重要性。
+   重要度阶梯（importance）：Hero 100 > SectionLead 80 > Support 55 > Gallery 40 > Detail 30 > InfoBackground 20 > Discard 0
+   分配规则：内容信号（画质/场景/朝向）+ 预算驱动，与上传顺序无关。 */
+const PI_ROLES = {
+  HeroImage:       { importance: 100, label: "封面主图",   desc: "全幅开篇大图，最高视觉权重",   render: "full-bleed",   cls: "ph-hero" },
+  SectionLeadImage:{ importance: 80,  label: "段落主图",   desc: "每个内容章节开篇大图",          render: "section-lead", cls: "ph-lead" },
+  SupportImage:    { importance: 55,  label: "辅助图",     desc: "正文穿插的中等配图",             render: "inline-medium",cls: "ph-support" },
+  GalleryImage:    { importance: 40,  label: "图廊",       desc: "成组小图，低密度陈列",           render: "gallery-grid", cls: "ph-gallery" },
+  DetailImage:     { importance: 30,  label: "细节图",     desc: "特写/纹理，近景补充",            render: "detail-small", cls: "ph-detail" },
+  InfoBackground:  { importance: 20,  label: "信息区背景", desc: "弱化作底色/信息区衬托，低存在感", render: "faint-bg",     cls: "ph-info" },
+  DiscardCandidate:{ importance: 0,   label: "建议弃用",   desc: "筛图阶段弃用，不进入版面",       render: "none",         cls: "ph-discard" },
+};
+const PI_ROLE_ORDER = ["HeroImage", "SectionLeadImage", "SupportImage", "GalleryImage", "DetailImage", "InfoBackground", "DiscardCandidate"];
+
+/* 按「使用张数」分配 7 角色预算。
+   锚点：hero 恒 1（有图时）；lead≈35%、detail≈14%；
+   gallery≈18%（成组小图）、info≈7%（信息区背景）；其余归 辅助图(Support)。
+   n=14 时：Hero1 + 主图5 + (辅助图2 / 图廊3 / 信息背景1 = 6) + 细节图2 = 14，
+   与 P0-7 验收「使用14张=Hero1/主图5/辅助图6/细节图2」兼容（辅助图含图廊与信息背景）。 */
 function piRoleBudget(n) {
-  if (n <= 0) return { hero: 0, lead: 0, support: 0, detail: 0 };
-  if (n === 1) return { hero: 1, lead: 0, support: 0, detail: 0 };
+  if (n <= 0) return { hero: 0, lead: 0, support: 0, gallery: 0, detail: 0, info: 0 };
+  if (n === 1) return { hero: 1, lead: 0, support: 0, gallery: 0, detail: 0, info: 0 };
   const hero = 1;
-  const lead = Math.max(1, Math.min(Math.round(n * 0.35), n - 2));               // 主图（段落主图）
-  const detail = Math.max(0, Math.min(Math.round(n * 0.14), n - hero - lead - 1)); // 细节图
-  const support = Math.max(0, n - hero - lead - detail);                        // 辅助图
-  return { hero: hero, lead: lead, support: support, detail: detail };
+  const lead = Math.max(1, Math.min(Math.round(n * 0.35), n - 2));
+  const detail = Math.max(0, Math.min(Math.round(n * 0.14), n - hero - lead - 3));
+  const gallery = Math.max(0, Math.min(Math.round(n * 0.18), n - hero - lead - detail - 2));
+  const info = Math.max(0, Math.min(Math.round(n * 0.07), n - hero - lead - detail - gallery - 1));
+  const support = Math.max(0, n - hero - lead - detail - gallery - info);
+  return { hero: hero, lead: lead, support: support, gallery: gallery, detail: detail, info: info };
 }
-function piAssignRoles(used) {
+
+/* 给「全部已分析图片」分配角色：
+   使用池 → 6 类（Hero/SectionLead/Support/Gallery/Detail/InfoBackground）；
+   弃用池 → DiscardCandidate（让「每张图都有明确角色、且重要性为 0」可见）。
+   内容驱动：先按画质/场景/朝向排序，再依次领角色预算；重复图/低质量图已在 piSelect 阶段被剔除出使用池。 */
+function piAssignAllRoles(analysis, selection) {
   const roles = {};
-  if (!used.length) return { heroId: null, roles: roles };
-  const b = piRoleBudget(used.length);
+  const used = selection.used || [];
   const STRONG = ["scenic", "people", "group", "action", "water", "hike", "camp", "meal", "gear", "night", "route"];
   const rankOf = (p) => (p.quality || 0) * 100 + (p.orientation === "landscape" ? 6 : 0) + (STRONG.indexOf(p.scene) >= 0 ? 5 : 0) + (p.lowQuality ? -30 : 0) + (p.dupOf ? -40 : 0);
   const ranked = used.slice().sort((a, b) => rankOf(b) - rankOf(a));
@@ -286,29 +310,52 @@ function piAssignRoles(used) {
   const hero = ranked.find((p) => p.orientation !== "portrait" && p.scene === "scenic")
     || ranked.find((p) => p.orientation !== "portrait")
     || ranked[0];
-  roles[hero.imageId] = "HeroImage";
-  const rest = ranked.filter((p) => p.imageId !== hero.imageId);
-  // 主图（段落主图）：次优候选（used 内已排除重复/低质量，此处仅作安全守卫）
+  if (hero) roles[hero.imageId] = "HeroImage";
+  const rest = ranked.filter((p) => !hero || p.imageId !== hero.imageId);
+  // 段落主图：次优候选（内容强的优先）
+  const b = piRoleBudget(used.length);
   let leadN = 0;
   for (const p of rest) {
     if (leadN >= b.lead) break;
     if (p.dupOf || p.lowQuality) continue;
     roles[p.imageId] = "SectionLeadImage"; leadN++;
   }
-  // 细节图：细节场景优先，其次画质偏低者
-  const remain = rest.filter((p) => !roles[p.imageId]);
-  const detailCands = remain.slice().sort((a, b) => {
+  const remain1 = rest.filter((p) => !roles[p.imageId]);
+  // 细节图：细节场景优先
+  const detailCands = remain1.slice().sort((a, c) => {
     const d = (p) => (p.scene === "detail" ? 100 : 0) + (1 - (p.quality || 0)) * 50;
-    return d(b) - d(a);
+    return d(c) - d(a);
   });
   let detailN = 0;
   for (const p of detailCands) {
     if (detailN >= b.detail) break;
     roles[p.imageId] = "DetailImage"; detailN++;
   }
+  const remain2 = remain1.filter((p) => !roles[p.imageId]);
+  // 图廊：成组小图 —— 取一批次重要的（画质中等、非强场景）作低密度陈列
+  const galleryCands = remain2.slice().sort((a, c) => rankOf(a) - rankOf(c));
+  let galleryN = 0;
+  for (const p of galleryCands) {
+    if (galleryN >= b.gallery) break;
+    roles[p.imageId] = "GalleryImage"; galleryN++;
+  }
+  const remain3 = remain2.filter((p) => !roles[p.imageId]);
+  // 信息区背景：最低存在感（再取最弱的一批，弱化作底色/衬托）
+  const infoCands = remain3.slice().sort((a, c) => rankOf(a) - rankOf(c));
+  let infoN = 0;
+  for (const p of infoCands) {
+    if (infoN >= b.info) break;
+    roles[p.imageId] = "InfoBackground"; infoN++;
+  }
   // 辅助图：其余全部
-  remain.filter((p) => !roles[p.imageId]).forEach((p) => { roles[p.imageId] = "SupportImage"; });
-  return { heroId: hero.imageId, roles: roles };
+  remain3.filter((p) => !roles[p.imageId]).forEach((p) => { roles[p.imageId] = "SupportImage"; });
+  // 弃用池：明确标记 DiscardCandidate（无角色→不可见，重要度 0）
+  (selection.discarded || []).forEach((d) => { roles[d.imageId] = "DiscardCandidate"; });
+  return { heroId: hero ? hero.imageId : null, roles: roles };
+}
+function piImportanceOf(roles, imageId) {
+  const r = roles[imageId] || "SupportImage";
+  return (PI_ROLES[r] && PI_ROLES[r].importance) || 0;
 }
 
 /* ---------- P0-9：图片-行程/段落匹配 ---------- */
@@ -475,7 +522,7 @@ function buildPhotoIntelligence(photos, a, sections, scenario) {
   const analysis = piAnalyze(photos);
   const selection = piSelect(analysis);
   const used = selection.used;
-  const roleInfo = piAssignRoles(used);
+  const roleInfo = piAssignAllRoles(analysis, selection);
   const crops = piEvaluateCrops(used);
   // 安全裁切：高风险图若被选为 Hero，降级为 SectionLead（避免强裁主体）
   if (roleInfo.heroId && crops.byId[roleInfo.heroId] && crops.byId[roleInfo.heroId].level === "high") {
@@ -500,13 +547,19 @@ function buildPhotoIntelligence(photos, a, sections, scenario) {
   const layout = piAdaptiveLayout(used);
   const matched = sections && sections.length ? piMatchSections(sections, used, roleInfo.roles) : [];
   const dnaEnv = (a && a.activityDNA && a.activityDNA.environment) || "";
-  // P0-7：角色计数 + 弃用三类汇总（供 UI 文案与验收展示）
+  // P0-8：角色计数覆盖「全部已分析图片」（含弃用池的 DiscardCandidate），供 UI 文案与验收展示
   const roleCounts = {};
-  used.forEach((p) => { const r = roleInfo.roles[p.imageId] || "SupportImage"; roleCounts[r] = (roleCounts[r] || 0) + 1; });
+  analysis.forEach((p) => { const r = roleInfo.roles[p.imageId] || "SupportImage"; roleCounts[r] = (roleCounts[r] || 0) + 1; });
   const rc = selection.reasons || { dup: 0, low: 0, weak: 0 };
+  const roleSummary = PI_ROLE_ORDER
+    .filter((r) => roleCounts[r])
+    .map((r) => `${PI_ROLE_LABEL[r] || r} ${roleCounts[r]}`)
+    .join(" · ");
   return {
     analysis: analysis, selection: selection, used: used,
-    heroId: roleInfo.heroId, roles: roleInfo.roles, roleLabel: PI_ROLE_LABEL, roleCounts: roleCounts,
+    heroId: roleInfo.heroId, roles: roleInfo.roles, roleLabel: PI_ROLE_LABEL,
+    roleCounts: roleCounts, rolesMeta: PI_ROLES, roleOrder: PI_ROLE_ORDER,
+    importanceOf: (imageId) => piImportanceOf(roleInfo.roles, imageId),
     layout: layout, cropSafety: crops, matched: matched,
     orientation: {
       landscape: used.filter((p) => p.orientation === "landscape").length,
@@ -515,7 +568,7 @@ function buildPhotoIntelligence(photos, a, sections, scenario) {
     },
     dnaEnv: dnaEnv,
     simulated: analysis.some((p) => p.simulated),
-    summary: `${analysis.length} 张 → 使用 ${used.length} 张（弃用 ${selection.discarded.length}：重复 ${rc.dup} / 质量较低 ${rc.low} / 内容重复·弱相关 ${rc.weak}）；角色 Hero ${roleCounts.HeroImage || 0} · 主图 ${roleCounts.SectionLeadImage || 0} · 辅助图 ${roleCounts.SupportImage || 0} · 细节图 ${roleCounts.DetailImage || 0}`,
+    summary: `${analysis.length} 张 → 使用 ${used.length} 张（弃用 ${selection.discarded.length}：重复 ${rc.dup} / 质量较低 ${rc.low} / 内容重复·弱相关 ${rc.weak}）；角色分配 ${roleSummary}`,
   };
 }
 

@@ -2,7 +2,7 @@
 // 且每张图按「内容」精确分入 使用/弃用 两类，弃用再细分为 重复/质量较低/内容重复·弱相关。
 // 构造：28 张 = 5 张同哈希重复图(弃 4 留 1) + 3 张低质量 + 20 张正常唯一图。
 //   期望：使用 14（Hero1 / 主图5 / 辅助图6 / 细节图2）；弃用 14（重复 4 / 质量较低 3 / 内容重复·弱相关 7）。
-if (typeof piSelect === "undefined" || typeof piAssignRoles === "undefined" || typeof buildPhotoIntelligence === "undefined" || typeof piApplyVision === "undefined") {
+if (typeof piSelect === "undefined" || typeof piAssignAllRoles === "undefined" || typeof buildPhotoIntelligence === "undefined" || typeof piApplyVision === "undefined") {
   return { ok: false, reason: "P0-7 依赖函数未加载", results: [], checks: [{ name: "函数就绪", pass: false }] };
 }
 
@@ -50,12 +50,13 @@ const ALLOWED = ["重复（与其他图近似）", "质量较低", "内容重复
 const badReason = sel28.discarded.filter((d) => ALLOWED.indexOf(d.reason) < 0);
 checks.push({ name: "弃用理由仅限三类", pass: badReason.length === 0, detail: badReason.length ? ("非法理由:" + badReason.map((d) => d.reason).join(",")) : ("三类齐全: " + ALLOWED.join(" | ")) });
 
-// ④ 角色预算：Hero1 / 主图5 / 辅助图6 / 细节图2
+// ④ 角色预算：Hero1 / 主图5 / 辅助图6 / 细节图2（P0-8 起「辅助图」含 图廊+信息背景，仍合计 6）
 const rc = intel28.roleCounts || {};
+const aux28 = (rc.SupportImage || 0) + (rc.GalleryImage || 0) + (rc.InfoBackground || 0);
 checks.push({
   name: "使用张数角色分配(Hero1/主图5/辅助图6/细节图2)",
-  pass: rc.HeroImage === 1 && rc.SectionLeadImage === 5 && rc.SupportImage === 6 && rc.DetailImage === 2,
-  detail: `Hero=${rc.HeroImage || 0} 主图=${rc.SectionLeadImage || 0} 辅助图=${rc.SupportImage || 0} 细节图=${rc.DetailImage || 0}`,
+  pass: rc.HeroImage === 1 && rc.SectionLeadImage === 5 && aux28 === 6 && rc.DetailImage === 2,
+  detail: `Hero=${rc.HeroImage || 0} 主图=${rc.SectionLeadImage || 0} 辅助图=${aux28}(含图廊${rc.GalleryImage || 0}/信息背景${rc.InfoBackground || 0}) 细节图=${rc.DetailImage || 0}`,
 });
 
 // ⑤ 重复使用池绝不含 重复图/低质量图（劣图不进版面）
@@ -72,7 +73,7 @@ const coverOk = overlap === 0 && allIds.size === 28;
 checks.push({ name: "全集覆盖(每张仅属 使用/弃用 之一)", pass: coverOk, detail: coverOk ? ("28 张全部归类，无遗漏无重叠(使用14+弃用14)") : ("重叠=" + overlap + " 并集=" + allIds.size) });
 
 // ⑦ 汇总文案可对外展示（含三类计数与角色预算）
-const ok7 = /重复 4 \/ 质量较低 3 \/ 内容重复/.test(intel28.summary) && /Hero 1/.test(intel28.summary);
+const ok7 = /重复 4 \/ 质量较低 3 \/ 内容重复/.test(intel28.summary) && /封面主图 1/.test(intel28.summary);
 checks.push({ name: "汇总文案含 三类弃用 + 角色预算", pass: ok7, detail: intel28.summary });
 
 /* ---------- 缩放对照：8 张（≤8 应全部使用，不过度裁剪） ---------- */

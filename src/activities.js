@@ -1668,22 +1668,34 @@ function channelMeta(ch) {
   function thumbsHtml(a) {
     if (!a.photos || !a.photos.length) return "";
     const cover = a.coverIndex || 0;
-    // P0-6：对每张图做内容识别，缩略图展示识别标签（多标签 chip）
-    const intel = (typeof piAnalyze === "function") ? piAnalyze(a.photos) : [];
+    // P0-8：每张图先做完整图片智能（含 7 角色分配），缩略图展示「识别标签 + 角色徽标」
+    const intel = (typeof buildPhotoIntelligence === "function") ? buildPhotoIntelligence(a.photos, a, null, "recruit") : null;
+    const analysis = intel ? intel.analysis : ((typeof piAnalyze === "function") ? piAnalyze(a.photos) : []);
     const tagMap = {};
-    intel.forEach((p) => { tagMap[p.index] = p; });
+    const roleMap = {};
+    analysis.forEach((p) => {
+      tagMap[p.index] = p;
+      if (intel && intel.roles[p.imageId]) roleMap[p.index] = intel.roles[p.imageId];
+    });
+    const roleLabelOf = (r) => (intel && intel.roleLabel && intel.roleLabel[r]) ? intel.roleLabel[r] : (r || "");
     return a.photos.map((p, i) => {
       const isCover = i === cover;
       const meta = tagMap[i];
+      const role = roleMap[i];
+      const isDiscard = role === "DiscardCandidate";
       const chips = meta && meta.tags && meta.tags.length
         ? `<div class="thumb-tags">${meta.tags.map((t) => {
             const warn = (t === "重复图" || t === "低质量图") ? " warn" : "";
             return `<span class="tchip${warn}">${esc(t)}</span>`;
           }).join("")}</div>`
         : "";
-      return `<div class="thumb ${isCover ? "is-cover" : ""}" ${smartBg(p)}>
+      const roleBadge = role
+        ? `<span class="thumb-role ${isDiscard ? "discard" : ""}" data-role="${esc(role)}">${esc(roleLabelOf(role))}</span>`
+        : "";
+      return `<div class="thumb ${isCover ? "is-cover" : ""} ${isDiscard ? "is-discard" : ""}" ${smartBg(p)}>
         <button class="x" data-action="delPhoto" data-i="${i}" title="删除">${ICON("x")}</button>
         ${isCover ? `<span class="cover-badge">封面</span>` : `<button class="set-cover-btn" data-action="setCover" data-i="${i}">设为封面</button>`}
+        ${roleBadge}
         ${chips}
       </div>`;
     }).join("");

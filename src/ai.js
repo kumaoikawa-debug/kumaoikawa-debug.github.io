@@ -3001,7 +3001,11 @@
       // P0-11 安全裁切：高风险图（多人/合影/竖图近边缘）改用原比例展示，宁可留白也不裁坏主体
       const risk = pagePhotoRisk(ph[i]);
       const contain = risk === "high";
-      return `<div class="ph ${contain ? "ph-safe" : ""}"><img class="ph-img" data-smart-img src="${ph[i]}" alt="" style="object-position:${smartPos(ph[i])};object-fit:${contain ? "contain" : "cover"}"></div>`;
+      // P0-8：角色决定视觉重要度——给容器打上角色类，CSS 据此差异化尺寸/透明度
+      const role = (typeof pagePhotoRole === "function") ? pagePhotoRole(ph[i]) : null;
+      const roleCls = role && PI_ROLES && PI_ROLES[role] ? PI_ROLES[role].cls : "";
+      const roleAttr = role ? ` data-role="${role}"` : "";
+      return `<div class="ph ${roleCls} ${contain ? "ph-safe" : ""}"${roleAttr}><img class="ph-img" data-smart-img src="${ph[i]}" alt="" style="object-position:${smartPos(ph[i])};object-fit:${contain ? "contain" : "cover"}"></div>`;
     }
     const ac = styleAccent(a);
     return `<div class="ph ph-ph" style="background:${ac.grad}"><span class="ph-ic">${ICON("camera")}</span><span class="ph-lab">${esc(label || "现场实拍")}</span></div>`;
