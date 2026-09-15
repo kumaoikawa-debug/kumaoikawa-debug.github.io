@@ -1636,61 +1636,71 @@
     const vb = (typeof visionBase === "function") ? visionBase() : "";
     const vMode = (typeof visionAuthMode === "function") ? visionAuthMode() : false;
     const vStatus = vMode === "backend" ? "经总平台后端代理（Key 不在前端）" : (vMode === "key" ? "本地演示直连（Key 仅存本机浏览器）" : "未配置 —— 照片分析走本地像素计算 + 规则推断");
-    return `<div class="card card-pad" style="max-width:640px">
-      <div class="eyebrow">AI 大模型</div>
-      <h2 class="section-title" style="margin:8px 0 4px">AI 解析与文案设置</h2>
-      <p class="muted small" style="margin:0 0 18px">生产环境由<b>总平台统一持有 AI Key</b>并按 AI 积分计量，俱乐部只需填「后端地址 + 管理员口令 + 商家ID」即可，无需任何 Key。未接后端时，可填下方「本地演示 Key」临时直连（仅存本机浏览器）。</p>
-      <div class="field"><label>总平台后端地址</label>
-        <input class="input" id="backendUrl" placeholder="https://your-backend.com/api/pay" value="${esc(getBackendURL())}" autocomplete="off">
-        <div class="hint">留空则走本地演示直连；填写后所有 AI 调用经后端代理（Key 不在前端）。</div>
-      </div>
-      <div class="row gap-10" style="margin:6px 0">
-        <input class="input" id="backendAdminCode" type="password" placeholder="管理员口令（ADMIN_CODE）" value="${esc(getBackendAdminCode())}" autocomplete="off" style="flex:1">
-        <input class="input" id="backendMerchantId" placeholder="商家ID" value="${esc(getBackendMerchantId())}" autocomplete="off" style="width:120px">
-      </div>
-      <div class="row gap-10" style="margin-top:6px">
-        <button class="btn btn-ghost" data-action="testBackend">${ICON("sparkles")} 测试后端连接</button>
-      </div>
-      <hr style="border:none;border-top:1px solid var(--line,#eee);margin:16px 0">
-      <div class="field"><label>本地演示 Key（服务商）</label>
-        <select class="input" id="aiProvider">
-          <option value="deepseek" ${provider === "deepseek" ? "selected" : ""}>DeepSeek（deepseek-chat）</option>
-          <option value="qwen" ${provider === "qwen" ? "selected" : ""}>阿里云百炼（qwen-plus）</option>
-        </select>
-      </div>
-      <div class="field"><label>本地演示 Key</label>
-        <input class="input" id="aiKey" type="password" placeholder="sk-... 或 DashScope Key（仅未接后端时生效）" value="${esc(key)}" autocomplete="off">
-        <div class="hint">⚠️ 仅本地演示用：Key 只存本机浏览器，不上传服务器；接入总平台后端后此 Key 不再使用。</div>
-      </div>
-      <div class="row gap-10" style="margin-top:6px">
-        <button class="btn btn-primary btn-lg" data-action="saveAI">${ICON("check")} 保存并设置</button>
-        <button class="btn btn-ghost" data-action="testAI">${ICON("sparkles")} 测试连接</button>
-      </div>
-      <div class="tiny muted" style="margin-top:14px">说明：接入总平台后端后，浏览器不再直连模型 API，也不受 CORS 跨域限制；Key 由平台在服务端统一持有。</div>
+    return `<div class="card card-pad" style="max-width:680px">
+      <div class="eyebrow">AI 大模型配置</div>
+      <h2 class="section-title" style="margin:8px 0 4px">文案 AI 与视觉模型（两套独立配置）</h2>
+      <p class="muted small" style="margin:0 0 18px">下方分为<b>两个独立区域</b>：① 文案大模型负责活动解析 / AI 文案生成；② 视觉模型负责照片智能识别（场景/人数/裁切风险等）。两者使用不同的 Key、不同的服务商，互不影响。</p>
 
-      <hr style="border:none;border-top:1px solid var(--line,#eee);margin:20px 0 16px">
-      <div class="eyebrow">视觉模型</div>
-      <h3 class="section-title" style="margin:6px 0 4px;font-size:18px">照片识别设置（可选）</h3>
-      <p class="muted small" style="margin:0 0 14px">用于把照片的「场景 / 人数 / 动作 / 裁切风险 / 文字安全区」从规则推断升级为<b>真实视觉识别</b>。不配置也能用：系统会走本地像素分析 + 规则推断（结果标注为「模拟分析」）。</p>
-      <div class="field"><label>服务商（选择即带出默认模型与接口）</label>
-        <select class="input" id="visionProvider" data-action="visionProviderChange">
-          ${Object.keys(VISION_PROVIDERS).map((k) => `<option value="${k}" ${vp === k ? "selected" : ""}>${VISION_PROVIDERS[k].label}</option>`).join("")}
-        </select>
+      <!-- ====== 共享：总平台后端（可选） ====== -->
+      <div style="background:var(--bg-soft,#f7f7f7);border-radius:10px;padding:14px 16px;margin-bottom:20px">
+        <div class="field" style="margin-bottom:10px"><label>总平台后端地址（可选）</label>
+          <input class="input" id="backendUrl" placeholder="https://your-backend.com/api/pay" value="${esc(getBackendURL())}" autocomplete="off">
+          <div class="hint">留空则走本地演示直连；填写后所有 AI 调用经后端代理（Key 不在前端）。</div>
+        </div>
+        <div class="row gap-10" style="margin:6px 0">
+          <input class="input" id="backendAdminCode" type="password" placeholder="管理员口令（ADMIN_CODE）" value="${esc(getBackendAdminCode())}" autocomplete="off" style="flex:1">
+          <input class="input" id="backendMerchantId" placeholder="商家ID" value="${esc(getBackendMerchantId())}" autocomplete="off" style="width:120px">
+        </div>
+        <div class="row gap-10" style="margin-top:6px">
+          <button class="btn btn-ghost btn-sm" data-action="testBackend">${ICON("sparkles")} 测试后端连接</button>
+        </div>
       </div>
-      <div class="row gap-10" style="margin-top:6px">
-        <input class="input" id="visionModel" list="visionModelList" placeholder="模型名（选服务商后自动带出，也可手改）" value="${esc(vm)}" style="flex:1">
-        <input class="input" id="visionBaseUrl" placeholder="Base URL（可选，默认按服务商）" value="${esc(vb)}" style="flex:1">
+
+      <!-- ====== ① 文案大模型 ====== -->
+      <div style="border:2px solid var(--primary,#c0392b);border-radius:12px;padding:18px;margin-bottom:20px;position:relative">
+        <div style="position:absolute;top:-12px;left:16px;background:var(--primary,#c0392b);color:#fff;font-size:12px;font-weight:700;padding:2px 10px;border-radius:6px;letter-spacing:.5px">① 文案大模型</div>
+        <p class="muted small" style="margin:10px 0 14px"><b>用途：</b>活动信息解析 · AI 文案生成 · 宣发内容创作 · 装备推荐</p>
+        <div class="field"><label>服务商</label>
+          <select class="input" id="aiProvider">
+            <option value="deepseek" ${provider === "deepseek" ? "selected" : ""}>DeepSeek（deepseek-chat）</option>
+            <option value="qwen" ${provider === "qwen" ? "selected" : ""}>阿里云百炼（qwen-plus）</option>
+          </select>
+        </div>
+        <div class="field"><label>API Key</label>
+          <input class="input" id="aiKey" type="password" placeholder="sk-... （仅未接后端时生效）" value="${esc(key)}" autocomplete="off">
+          <div class="hint">⚠️ 仅存本机浏览器；接入总平台后端后此 Key 不再使用。</div>
+        </div>
+        <div class="row gap-10" style="margin-top:8px">
+          <button class="btn btn-primary" data-action="saveAI">${ICON("check")} 保存文案设置</button>
+          <button class="btn btn-ghost" data-action="testAI">${ICON("sparkles")} 测试连接</button>
+        </div>
       </div>
-      <datalist id="visionModelList">${(VISION_PROVIDERS[vp] ? VISION_PROVIDERS[vp].models : []).map((m) => `<option value="${m}">${m}</option>`).join("")}</datalist>
-      <div class="hint" id="visionModelHint">${(VISION_PROVIDERS[vp] && VISION_PROVIDERS[vp].recommended) ? "推荐：" + VISION_PROVIDERS[vp].recommended : ""}</div>
-      <div class="field" style="margin-top:10px"><label>视觉模型 Key</label>
-        <input class="input" id="visionKeyInput" type="password" placeholder="视觉模型 Key（仅未接后端时生效）" value="${esc(vk)}" autocomplete="off">
+
+      <!-- ====== ② 视觉模型 ====== -->
+      <div style="border:2px solid var(--teal,#1abc9c);border-radius:12px;padding:18px;position:relative">
+        <div style="position:absolute;top:-12px;left:16px;background:var(--teal,#1abc9c);color:#fff;font-size:12px;font-weight:700;padding:2px 10px;border-radius:6px;letter-spacing:.5px">② 视觉模型</div>
+        <p class="muted small" style="margin:10px 0 14px"><b>用途：</b>照片场景识别 · 人数统计 · 裁切风险判断 · 文字安全区检测 · 焦点定位</p>
+        <div class="field"><label>服务商（选择即带出默认模型与接口）</label>
+          <select class="input" id="visionProvider" data-action="visionProviderChange">
+            ${Object.keys(VISION_PROVIDERS).map((k) => `<option value="${k}" ${vp === k ? "selected" : ""}>${VISION_PROVIDERS[k].label}</option>`).join("")}
+          </select>
+        </div>
+        <div class="row gap-10" style="margin-top:6px">
+          <input class="input" id="visionModel" list="visionModelList" placeholder="模型名（选服务商后自动带出，也可手改）" value="${esc(vm)}" style="flex:1">
+          <input class="input" id="visionBaseUrl" placeholder="Base URL（可选，默认按服务商）" value="${esc(vb)}" style="flex:1">
+        </div>
+        <datalist id="visionModelList">${(VISION_PROVIDERS[vp] ? VISION_PROVIDERS[vp].models : []).map((m) => `<option value="${m}">${m}</option>`).join("")}</datalist>
+        <div class="hint" id="visionModelHint">${(VISION_PROVIDERS[vp] && VISION_PROVIDERS[vp].recommended) ? "推荐：" + VISION_PROVIDERS[vp].recommended : ""}</div>
+        <div class="field" style="margin-top:10px"><label>API Key</label>
+          <input class="input" id="visionKeyInput" type="password" placeholder="视觉模型 API Key（仅未接后端时生效）" value="${esc(vk)}" autocomplete="off">
+          <div class="hint">⚠️ 与文案 Key 完全独立；仅存本机浏览器；不配置也能用（走本地规则推断）。</div>
+        </div>
+        <div class="row gap-10" style="margin-top:8px">
+          <button class="btn btn-primary" data-action="saveVision">${ICON("check")} 保存视觉设置</button>
+          <button class="btn btn-ghost" data-action="testVision">${ICON("sparkles")} 测试视觉识别</button>
+        </div>
+        <div class="tiny muted" style="margin-top:10px">当前状态：${esc(vStatus)}</div>
       </div>
-      <div class="row gap-10" style="margin-top:6px">
-        <button class="btn btn-primary btn-lg" data-action="saveVision">${ICON("check")} 保存视觉设置</button>
-        <button class="btn btn-ghost" data-action="testVision">${ICON("sparkles")} 测试视觉识别</button>
-      </div>
-      <div class="tiny muted" style="margin-top:10px">当前状态：${esc(vStatus)}</div>
     </div>`;
   }
   function saveAISettings() {
