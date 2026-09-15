@@ -4849,6 +4849,12 @@ body{
 /* 事实安全警告：默认可见（不可折叠），因为它是合规提示而非内部参数 */
 .xf-warn{font-size:12.5px;line-height:1.6;color:#8a4a1f;background:#fdf3e8;border:1px solid #f0d9bf;border-left:3px solid #d9822b;border-radius:8px;padding:9px 12px;font-weight:600}
 .xf-down{font-size:12.5px;line-height:1.6;color:#2f5d50;background:#eef5f2;border:1px solid #cfe3dc;border-left:3px solid #2f5d50;border-radius:8px;padding:9px 12px;font-weight:600}
+/* P2-5 页面质量定性徽标：仅露档位(优秀/良好/可优化/需优化)，不暴露数字分数 */
+.xf-qbadge{display:inline-block;font-size:12px;line-height:1;padding:4px 9px;border-radius:999px;border:1px solid #d8d8d8;color:#666;background:#f4f4f4;font-weight:600;white-space:nowrap}
+.xf-qb-优秀{color:#1f7a4d;background:#eaf6ef;border-color:#bfe3cf}
+.xf-qb-良好{color:#2f5d8f;background:#eef4fa;border-color:#cfe0f0}
+.xf-qb-可优化{color:#9a6b00;background:#fbf3e2;border-color:#ecd9b3}
+.xf-qb-需优化{color:#a33333;background:#fdecec;border-color:#f3c4c4}
 .xf-stylebar-main{gap:10px}
 .xf-style-name{font-size:13px;color:var(--ink);margin-right:6px}
 .xf-adv{margin-top:2px}

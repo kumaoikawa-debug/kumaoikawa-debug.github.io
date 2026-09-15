@@ -1027,11 +1027,13 @@ function xfStripUnsupportedClaims(out, facts, adv) {
 }
 
 /* §39 ContentQualityCheck：虚构词 / 模板拼接感 / 空洞词 / 重复 / 主题统一 / 图文匹配 / 转化 / 纪实 */
+// P2-5：FORBID 词表抽为模块级常量，供 xfContentQuality 与 xfPageQuality(事实安全维) 共用，避免两处漂移
+const XF_FORBID_WORDS = ["万里无云", "阳光明媚", "下起了雨", "突然放晴", "领队说", "大家纷纷表示", "据说", "据说当时", "不得不说", "说实话", "我们都很", "大家都说", "很多人都说", "风景绝好", "风景绝佳", "新手友好", "新手也能跟上", "不用担心跟不上", "强度友好", "我们登顶了", "把山踩在了脚下", "绝对值得", "必去", "guaranteed", "走完了全程", "走完全程", "把这条线走完了", "玩得超尽兴", "玩得尽兴", "大家玩得尽兴", "我们完成全程", "互相照应", "互相照顾", "大家互相照顾", "有人说来对了", "有人说", "合照那一刻", "返程车上安静下来", "返程车上", "当天下雨"];
 function xfContentQuality(out, dir, scenario, facts, adv) {
   const T = xfTextOf(out);
   const flags = [];
   let score = 100;
-  const FORBID = ["万里无云", "阳光明媚", "下起了雨", "突然放晴", "领队说", "大家纷纷表示", "据说", "据说当时", "不得不说", "说实话", "我们都很", "大家都说", "很多人都说", "风景绝好", "风景绝佳", "新手友好", "新手也能跟上", "不用担心跟不上", "强度友好", "我们登顶了", "把山踩在了脚下", "绝对值得", "必去", "guaranteed", "走完了全程", "走完全程", "把这条线走完了", "玩得超尽兴", "玩得尽兴", "大家玩得尽兴", "我们完成全程", "互相照应", "互相照顾", "大家互相照顾", "有人说来对了", "有人说", "合照那一刻", "返程车上安静下来", "返程车上", "当天下雨"];
+  const FORBID = XF_FORBID_WORDS;
   let fiction = 0; FORBID.forEach((w) => { if (T.indexOf(w) >= 0) { fiction++; if (flags.indexOf("fiction:" + w) < 0) flags.push("fiction:" + w); } });
   if (fiction > 0) score -= Math.min(45, fiction * 14);
   // P0-18：统一 12 类 Claim→Fact 硬校验（含新增 登顶 / 安全保障）。
@@ -1108,8 +1110,139 @@ function xfQualityCheck(out, dir, scenario, facts, adv) {
               : (editorialRisk ? "版式质量分偏低（" + eq.score + "），已尝试重选家族/变体"
                 : "文案基于已确认事实，质量达标（内容 " + cq.score + " / 版式 " + eq.score + "）")))),
     };
+    // P2-5：六维页面质量评分（内部判断，不向用户暴露数字，仅存定性档位供 UI/日志/自动优化决策）
+    state.xf.pageQuality = xfPageQuality(state.xf, out);
   }
   return out;
+}
+
+/* ---------- P2-5 页面内容质量评分（内部判断，不直接暴露数字给用户） ----------
+   六维：事实安全 / 重复 / 主题一致 / 图片匹配 / 模板感 / 情绪感染力
+   每维 0-1 子分；加权合成总评 0-100；对外仅给定性档位(优秀/良好/可优化/需优化)。 */
+function xfBand(s01) {
+  if (s01 >= 0.82) return "优秀";
+  if (s01 >= 0.65) return "良好";
+  if (s01 >= 0.45) return "可优化";
+  return "需优化";
+}
+// ① 事实安全：FORBID 虚构词 + 12 类无依据 claim（复用 §39 的 xfClaimDetectors）
+function xfDimFactSafety(text, facts, adv) {
+  const forb = (XF_FORBID_WORDS || []).filter((w) => (text || "").indexOf(w) >= 0).length;
+  let unsup = 0;
+  if (facts || adv) {
+    const det = xfClaimDetectors(facts, adv);
+    det.forEach((c) => {
+      const okv = (typeof c.ok === "function") ? c.ok(text) : c.ok;
+      if (c.re.test(text) && !okv) unsup++;
+    });
+  }
+  const penalty = Math.min(1, forb * 0.18 + unsup * 0.10);
+  return { score: +(1 - penalty).toFixed(2), detail: { forb: forb, unsup: unsup } };
+}
+// ② 重复：正文句子级精确重复 + 12 字前缀近似重复
+function xfDimRepeat(text) {
+  const sents = (text || "").split(/(?<=[。！？；\n])/).map((s) => s.trim()).filter((s) => s.length >= 8);
+  if (!sents.length) return { score: 1, detail: { dup: 0, total: 0 } };
+  const seenExact = {}, seenPre = {}; let dup = 0;
+  sents.forEach((s) => {
+    const n = s.replace(/\s+/g, ""); const pre = n.slice(0, 12);
+    if (seenExact[n] || (pre.length >= 12 && seenPre[pre])) dup++;
+    else { seenExact[n] = 1; if (pre.length >= 12) seenPre[pre] = 1; }
+  });
+  const ratio = dup / sents.length;
+  return { score: +(1 - Math.min(1, ratio * 1.5)).toFixed(2), detail: { dup: dup, total: sents.length } };
+}
+// ③ 主题一致：正文是否覆盖活动核心事实/主题词（mainTheme/place/activityName/type/卖点/季节）
+function xfDimTheme(text, xf) {
+  const m = (xf && xf.master) || {};
+  const f = m.confirmedFacts || {};
+  const kws = [];
+  if (m.mainTheme) kws.push(m.mainTheme);
+  if (f.place) kws.push(f.place);
+  if (f.activityName) kws.push(f.activityName);
+  if (f.type) kws.push(f.type);
+  if (m.mainSellingPoint) kws.push(m.mainSellingPoint);
+  if (f.season) kws.push(f.season);
+  const uniq = []; kws.forEach((k) => { if (k && uniq.indexOf(k) < 0) uniq.push(k); });
+  if (!uniq.length) return { score: 0.6, detail: { matched: 0, total: 0 } };
+  let matched = 0; uniq.forEach((k) => { if ((text || "").indexOf(k) >= 0) matched++; });
+  const expected = Math.min(uniq.length, 5);
+  return { score: +Math.min(1, matched / expected).toFixed(2), detail: { matched: matched, total: uniq.length } };
+}
+// ④ 图片匹配：正文描述的场景是否有对应照片分类覆盖（xf.master.keyImages[].cat）
+function xfDimImage(text, xf) {
+  const m = (xf && xf.master) || {};
+  const photos = m.keyImages || [];
+  if (!photos.length) return { score: 0.55, detail: { note: "no-photos", needed: 0, matched: 0 } };
+  const cats = photos.map((p) => p.cat).filter(Boolean);
+  const sceneMap = [
+    [/水|河|湖|溪|海|泳|桨|漂/, ["water", "scenic"]],
+    [/山|峰|林|野|自然|风景|景/, ["scenic", "route", "water", "camp"]],
+    [/路|线|徒步|登山|爬|坡|垭/, ["route", "scenic"]],
+    [/营|帐|野炊|篝火/, ["camp", "meal"]],
+    [/餐|食|饭|补给/, ["meal"]],
+    [/人|伙伴|队友|合影|我们|大家|同行/, ["people", "team", "cover"]],
+    [/装备|杖|头盔|包/, ["gear", "detail"]],
+    [/夜|星|晚/, ["scenic", "detail"]],
+    [/细节|特写|近景/, ["detail", "gear"]],
+  ];
+  let needed = [];
+  sceneMap.forEach((pair) => { if (pair[0].test(text || "")) pair[1].forEach((c) => { if (needed.indexOf(c) < 0) needed.push(c); }); });
+  if (!needed.length) return { score: 0.8, detail: { note: "no-scene-mention", cats: cats.length, needed: 0, matched: 0 } };
+  const have = needed.filter((c) => cats.indexOf(c) >= 0);
+  const ratio = have.length / needed.length;
+  return { score: +Math.max(0.3, Math.min(1, ratio)).toFixed(2), detail: { needed: needed.length, matched: have.length } };
+}
+// ⑤ 模板感：套路开头 + 空洞词（复用 §39 的 TEMPLATE/HOLLOW 思路）
+function xfDimTemplate(text) {
+  const TEMPLATE = ["大家好，", "大家好！", "今天给大家", "一起来看看", "不仅如此", "总而言之", "总的来说", "首先，", "其次，", "最后，"];
+  const HOLLOW = ["说走就走", "治愈", "松弛感", "诗和远方", "岁月静好", "人间值得", "小确幸", "元气满满", "绝绝子"];
+  let tpl = 0; TEMPLATE.forEach((w) => { if ((text || "").indexOf(w) >= 0) tpl++; });
+  let hollow = 0; HOLLOW.forEach((w) => { if ((text || "").indexOf(w) >= 0) hollow++; });
+  const penalty = Math.min(1, tpl * 0.12 + hollow * 0.15);
+  return { score: +(1 - penalty).toFixed(2), detail: { tpl: tpl, hollow: hollow } };
+}
+// ⑥ 情绪感染力：感官/画面词 + 互动/第二人称 + 情绪词 + 设问 + 句式长短变化
+function xfDimEmotion(text) {
+  const SENSE = ["风", "光", "云", "山", "水", "汗", "笑", "呼吸", "夕阳", "清晨", "落日", "星空", "暖", "凉", "静", "慢", "雾", "林", "野", "溪", "海"];
+  const ENGAGE = ["你", "我们", "一起", "不妨", "何不", "试试", "记得", "想象"];
+  const FEEL = ["治愈", "感动", "惊喜", "期待", "宁静", "欢喜", "自由", "心动", "惬意", "温柔", "热烈", "雀跃", "忘我", "辽阔"];
+  const Q = ((text || "").match(/[？?]/g) || []).length;
+  let sense = 0; SENSE.forEach((w) => { if ((text || "").indexOf(w) >= 0) sense++; });
+  let engage = 0; ENGAGE.forEach((w) => { if ((text || "").indexOf(w) >= 0) engage++; });
+  let feel = 0; FEEL.forEach((w) => { if ((text || "").indexOf(w) >= 0) feel++; });
+  const sents = (text || "").split(/(?<=[。！？；])/).map((s) => s.trim()).filter((s) => s.length > 0);
+  let variation = 0;
+  if (sents.length >= 3) { const ls = sents.map((s) => s.length); const span = Math.max.apply(null, ls) - Math.min.apply(null, ls); variation = span > 10 ? 1 : 0; }
+  const signals = sense + engage + feel + (Q > 0 ? 1 : 0) + variation;
+  const expected = 6;
+  return { score: +Math.min(1, signals / expected).toFixed(2), detail: { sense: sense, engage: engage, feel: feel, q: Q, variation: variation } };
+}
+// 综合：六维加权 → 总评 0-100 + 定性档位
+function xfPageQuality(xf, out) {
+  xf = xf || ((typeof state !== "undefined" && state.xf) || {});
+  out = out || xf.out;
+  const text = (typeof xfTextOf === "function" && out) ? xfTextOf(out) : "";
+  const m = xf.master || {};
+  const f = m.confirmedFacts || {};
+  const adv = m.actualActivityData || null;
+  const fact = xfDimFactSafety(text, f, adv);
+  const repeat = xfDimRepeat(text);
+  const theme = xfDimTheme(text, xf);
+  const image = xfDimImage(text, xf);
+  const tpl = xfDimTemplate(text);
+  const emotion = xfDimEmotion(text);
+  const W = { factSafety: 0.28, repeat: 0.15, theme: 0.20, image: 0.12, template: 0.10, emotion: 0.15 };
+  const dims = { factSafety: fact.score, repeat: repeat.score, theme: theme.score, image: image.score, template: tpl.score, emotion: emotion.score };
+  let overall01 = 0; Object.keys(W).forEach((k) => { overall01 += dims[k] * W[k]; });
+  const overall = Math.round(overall01 * 100);
+  const band = xfBand(overall / 100);
+  const lowDims = Object.keys(dims).filter((k) => dims[k] < 0.55).map((k) => k);
+  return {
+    overall: overall, overall01: +overall01.toFixed(2), band: band, dims: dims, weights: W,
+    detail: { fact: fact.detail, repeat: repeat.detail, theme: theme.detail, image: image.detail, template: tpl.detail, emotion: emotion.detail },
+    lowDims: lowDims, computedAt: (typeof Date !== "undefined") ? Date.now() : 0,
+  };
 }
 
 /* ---------- 文案辅助（保留原有模板回退用） ---------- */
@@ -1408,6 +1541,8 @@ function xfStyleBar(xf) {
   const vs = (XF_FAMILIES[xf.family] && XF_FAMILIES[xf.family].variants) || [""];
   const vName = vs[xf.variant || 0] || "";
   const q = xf.quality || {};
+  // P2-5：页面质量评分属内部判断，主 UI 仅显示定性档位徽标，不暴露数字
+  const pq = xf.pageQuality || null;
   // P1-8 质量信息用户化：**分数**属内部信息，留在「高级信息」内。
   // 但「缺少事实依据」是合规警告（P2-2），必须默认可见 —— 折进折叠块里等于没提示。
   const warnText = q.fictionRisk ? ("⚠️ " + (q.note || "发现可能缺少事实依据的描述，请确认。"))
@@ -1422,6 +1557,7 @@ function xfStyleBar(xf) {
     <div class="xf-stylebar-row xf-stylebar-main">
       <span class="xf-stylebar-lbl">当前风格</span>
       <b class="xf-style-name">${esc(famLabel)}${vName ? " · " + esc(vName) : ""}</b>
+      ${pq ? `<span class="xf-qbadge xf-qb-${esc(pq.band)}">内容质量 ${esc(pq.band)}</span>` : ""}
       <button class="btn btn-ghost btn-sm" data-action="xfNextVariant">${ICON("refresh")} 换一种版式</button>
       <button class="btn btn-ghost btn-sm" data-action="xfSwitchStyle">${ICON("sparkles")} 换一种风格</button>
     </div>
@@ -1445,6 +1581,7 @@ function xfStyleBar(xf) {
       ${dir ? `<div class="xf-dir">编辑方向 Editorial Direction：<b>${esc(dir.angle || "")}</b>${dir.hook ? ` · 钩子「${esc(dir.hook)}」` : ""} · 视觉 ${esc((dir.visual && dir.visual.color) || "")}/${esc((dir.visual && dir.visual.composition) || "")}</div>` : ""}
       <div class="xf-stylebar-row xf-debug-kv"><span class="xf-stylebar-lbl">Style Seed</span><code>${xf.styleSeed != null ? esc(String(xf.styleSeed)) : "—"}</code></div>
       <div class="xf-stylebar-row xf-debug-kv"><span class="xf-stylebar-lbl">Quality Score</span><code>内容 ${cScore != null ? cScore : "—"} ／ 版式 ${eScore != null ? eScore : "—"}</code></div>
+      ${pq ? `<div class="xf-stylebar-row xf-debug-kv"><span class="xf-stylebar-lbl">页面质量(内部)</span><code>总评 ${esc(pq.band)} ｜ 事实 ${esc(xfBand(pq.dims.factSafety))} ／ 重复 ${esc(xfBand(pq.dims.repeat))} ／ 主题 ${esc(xfBand(pq.dims.theme))} ／ 图片 ${esc(xfBand(pq.dims.image))} ／ 模板 ${esc(xfBand(pq.dims.template))} ／ 情绪 ${esc(xfBand(pq.dims.emotion))}</code></div>` : ""}
     </details>
   </div>`;
 }
