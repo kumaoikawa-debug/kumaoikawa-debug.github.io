@@ -658,6 +658,7 @@
       limit: null, limitUnit: "人", meeting: "", meetTime: "", returnTime: "", distance: null, elevation: "",
       includeLeader: false, includeMeal: false, includeInsurance: false, includeTransport: false, includeGear: false,
       photos: [], videos: [], highlights: [], intro: "", hook: "", body: [], sellingPoints: [], editorialTitle: "", posterTagline: "", pullQuote: "", storyPurpose: "", photoCaptions: [], itineraryDays: [], feeInclude: [], feeExclude: [], subtitle: "", heroHook: "", sectionTitles: {}, whyGo: "", experience: "", gain: "", fitFor: "", notFitFor: "", socialCoreMessage: "", contentPlan: null, contentScore: null,
+      route: "",
       gear: [], gearManual: [], days: 1, difficulty: "轻松", tags: [], deposit: null, transport: "", contact: "", priceTBD: false, priceNote: "", childPrice: null, leaderIds: [], leaderName: "", leaderYears: "", leaderCert: "", leaderTrips: "", reviews: [], feeSummary: "", headline: "",
       safety: [], notesType: "", shareWechat: "", shareMoments: "", shareXhs: "", shareGzh: "", shareVoice: "",
       notes: "出发前 3 天可全额退；前 1 天退 50%；当天不退，但可转让名额。",
@@ -1115,8 +1116,9 @@
   }
 
   const FACT_SPECS = [
-    { key: "place", label: "活动地点", required: true, val: (a) => a.place, test: (raw) => /[\u4e00-\u9fa5]{2,8}?(?:山|湖|谷|林|公园|峰|岭|沟|塬|垭口|草原|梯田|古镇|古城|寺庙)/.test(raw) || CITY_NAMES.some((k) => raw.includes(k)) },
-    { key: "date", label: "活动日期", required: true, val: (a) => a.date || a.dateMD, test: (raw) => /\d{1,2}\s*月\s*\d{1,2}\s*日|本周|下周|本周末|下周末|周末|国庆|元旦|春节|中秋|端午|清明|五一/.test(raw) },
+    { key: "place", label: "活动地点", required: true, val: (a) => a.place, test: (raw) => /[\u4e00-\u9fa5]{2,8}?(?:山|湖|谷|林|公园|峰|岭|沟|塬|垭口|草原|梯田|古镇|古城|寺庙|州|市|县|镇|区|城|村|坪|堰|屯|堡)/.test(raw) || CITY_NAMES.some((k) => raw.includes(k)) },
+    { key: "route", label: "具体路线", required: (a) => ["徒步", "登山", "骑行", "越野", "跑步", "溯溪"].includes(a.type) || /徒步|登山|骑行|越野|穿越|爬山|轻徒步/.test(a.raw || ""), val: (a) => a.route, test: (raw) => /路线|线路|轨迹|途经|途径|上山路线|徒步路线/.test(raw) },
+    { key: "date", label: "活动日期", required: true, val: (a) => a.date || a.dateMD, test: (raw) => /\d{1,2}\s*月\s*\d{1,2}\s*日|本周|下周|本周末|下周末|周末|周六|周日|国庆|元旦|春节|中秋|端午|清明|五一/.test(raw) },
     { key: "days", label: "活动天数", val: (a) => a.days, test: (raw) => /\d+\s*天|两日|三日|多天|多日|过夜/.test(raw) },
     { key: "type", label: "活动类型", val: (a) => a.type, test: (raw) => TYPE_RULES.some((r) => r.kw.some((k) => raw.includes(k))) },
     { key: "difficulty", label: "活动难度", required: (a) => a.type === "高海拔登山", val: (a) => a.difficulty || inferDifficulty(a), test: (raw) => /难度|轻松|中等|挑战|入门|进阶|专业级/.test(raw) },
@@ -1129,9 +1131,9 @@
     { key: "meeting", label: "集合地点", required: true, val: (a) => a.meeting, test: (raw) => /集合|上车|出发|签到/.test(raw) },
     { key: "meetTime", label: "集合时间", required: true, val: (a) => a.meetTime, test: (raw) => /\d{1,2}\s*[:：]\s*\d{2}|\d{1,2}\s*点/.test(raw) },
     { key: "returnTime", label: "返回时间", val: (a) => a.returnTime, test: (raw) => /返回|回到|解散/.test(raw) },
-    { key: "services", label: "已确认服务", val: (a) => { const s = []; if (a.includeLeader) s.push("领队"); if (a.includeMeal) s.push("餐食"); if (a.includeInsurance) s.push("保险"); if (a.includeTransport) s.push("交通"); if (a.includeGear) s.push("装备"); return s.join("、"); }, test: (raw) => /领队|向导|教练|带队|协作|午餐|含餐|餐饮|吃饭|保险|交通|接送|包车|装备|全包/.test(raw) },
+    { key: "services", label: "费用包含（80元含什么）", required: (a) => (a.price != null || a.priceTBD), val: (a) => { const s = []; if (a.includeLeader) s.push("领队"); if (a.includeMeal) s.push("餐食"); if (a.includeInsurance) s.push("保险"); if (a.includeTransport) s.push("交通"); if (a.includeGear) s.push("装备"); if ((a.feeInclude || []).length && !s.length) s.push.apply(s, a.feeInclude); return s.join("、"); }, test: (raw) => /领队|向导|教练|带队|协作|午餐|含餐|餐饮|吃饭|保险|交通|接送|包车|装备|全包|含|包含/.test(raw) },
     { key: "feeExclude", label: "费用不含", val: (a) => ((a.feeExclude || []).length ? "已填写" : ""), test: (raw) => /不含|自理|自费/.test(raw) },
-    { key: "itinerary", label: "详细行程", required: true, val: (a) => { const d = (a.itineraryDays || []).filter((x) => (x.items || []).some((t) => t && (t.time || t.text))); return d.length ? d.length + " 天已填" : ""; }, test: (raw) => /行程|集合后|出发后/.test(raw) },
+    { key: "itinerary", label: "详细行程", required: (a) => a.type === "高海拔登山" || a.difficulty === "挑战" || (parseFloat(a.elevation) >= 3500), val: (a) => { const d = (a.itineraryDays || []).filter((x) => (x.items || []).some((t) => t && (t.time || t.text))); return d.length ? d.length + " 天已填" : ""; }, test: (raw) => /行程|集合后|出发后/.test(raw) },
     { key: "leaderInfo", label: "领队资料", val: (a) => a.leaderName, test: (raw) => /领队|教练|向导|从业|资质/.test(raw) },
     { key: "gear", label: "装备清单", val: (a) => ((a.gear || []).length ? "已生成" : ""), test: (raw) => /装备|租借|自备/.test(raw) },
     { key: "refund", label: "退款规则", val: (a) => a.notes, test: (raw) => /退款|退费|取消|转让|退订/.test(raw) },
@@ -1150,7 +1152,9 @@
       else if (has) { status = "inferred"; source = "rule_inferred"; }
       // 老板在后台手动确认过的事实升级为 confirmed
       if (cf[spec.key] && has) { status = "confirmed"; source = "owner_confirmed"; }
-      return { key: spec.key, label: spec.label, value: String(v || ""), status, source, required: typeof spec.required === "function" ? !!spec.required(a) : !!spec.required };
+      // Fact Confidence：confirmed=老板已确认/已填（高）；inferred=系统推断待确认（中）；missing=待补充（无）
+      const confidence = status === "confirmed" ? "high" : status === "inferred" ? "medium" : status === "missing" ? "none" : "na";
+      return { key: spec.key, label: spec.label, value: String(v || ""), status, source, confidence, required: typeof spec.required === "function" ? !!spec.required(a) : !!spec.required };
     });
   }
   function factsOf(a, st) { return factRegistry(a).filter((f) => f.status === st); }
@@ -1158,6 +1162,84 @@
   function inferredFacts(a) { return factsOf(a, "inferred"); }
   function missingFacts(a) { return factsOf(a, "missing"); }
   function missingRequiredFacts(a) { return factRegistry(a).filter((f) => f.required && f.status === "missing"); }
+
+  /* ===== P0-1 关键事实缺口检测：一句话创建后，告诉老板还差哪些关键事实 =====
+     返回有序缺口列表，供「老板确认卡」渲染。分两类：
+       missingGaps  —— 必填且缺失（算进「还差 N 项」）
+       inferredGaps —— 系统推断的关键事实（如难度/费用包含），需老板确认但不算缺失 */
+  const GAP_META = {
+    route:     { prompt: "具体路线怎么走？（系统无法替你决定，请写明）", kind: "text", placeholder: "如：彭州小鱼洞—中坝森林环线" },
+    meeting:   { prompt: "在哪里集合上车？", kind: "text", placeholder: "如：成都·太平园地铁站 A 口" },
+    meetTime:  { prompt: "几点集合出发？", kind: "text", placeholder: "如：08:00", inputmode: "time" },
+    services:  { prompt: "这 80 元包含什么？直接写，系统帮你归类", kind: "textarea", placeholder: "如：专业领队、户外保险、午餐、往返车费" },
+    price:     { prompt: "活动价格是多少？", kind: "text", placeholder: "如：80" },
+    date:      { prompt: "活动是哪一天？", kind: "text", placeholder: "如：本周六 / 10月12日" },
+    place:     { prompt: "活动地点在哪？", kind: "text", placeholder: "如：彭州" },
+    difficulty:{ prompt: "难度怎么标？（系统已推测，请确认或改正）", kind: "text", placeholder: "轻松 / 适中 / 进阶 / 挑战" },
+    itinerary: { prompt: "详细行程？（可稍后在编辑器补）", kind: "textarea", placeholder: "如：08:00 集合出发，10:00 进山，16:00 返程" },
+    age:       { prompt: "适合什么年龄？", kind: "text", placeholder: "如：18-45 岁" },
+    limit:     { prompt: "招募上限几人？", kind: "text", placeholder: "如：20 人" },
+    days:      { prompt: "活动几天？", kind: "text", placeholder: "如：1 天" },
+    leaderInfo:{ prompt: "领队是谁？", kind: "text", placeholder: "领队姓名" },
+    contact:   { prompt: "报名联系电话？", kind: "text", placeholder: "手机号" },
+    refund:    { prompt: "退款规则？（可留空用默认）", kind: "text", placeholder: "可留空" },
+  };
+  const GAP_PRIORITY = ["route", "meeting", "meetTime", "services", "price", "date", "place", "difficulty", "itinerary", "age", "limit", "days", "leaderInfo", "contact", "refund"];
+  function detectKeyGaps(a) {
+    const reg = factRegistry(a);
+    const need = reg.filter((f) => {
+      if (f.required && f.status === "missing") return true;
+      if (f.status === "inferred" && (f.required || f.key === "difficulty" || f.key === "services")) return true;
+      return false;
+    });
+    return need.map((f) => {
+      const m = GAP_META[f.key] || { prompt: "请补充：" + f.label, kind: "text", placeholder: f.label };
+      return { key: f.key, label: f.label, status: f.status, confidence: f.confidence, value: f.value || "", prompt: m.prompt, kind: m.kind, placeholder: m.placeholder, inputmode: m.inputmode };
+    }).sort((x, y) => GAP_PRIORITY.indexOf(x.key) - GAP_PRIORITY.indexOf(y.key));
+  }
+  function isPublishBlocked(a) { const chk = runPublishCheck(a); return !chk.ok; }
+
+  // 把老板写的「费用包含」自由文本归类为结构化字段（同步 feeInclude / include* 标志）
+  function parseFeeInclude(text, a) {
+    const items = String(text || "").split(/[、，,;；\n]+/).map((s) => s.trim()).filter(Boolean);
+    a.includeLeader = items.some((s) => /领队|向导|教练|带队|协作/.test(s));
+    a.includeMeal = items.some((s) => /餐|食|午饭|午餐|吃饭/.test(s));
+    a.includeInsurance = items.some((s) => /保险/.test(s));
+    a.includeTransport = items.some((s) => /交通|车|接送|包车/.test(s));
+    a.includeGear = items.some((s) => /装备/.test(s));
+    if (!a.factConfirmed) a.factConfirmed = {};
+    a.factConfirmed.services = true;
+  }
+  // 把老板在确认卡里填的某一个关键事实写回活动，并同步派生字段
+  function applyBossFact(a, key, value) {
+    value = String(value == null ? "" : value).trim();
+    if (!a.factConfirmed) a.factConfirmed = {};
+    if (!value) return;
+    if (key === "route") { a.route = value; a.factConfirmed.route = true; }
+    else if (key === "meeting") { a.meeting = value; a.factConfirmed.meeting = true; }
+    else if (key === "meetTime") { a.meetTime = value; a.factConfirmed.meetTime = true; }
+    else if (key === "services") { parseFeeInclude(value, a); }
+    else if (key === "price") {
+      const n = parseFloat(value.replace(/[^\d.]/g, ""));
+      if (!isNaN(n)) {
+        a.price = n;
+        if (!a.departures || !a.departures.length) { const d = departureFromDate(a.date, a.price); if (d) a.departures = [d]; }
+        else a.departures.forEach((d) => { if (d.price == null) d.price = a.price; });
+      }
+      a.factConfirmed.price = true;
+    }
+    else if (key === "date") { a.date = value; a.dateMD = toDateMD(value); a.factConfirmed.date = true; }
+    else if (key === "place") { a.place = value; a.factConfirmed.place = true; }
+    else if (key === "difficulty") { const cd = cleanDifficulty(value); if (cd) a.difficulty = cd; a.factConfirmed.difficulty = true; }
+    else if (key === "age") { a.ageRange = value; const mm = value.match(/(\d{1,3})\s*[-—~至到]\s*(\d{1,3})/); if (mm) { a.ageFrom = +mm[1]; a.ageTo = +mm[2]; } a.factConfirmed.age = true; }
+    else if (key === "limit") { const n = parseInt(value.replace(/\D/g, ""), 10); if (!isNaN(n)) a.limit = n; a.factConfirmed.limit = true; }
+    else if (key === "days") { const n = parseInt(value.replace(/\D/g, ""), 10); if (!isNaN(n)) a.days = n; a.factConfirmed.days = true; }
+    else if (key === "itinerary") { a._itineraryNote = value; a.factConfirmed.itinerary = true; }
+    else if (key === "leaderInfo") { a.leaderName = value; a.factConfirmed.leaderInfo = true; }
+    else if (key === "contact") { a.contact = value; a.factConfirmed.contact = true; }
+    else if (key === "refund") { if (value) a.notes = value; a.factConfirmed.refund = true; }
+    syncDerived(a); syncItineraryDays(a);
+  }
   function confirmFact(a, key) { if (!a.factConfirmed) a.factConfirmed = {}; a.factConfirmed[key] = true; }
   /* ===== V2.0 发布前事实检查 =====
      blocking：关键错误，禁止发布；warnings：非关键缺失，可隐藏对应模块后发布。 */

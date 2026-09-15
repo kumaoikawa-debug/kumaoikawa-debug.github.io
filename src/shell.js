@@ -3,12 +3,13 @@
     state.view = view; state.params = params || {};
     const app = $("#app");
     if (view === "login") { app.innerHTML = renderLogin(); return; }
-    const backend = ["dashboard", "create", "advice", "editor", "list", "customers", "operator", "mallConsole", "settings", "decorate", "analytics", "signups", "membership", "ai", "brand", "plans", "memberMarketing", "membershipAdmin"];
+    const backend = ["dashboard", "create", "advice", "editor", "factConfirm", "list", "customers", "operator", "mallConsole", "settings", "decorate", "analytics", "signups", "membership", "ai", "brand", "plans", "memberMarketing", "membershipAdmin"];
     if (backend.includes(view)) {
       let content = "";
       if (view === "dashboard") content = renderDashboard();
       else if (view === "create") content = renderCreate();
       else if (view === "advice") content = renderContentAdvice();
+      else if (view === "factConfirm") content = renderFactConfirm();
       else if (view === "editor") content = renderEditor();
       else if (view === "list") content = renderList();
       else if (view === "customers") content = renderCustomers();
@@ -200,7 +201,7 @@
       case "generate": generateFromInput(); break;
       case "voice": toast("语音输入为视觉占位，Demo 中请直接输入文字"); break;
       case "paste": { const ta = $("#createInput"); if (ta) { ta.value = PASTE_SAMPLE; ta.focus(); } toast("已填入一段示例旧文案"); break; }
-      case "example": { const ta = $("#createInput"); if (ta) { ta.value = d.text; } else { state.draft = blankActivity(); state.draft.raw = d.text; parseActivityWithAI(d.text).then(async (json) => { if (json && !json._error && !json._needKey) { applyAIResult(json, state.draft); await ensureNarrativeFields(state.draft); await ensureItineraryFields(state.draft); syncItineraryDays(state.draft); } showView("editor"); }); } break; }
+      case "example": { const ta = $("#createInput"); if (ta) { ta.value = d.text; } else { state.draft = blankActivity(); state.draft.raw = d.text; parseActivityWithAI(d.text).then(async (json) => { if (json && !json._error && !json._needKey) { applyAIResult(json, state.draft); await ensureNarrativeFields(state.draft); await ensureItineraryFields(state.draft); syncItineraryDays(state.draft); } showView("factConfirm"); }); } break; }
       case "back": {
         const prev = backStack.pop();
         if (prev) showView(prev); else showView("dashboard");
@@ -235,6 +236,17 @@
         saveState();
         const id = state.draft.id; state.draft = null; showPublishSuccess(id); break;
       }
+      case "confirmFactsContinue": {
+        const fa = state.draft; if (!fa) break;
+        document.querySelectorAll("[id^='gap_']").forEach((el) => {
+          const key = el.id.replace("gap_", "");
+          if (el.value && el.value.trim()) applyBossFact(fa, key, el.value);
+        });
+        saveState();
+        showView("advice");
+        break;
+      }
+      case "confirmFactsSkip": { showView("advice"); break; }
       case "togglePinned": {
         if (!state.draft) break;
         state.draft.pinned = !state.draft.pinned;
@@ -1571,7 +1583,7 @@
       syncItineraryDays(state.draft);
       const sims = similarList(state.draft);
       if (sims.length) state.draft._similarList = sims.map((s) => ({ id: s.id, title: s.title }));
-      showView("advice");
+      showView("factConfirm");
     });
   }
   function showGenerating() {
@@ -1590,8 +1602,72 @@
       }
       await sleep(300);
       ov.remove();
-      showView("advice");
+      // 生成完成后进入「老板确认卡」（若 AI 解析已先完成并导航，这里保持一致）
+      if (state.view === "create" || state.view === "factConfirm") showView("factConfirm");
     })();
+  }
+  // P0-1：一句话创建后的「老板确认卡」——AI 已完成约 80%，只让老板补关键事实
+  function renderFactConfirm() {
+    const a = state.draft;
+    if (!a) { showView("dashboard"); return ""; }
+    const gaps = detectKeyGaps(a);
+    const missingGaps = gaps.filter((g) => g.status === "missing");
+    const inferredGaps = gaps.filter((g) => g.status === "inferred");
+    const confirmed = confirmedFacts(a);
+    const doneList = confirmed.slice(0, 10).map((f) => `<li><span class="gc-done-k">${esc(f.label)}</span><b>${esc(f.value)}</b></li>`).join("");
+    const gapRow = (g, i) => {
+      const tag = g.status === "inferred" ? `<span class="gc-tag gc-tag-inf">系统已推测·待确认</span>` : `<span class="gc-tag gc-tag-miss">缺失</span>`;
+      const input = g.kind === "textarea"
+        ? `<textarea class="input" id="gap_${g.key}" rows="2" placeholder="${esc(g.placeholder || "")}">${esc(g.value || "")}</textarea>`
+        : `<input class="input" id="gap_${g.key}" placeholder="${esc(g.placeholder || "")}" ${g.inputmode ? `inputmode="${g.inputmode}"` : ""} value="${esc(g.value || "")}">`;
+      return `<div class="gc-row">
+        <div class="gc-row-head"><span class="gc-idx">${i + 1}</span><span class="gc-label">${esc(g.label)}</span>${tag}</div>
+        <div class="gc-prompt">${esc(g.prompt)}</div>
+        ${input}
+      </div>`;
+    };
+    const missingHtml = missingGaps.length ? missingGaps.map(gapRow).join("") : `<div class="gc-empty">✅ 关键事实已齐全</div>`;
+    const inferredHtml = inferredGaps.length ? `<div class="gc-subtitle">系统已为你推测，确认或改正即可</div>` + inferredGaps.map(gapRow).join("") : "";
+    return `<div class="card card-pad gc-card">
+      <style>
+        .gc-card{max-width:720px;margin:18px auto}
+        .gc-head{font-size:20px;font-weight:800;margin:6px 0 4px;line-height:1.4}
+        .gc-sub{color:#888;font-size:13px;margin:0 0 14px}
+        .gc-done{background:#f7faf7;border:1px solid #e3efe3;border-radius:12px;padding:12px 14px;margin-bottom:16px}
+        .gc-done-title{font-size:12px;font-weight:700;color:#2e7d4f;margin-bottom:6px;letter-spacing:.5px}
+        .gc-done-list{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px 14px}
+        .gc-done-list li{font-size:13px;color:#444}
+        .gc-done-list b{color:#222}
+        .gc-done-k{color:#2e7d4f;margin-right:4px}
+        .gc-block{background:#fffaf7;border:1px solid #f3e0d2;border-radius:14px;padding:16px;margin-bottom:14px}
+        .gc-block-head{font-size:15px;font-weight:800;margin-bottom:12px;color:#b5532b}
+        .gc-block-head b{font-size:20px;color:#c0392b}
+        .gc-subtitle{font-size:12px;font-weight:700;color:#888;margin:10px 0 8px}
+        .gc-row{margin-bottom:14px}
+        .gc-row-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+        .gc-idx{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:var(--primary,#c0392b);color:#fff;font-size:12px;font-weight:700}
+        .gc-label{font-weight:700;font-size:15px}
+        .gc-tag{font-size:11px;padding:1px 8px;border-radius:20px;font-weight:700}
+        .gc-tag-miss{background:#fdecea;color:#c0392b}
+        .gc-tag-inf{background:#fff4e0;color:#b9770a}
+        .gc-prompt{font-size:12.5px;color:#777;margin:0 0 6px}
+        .gc-empty{color:#2e7d4f;font-weight:700;padding:6px 0}
+        .gc-actions{display:flex;gap:10px;margin-top:6px}
+      </style>
+      <div class="eyebrow">AI 已生成内容</div>
+      <div class="gc-head">AI 已完成约 80%，只需你确认关键事实</div>
+      <p class="gc-sub">我们基于你的一句话，自动生成了标题、正文文案、卖点、装备建议等。下面这几项关键信息系统无法替你决定——补全后即可进入编辑器微调或直接发布。</p>
+      ${doneList ? `<div class="gc-done"><div class="gc-done-title">AI 已确认的内容（${confirmed.length} 项）</div><ul class="gc-done-list">${doneList}</ul></div>` : ""}
+      <div class="gc-block">
+        <div class="gc-block-head">${missingGaps.length ? `还差 <b>${missingGaps.length}</b> 项关键事实` : "关键事实已齐全"}</div>
+        ${missingHtml}
+        ${inferredHtml}
+      </div>
+      <div class="gc-actions">
+        <button class="btn btn-primary" data-action="confirmFactsContinue">${missingGaps.length ? "补全并进入编辑器" : "进入编辑器"}</button>
+        ${missingGaps.length ? `<button class="btn btn-ghost" data-action="confirmFactsSkip">先看看（暂不补全）</button>` : ""}
+      </div>
+    </div>`;
   }
   function rerenderEditor() {
     const ed = $("#content");
