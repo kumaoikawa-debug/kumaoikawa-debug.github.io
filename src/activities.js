@@ -55,8 +55,7 @@
   function xhFig(a, i, cap) {
     const src = (a.photos || [])[i];
     if (!src) return "";
-    const risk = (typeof pagePhotoRisk === "function") ? pagePhotoRisk(src) : null;
-    const contain = risk === "high"; // P0-11 安全裁切：高风险图宁可留白也不裁坏主体
+    const contain = (typeof pagePhotoContain === "function") ? pagePhotoContain(src) : false; // P0-11 安全裁切：含人物/竖图关键景物/高风险图宁可留白也不裁坏主体
     return `<figure class="xh-ed-fig"><img src="${src}" alt="" loading="lazy" style="object-position:${smartPos(src)};object-fit:${contain ? "contain" : "cover"}">${cap ? `<figcaption>${esc(cap)}</figcaption>` : ""}</figure>`;
   }
   function renderActivityEditorial(a) {
@@ -131,7 +130,7 @@
     const itinHtml = days.length ? `<div class="dsec"><div class="dsec-h"><h3>详细行程</h3></div>${itinContent}<div class="itin-timeline-wrap">${days.map((d, i) => {
       const dayNo = i + 1;
       const dp = (itinPhotos && itinPhotos.byDay && itinPhotos.byDay[dayNo]) ? itinPhotos.byDay[dayNo] : [];
-      const dpHtml = dp.length ? `<div class="itin-day-photos">${dp.slice(0, 2).map((p) => `<div class="itin-day-photo${pagePhotoRisk(p.src) === "high" ? " ph-safe" : ""}"><img data-smart-img src="${p.src}" alt=""></div>`).join("")}</div>` : "";
+      const dpHtml = dp.length ? `<div class="itin-day-photos">${dp.slice(0, 2).map((p) => { const c = (typeof pagePhotoContain === "function") ? pagePhotoContain(p.src) : false; return `<div class="itin-day-photo${c ? " ph-safe" : ""}"><img data-smart-img src="${p.src}" alt="" style="object-fit:${c ? "contain" : "cover"}"></div>`; }).join("")}</div>` : "";
       return `<div class="xh-ed-day"><div class="xh-ed-day-h"><span>DAY</span><b>${dayNo}</b>${d.label ? " · " + esc(d.label) : ""}</div><div class="timeline">${(d.items || []).filter((t) => t && (t.time || t.text)).map((t) => `<div class="tl-item"><div class="tl-node"></div><div class="t">${esc(t.time)}</div><div class="d">${esc(t.text)}</div></div>`).join("")}</div>${dpHtml}</div>`;
     }).join("")}</div></div>` : "";
 

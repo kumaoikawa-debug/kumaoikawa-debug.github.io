@@ -2995,12 +2995,24 @@
     const p = PAGE_PHOTO_INTEL.analysis.find((x) => x.src === src);
     return p ? (PAGE_PHOTO_INTEL.roles[p.imageId] || null) : null;
   }
+  /* P0-11 安全裁切：判断某张图在「通用 4/3 卡片容器」(等价于 ImagePair) 是否必须原比例展示(contain)。
+     含人物 / 竖图关键景物 / 高风险 → 必须 contain，宁留白不裁主体；横/方风景无人 → 可 cover。 */
+  function pagePhotoContain(src) {
+    if (!PAGE_PHOTO_INTEL) return false;
+    const p = PAGE_PHOTO_INTEL.analysis.find((x) => x.src === src);
+    if (!p) return false;
+    const c = PAGE_PHOTO_INTEL.cropSafety.byId[p.imageId] || (typeof piCropSafety === "function" ? piCropSafety(p) : null);
+    if (!c) return false;
+    if (c.level === "high") return true;
+    const safe = (typeof piSafePatternsOf === "function") ? piSafePatternsOf(p, c) : null;
+    if (!safe) return false;
+    return safe.indexOf("ImagePair") < 0;
+  }
   function mediaBlock(a, i, label) {
     const ph = (a.photos || []);
     if (ph[i]) {
-      // P0-11 安全裁切：高风险图（多人/合影/竖图近边缘）改用原比例展示，宁可留白也不裁坏主体
-      const risk = pagePhotoRisk(ph[i]);
-      const contain = risk === "high";
+      // P0-11 安全裁切：含人物/竖图关键景物/高风险图改用原比例展示，宁可留白也不裁坏主体
+      const contain = (typeof pagePhotoContain === "function") ? pagePhotoContain(ph[i]) : false;
       // P0-8：角色决定视觉重要度——给容器打上角色类，CSS 据此差异化尺寸/透明度
       const role = (typeof pagePhotoRole === "function") ? pagePhotoRole(ph[i]) : null;
       const roleCls = role && PI_ROLES && PI_ROLES[role] ? PI_ROLES[role].cls : "";

@@ -612,8 +612,11 @@ function piAdaptiveLayout(used, total) {
   const isAny = () => true;
   const pairPattern = () => (dominant === "portrait" ? "PortraitPair" : "ImagePair");
 
-  // 主图 / Hero：优先横图，否则任意
-  const hero = piLayoutPull(m, isLand, 1);
+  // 主图 / Hero：优先「横图且对 FullWidth 安全（风景/无受保护主体）」；否则退而求其次取任意横图；
+  // 若整组都不安全（如全是人物/竖图），仍取一张作封面，但渲染层会按 safePatterns 走原比例展示(contain)，宁留白不裁主体
+  const safeFull = (p) => (p.orientation === "landscape") && piSafePatternsOf(p, piCropSafety(p)).indexOf("FullWidth") >= 0;
+  const hero = piLayoutPull(m, safeFull, 1);
+  if (!hero.length) hero.push.apply(hero, piLayoutPull(m, isLand, 1));
   if (!hero.length) hero.push.apply(hero, piLayoutPull(m, isAny, 1));
   add("FullWidth", hero);
 
@@ -676,27 +679,66 @@ function piLayoutHtml(plan) {
     if (typeof pagePhotoRole === "function") { const r = pagePhotoRole(src); if (r && PI_ROLES && PI_ROLES[r]) return PI_ROLES[r].cls; }
     return "";
   };
-  const card = (p) => {
+  const card = (p, pat) => {
     const src = p.src || p;
-    const risk = (typeof pagePhotoRisk === "function") ? pagePhotoRisk(src) : null;
+    // P0-11：按 safePatterns 决定该图在本版式中是否可 cover；不安全 → 原比例展示(contain)，宁留白不裁主体
+    const crop = (typeof piCropSafety === "function") ? piCropSafety(p) : null;
+    const safe = (crop && crop.safePatterns) || PI_LAYOUT_PATTERNS;
+    const contain = safe.indexOf(pat) < 0;
+    // 安全 cover 时按焦点(focal)设 object-position，让受保护主体保持在画面内
+    const fx = p.focal ? p.focal.x : 0.5, fy = p.focal ? p.focal.y : 0.45;
+    const pos = contain ? "50% 50%" : (Math.round(fx * 100) + "% " + Math.round(fy * 100) + "%");
     const rc = roleClsOf(src);
-    const contain = risk === "high";
     const port = (p.orientation === "portrait") ? " portrait" : "";
-    return `<div class="ph ${rc}${contain ? " ph-safe" : ""}${port}"><img class="ph-img" data-smart-img src="${esc(src)}" alt="" style="object-fit:${contain ? "contain" : "cover"}"></div>`;
+    const fit = contain ? "contain" : "cover";
+    return `<div class="ph ${rc}${contain ? " ph-safe" : ""}${port}"><img class="ph-img" data-smart-img src="${esc(src)}" alt="" style="object-position:${pos};object-fit:${fit}"></div>`;
   };
-  const blocks = plan.components.map((c) => `<div class="ly ly-${c.pattern}">${c.photos.map(card).join("")}</div>`).join("");
+  const blocks = plan.components.map((c) => `<div class="ly ly-${c.pattern}">${c.photos.map((p) => card(p, c.pattern)).join("")}</div>`).join("");
   return `<div class="photo-layout" data-tier="${plan.tier}" data-mode="${plan.mode}" data-patterns="${plan.patterns.join(",")}">${blocks}</div>`;
 }
 
-/* ---------- P0-11：安全裁切评估 ---------- */
-/* 风险来源：人物/合影主体位于画面边缘、画质低、竖图被强制横裁、焦点过于靠边 */
+/* ---------- P0-11：安全裁切评估（优先保护受保护主体，宁改版式不强裁） ----------
+   受保护主体 6 类：人脸 / 人体 / 主体 / 合影人物 / 动作主体 / 关键景物
+   硬规则：若目标比例会破坏主体 → 改版式（原比例展示），绝不强制裁切。
+   绝不出现：半张脸 / 半个人 / 腰膝盖尴尬截断 / 合影边缘人物消失大半 / 主体被裁掉。 */
+function piProtectedSubjects(p) {
+  const s = [];
+  const people = p.people || 0;
+  const tags = p.tags || [];
+  const hasAction = !!(p.action) || tags.indexOf("动作") >= 0;
+  const isScenery = people === 0 && (tags.indexOf("风景") >= 0 || (p.subject && p.subject === "环境"));
+  if (people >= 1) { s.push("人脸"); s.push("人体"); s.push("主体"); }
+  if (people >= 2) s.push("合影人物");
+  if (hasAction) s.push("动作主体");
+  if (isScenery) s.push("关键景物");
+  return s;
+}
+/* 返回该图「可安全 cover 裁切进入」的版式集合；不在此集合的版式 → 渲染层改走原比例(contain)，绝不强裁主体。
+   容器真实形状见 styles.css：FullWidth 16/9、PortraitPair 3/4、ImagePair 4/3、Mosaic 1/1、GalleryStrip 132x99、AspectPreserved 原比例。 */
+function piSafePatternsOf(p, crop) {
+  const people = p.people || 0;
+  const portrait = p.orientation === "portrait";
+  const high = crop && crop.level === "high";
+  // 高风险（模型或本地）：只保留原比例展示；若被迫进入其它版式，渲染层一律 contain
+  if (high) return ["AspectPreserved"];
+  if (people >= 1) {
+    // 含人物（人脸/人体/主体/合影/动作）：横幅通栏必切头脚、拼贴/横条必切边缘人物 → 均不可
+    if (portrait) return ["PortraitPair", "AspectPreserved"];                       // 竖图含人：仅竖对(3/4)与原比例安全
+    if (p.orientation === "square") return ["ImagePair", "Mosaic", "AspectPreserved"]; // 方图含人：轻裁版式安全
+    return ["ImagePair", "AspectPreserved"];                                        // 横图含人：仅 4/3 轻裁安全
+  }
+  if (portrait) return ["PortraitPair", "AspectPreserved"]; // 竖图无人（关键景物）：不进横幅通栏
+  return PI_LAYOUT_PATTERNS.slice();                        // 横/方风景无人：无主体可毁，全部安全
+}
 function piCropSafety(p) {
   // P2-3：若真实视觉模型已判定裁切风险，直接采用（优先级高于本地启发式）
   if (p.cropRisk && ["low", "medium", "high"].indexOf(p.cropRisk) >= 0) {
     const map = { high: 70, medium: 38, low: 8 };
+    const level = p.cropRisk;
     return {
-      imageId: p.imageId, risk: map[p.cropRisk], level: p.cropRisk, reasons: ["视觉模型判定"],
-      prefer: p.cropRisk === "high" ? "aspect_preserved" : (p.cropRisk === "medium" ? "wide_safe_focus" : "any"),
+      imageId: p.imageId, risk: map[level], level: level, reasons: ["视觉模型判定"],
+      subjects: piProtectedSubjects(p), safePatterns: piSafePatternsOf(p, { level: level, fromModel: true }),
+      prefer: level === "high" ? "aspect_preserved" : (level === "medium" ? "wide_safe_focus" : "any"),
       fromModel: true,
     };
   }
@@ -709,16 +751,18 @@ function piCropSafety(p) {
   if (p.people > 0 && edgeDist < 0.18) { risk += 22; reasons.push("主体靠近画面边缘"); }
   if (p.orientation === "portrait") {
     risk += 14; reasons.push("竖图，横裁风险高");
-    // P0-11 安全裁切：竖幅构图放进横幅位（Hero / 通栏）只会保留中间一条横带，
-    // 含人物的竖图必然切到头或脚 —— 属于「宁可改版式，也不强裁主体」，直接判高风险。
-    if (p.people > 1) { risk += 34; reasons.push("竖图含多人/合影：横裁必然切人"); }
-    else if (p.people === 1) { risk += 26; reasons.push("竖图含人物：横裁易切头/切脚"); }
+    // 竖图含人 → 横幅/双图(4/3)/拼贴/横条等「横向裁切」会切头脚或边缘人物，判中风险；
+    // 但竖图对(PortraitPair 3/4，与竖图同比例)与原比例展示安全，故不强制 high —— 渲染层仅在不安全版式走 contain。
+    if (p.people > 1) { risk += 10; reasons.push("竖图含多人/合影：横向裁切必切人"); }
+    else if (p.people === 1) { risk += 18; reasons.push("竖图含人物：横向裁切易切头/切脚"); }
   }
   if (p.quality < 0.58) { risk += 12; reasons.push("画质偏低，放大后易失真"); }
   risk = Math.max(0, Math.min(100, risk));
   const level = risk >= 45 ? "high" : (risk >= 22 ? "medium" : "low");
   return {
     imageId: p.imageId, risk: risk, level: level, reasons: reasons,
+    subjects: piProtectedSubjects(p),
+    safePatterns: piSafePatternsOf(p, { level: level, fromModel: false }),
     // high → 原比例展示 / 不用作 Hero；medium → 允许整宽但需安全焦点裁切
     prefer: risk >= 45 ? "aspect_preserved" : (risk >= 22 ? "wide_safe_focus" : "any"),
   };

@@ -1014,6 +1014,12 @@ a { color: inherit; }
 .ph.ph-info { margin: 6px 0; opacity: .42; filter: grayscale(.32); box-shadow: none; }
 .ph.ph-discard { display: none; }
 
+/* P0-11 安全裁切：含人物/竖图关键景物/高风险图——原比例展示，中性留白底，宁留白不裁主体 */
+.ph-safe { background: #f3f1ec; }
+.ph-safe .ph-img { object-fit: contain; }
+.itin-day-photo.ph-safe { background: #f3f1ec; }
+.itin-day-photo.ph-safe img { object-fit: contain; }
+
 /* 画廊：双图 / 一大两小 */
 .gallery { display: grid; gap: 10px; margin: 14px 0; }
 .gallery.g-2 { grid-template-columns: 1fr 1fr; }
