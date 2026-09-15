@@ -2732,7 +2732,9 @@
     return `data-smart-bg="${esc(src)}" style="background-image:url('${esc(src)}');background-position:${smartPos(src)};"`;
   }
   function analyzeImageFocus(src) {
-    const fallback = () => ({ x: 50, y: 45, orientation: "landscape", quality_score: 0.6, category: "未分析", emotion: "真实", subjects: [], focal_point: { x: 0.5, y: 0.45 }, safe_text_area: "top-right", recommended_use: ["story"], duplicate_group: null, simulated: true });
+    // P0-6：fallback 也携带归一化信号字段（缺省中性值），piTagPhoto 才能稳定识别
+    const fallback = () => ({ x: 50, y: 45, orientation: "landscape", quality_score: 0.6, category: "未分析", emotion: "真实", subjects: [], focal_point: { x: 0.5, y: 0.45 }, safe_text_area: "top-right", recommended_use: ["story"], duplicate_group: null, simulated: true,
+      avgLum: 128, sat: 0.2, edge: 10, blueRatio: 0.1, warmRatio: 0.15, skinRatio: 0, people_count: 0, motionScore: 0, pHash: null });
     return new Promise((resolve) => {
       const img = new Image();
       img.onload = () => {
@@ -2752,7 +2754,7 @@
           for (let yy=0; yy<gy; yy++) for (let xx=0; xx<gx; xx++) {
             const x0=Math.floor(xx*w/gx), x1=Math.max(x0+1,Math.floor((xx+1)*w/gx));
             const y0=Math.floor(yy*h/gy), y1=Math.max(y0+1,Math.floor((yy+1)*h/gy));
-            let edge=0, hEdge=0, vEdge=0, sat=0, contrast=0, count=0, lum=0, skin=0;
+            let edge=0, hEdge=0, vEdge=0, sat=0, contrast=0, count=0, lum=0, skin=0, blue=0, warm=0;
             for(let y=y0; y<y1; y+=2) for(let x=x0; x<x1; x+=2){
               const i=(y*w+x)*4, r=px[i],g=px[i+1],b=px[i+2], hi=Math.max(r,g,b),lo=Math.min(r,g,b), l=r*.299+g*.587+b*.114;
               const dh = Math.abs(l-lumAt(Math.min(w-1,x+2),y));
@@ -2761,6 +2763,8 @@
               sat += hi ? (hi-lo)/hi : 0;
               contrast += Math.abs(l-150); lum += l; count++;
               if (r > 80 && r < 240 && g > 40 && g < 200 && b > 20 && b < 170 && r - g > 8 && g - b > 8 && r > g && g > b) skin++;
+              if (b > r + 20 && b > g) blue++;
+              if (r > g && g > b) warm++;
             }
             const n = Math.max(1, count);
             const ny=(yy+.5)/gy, nx=(xx+.5)/gx;
@@ -2770,7 +2774,7 @@
             const rawScore=(edge/n)*2.6 + (sat/n)*72 + (contrast/n)*.14 + (skin/n)*18;
             const structureBoost = (hEdge > vEdge * 1.25 && edge/n > 12) ? 1.08 : 1;
             const score=rawScore * centerPrior * thirdPrior * structureBoost;
-            cells.push({ x:(xx+.5)*100/gx, y:(yy+.5)*100/gy, score, rawScore, edge: edge/n, sat: sat/n, contrast: contrast/n, lum: lum/n, skin: skin/n });
+            cells.push({ x:(xx+.5)*100/gx, y:(yy+.5)*100/gy, score, rawScore, edge: edge/n, sat: sat/n, contrast: contrast/n, lum: lum/n, skin: skin/n, blue: blue/n, warm: warm/n });
           }
           cells.sort((a,b)=>b.score-a.score);
           const chosen=cells.slice(0,Math.max(6,Math.round(cells.length*.15)));
@@ -2811,6 +2815,12 @@
     const orientation = ratio > 1.15 ? "landscape" : (ratio < 0.87 ? "portrait" : "square");
     const avg = (k) => cells.reduce((s, v) => s + (v[k] || 0), 0) / Math.max(1, cells.length);
     const edge = avg("edge"), sat = avg("sat"), contrast = avg("contrast"), lum = avg("lum");
+    // P0-6：新增内容识别信号（供 piTagPhoto 做 14 类识别，不依赖上传顺序）
+    const blueRatio = Math.max(0, Math.min(1, avg("blue")));
+    const warmRatio = Math.max(0, Math.min(1, avg("warm")));
+    const skinRatio = Math.max(0, Math.min(1, avg("skin")));
+    const peopleCount = skinRatio > 0.20 ? 3 : (skinRatio > 0.10 ? 2 : (skinRatio > 0.04 ? 1 : 0));
+    const motionScore = edge > 16 ? Math.max(0, Math.min(1, (edge - 12) / 22)) : 0;
     const quality = Math.max(0.35, Math.min(0.99, 0.42 + edge / 850 + contrast / 700 + Math.min(0.14, Math.min(W, H) / 5200)));
     // 文字安全区：选边缘最少、亮度适中的象限
     const quad = (bx, by) => { const q = cells.filter(v => v.x >= bx && v.x < bx + 50 && v.y >= by && v.y < by + 50); if (!q.length) return null; return { e: q.reduce((s,v)=>s+v.edge,0)/q.length, l: q.reduce((s,v)=>s+v.lum,0)/q.length }; };
@@ -2828,6 +2838,21 @@
     rec.push("story");
     if (orientation === "portrait") rec.push("full");
     if (quality < 0.58) rec.push("detail");
+    // P0-6：感知哈希（8x8，降采样 14x14 亮度网格 → 按中位亮度二值化），供重复图检测
+    let phLo = 0, phHi = 0;
+    try {
+      const g8 = [];
+      for (let gy8 = 0; gy8 < 8; gy8++) for (let gx8 = 0; gx8 < 8; gx8++) {
+        let sum = 0, cnt = 0;
+        cells.forEach((c) => {
+          const cx8 = Math.min(7, Math.floor(c.x / 12.5)), cy8 = Math.min(7, Math.floor(c.y / 12.5));
+          if (cx8 === gx8 && cy8 === gy8) { sum += c.lum; cnt++; }
+        });
+        g8.push(cnt ? sum / cnt : 128);
+      }
+      const med = g8.slice().sort((a, b) => a - b)[Math.floor(g8.length / 2)];
+      g8.forEach((v, idx) => { if (v >= med) { if (idx < 32) phLo |= (1 << idx); else phHi |= (1 << (idx - 32)); } });
+    } catch (e) { phLo = 0; phHi = 0; }
     return {
       x: fx, y: fy,
       category, orientation, emotion, subjects,
@@ -2837,6 +2862,11 @@
       recommended_use: rec,
       duplicate_group: null,
       simulated: true,
+      // P0-6 内容识别信号（归一化，供 piTagPhoto）
+      avgLum: Math.round(lum), sat: Math.round(sat * 1000) / 1000, edge: Math.round(edge * 100) / 100,
+      blueRatio: Math.round(blueRatio * 1000) / 1000, warmRatio: Math.round(warmRatio * 1000) / 1000,
+      skinRatio: Math.round(skinRatio * 1000) / 1000, people_count: peopleCount, motionScore: Math.round(motionScore * 1000) / 1000,
+      pHash: { lo: phLo >>> 0, hi: phHi >>> 0 },
     };
   }
   function photoMeta(src) { return PHOTO_FOCUS_CACHE.get(src) || null; }
@@ -3808,11 +3838,23 @@
     const pl = a.pipeline;
     if (!pl || !pl.sellingPoints || !pl.sellingPoints.length) return "";
     const cover = Math.max(0, Math.min(+(a.coverIndex || 0), Math.max(0, (a.photos || []).length - 1)));
-    const avail = (a.photos || []).map((_, i) => i).filter((i) => i !== cover);
+    const intel = (typeof pagePhotoIntel === "function") ? pagePhotoIntel() : null;
+    // P0-6：候选图池优先用「内容筛选后保留」的图（已按内容排序，而非上传顺序），排除封面
+    const pool = (intel && intel.used && intel.used.length)
+      ? intel.used.filter((p) => p.index !== cover)
+      : (a.photos || []).map((_, i) => ({ index: i, src: a.photos[i], tags: [] })).filter((p) => p.index !== cover);
+    const usedSet = new Set();
     return `<div class="dsec sp-sec" id="sec-highlights"><div class="dsec-h"><h3>产品亮点</h3></div>
       <div class="feature-stack">${pl.sellingPoints.map((s, i) => {
-        const imgIdx = avail[i % Math.max(1, avail.length)];
-        const hasImg = a.photos && a.photos[imgIdx];
+        // 内容匹配：亮点关键词 ↔ 图片标签语义对齐；命中且尚未用过的优先
+        const kw = (s.title || "") + " " + (s.desc || "");
+        let pick = null;
+        for (const p of pool) { if (!usedSet.has(p.index) && (typeof piSellMatch === "function" ? piSellMatch(kw, p) : false)) { pick = p; break; } }
+        if (!pick) { for (const p of pool) if (!usedSet.has(p.index)) { pick = p; break; } }      // 退而求其次：用下一张未用的（仍是内容筛选池，非上传顺序）
+        if (!pick && pool.length) pick = pool[i % pool.length];                                    // 极端兜底：保证不白屏
+        const imgIdx = pick ? pick.index : -1;
+        const hasImg = imgIdx >= 0 && a.photos && a.photos[imgIdx];
+        if (pick) usedSet.add(imgIdx);
         const num = String(i + 1).padStart(2, "0");
         return `<div class="feature-card">
           ${hasImg ? `<div class="feature-media">${mediaBlock(a, imgIdx, "")}</div>` : ""}

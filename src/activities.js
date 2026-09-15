@@ -1668,11 +1668,23 @@ function channelMeta(ch) {
   function thumbsHtml(a) {
     if (!a.photos || !a.photos.length) return "";
     const cover = a.coverIndex || 0;
+    // P0-6：对每张图做内容识别，缩略图展示识别标签（多标签 chip）
+    const intel = (typeof piAnalyze === "function") ? piAnalyze(a.photos) : [];
+    const tagMap = {};
+    intel.forEach((p) => { tagMap[p.index] = p; });
     return a.photos.map((p, i) => {
       const isCover = i === cover;
+      const meta = tagMap[i];
+      const chips = meta && meta.tags && meta.tags.length
+        ? `<div class="thumb-tags">${meta.tags.map((t) => {
+            const warn = (t === "重复图" || t === "低质量图") ? " warn" : "";
+            return `<span class="tchip${warn}">${esc(t)}</span>`;
+          }).join("")}</div>`
+        : "";
       return `<div class="thumb ${isCover ? "is-cover" : ""}" ${smartBg(p)}>
         <button class="x" data-action="delPhoto" data-i="${i}" title="删除">${ICON("x")}</button>
         ${isCover ? `<span class="cover-badge">封面</span>` : `<button class="set-cover-btn" data-action="setCover" data-i="${i}">设为封面</button>`}
+        ${chips}
       </div>`;
     }).join("");
   }

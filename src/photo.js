@@ -17,39 +17,211 @@ function piRand(seed) { const x = Math.sin(seed * 12.9898) * 43758.5453; return 
 
 /* 分类 → 场景语义（photoMeta.category 来自 v145 的像素启发式） */
 const PI_SCENE_BY_CAT = { "山野/植被": "scenic", "天空/开阔地": "sky", "人物/动态": "people", "环境/细节": "detail", "未分析": "detail" };
-const PI_SCENE_LABEL = { scenic: "风景", sky: "天空", people: "人物", action: "动作", water: "水上", camp: "营地", meal: "餐食", gear: "装备", detail: "细节", route: "路线" };
+const PI_SCENE_LABEL = {
+  scenic: "风景", sky: "天空", people: "人物", group: "合影", action: "动作",
+  water: "水上", hike: "徒步", camp: "露营", meal: "餐食", gear: "装备",
+  night: "夜景", detail: "细节", route: "路线",
+};
+const PI_TAG_TO_SCENE = { "风景": "scenic", "人物": "people", "合影": "group", "动作": "action", "水上": "water", "徒步": "hike", "露营": "camp", "餐食": "meal", "装备": "gear", "夜景": "night", "细节": "detail", "路线": "route" };
+/* P0-6：14 类内容识别（多标签——一张图可命中多个类，与上传顺序无关） */
+const PI_TAGS = ["风景", "人物", "合影", "动作", "水上", "徒步", "露营", "餐食", "装备", "夜景", "细节", "路线", "重复图", "低质量图"];
 const PI_ROLE_LABEL = { HeroImage: "封面主图", SectionLeadImage: "段落主图", SupportImage: "辅助图", GalleryImage: "图廊", DetailImage: "细节图", InfoBackground: "信息区背景", DiscardCandidate: "建议弃用" };
 
-/* ---------- P0-6：Photo Analysis 2.0（归一化 + 补全） ---------- */
-function piAnalyzeOne(src, i) {
+/* ---------- P0-6：感知哈希（64 位，分 lo/hi 两段，避免 BigInt 依赖） ---------- */
+function piPhashHamming(a, b) {
+  if (!a || !b) return 999;
+  const pop = (n) => { let c = 0; while (n) { c += n & 1; n >>>= 1; } return c; };
+  return pop((a.lo ^ b.lo) >>> 0) + pop((a.hi ^ b.hi) >>> 0);
+}
+function piProxyPhash(src) {
+  // 无真实分析时的确定性代理（仅按 src 内容派生，不引用上传下标）
+  const h = piHash(src || "x");
+  return { lo: h >>> 0, hi: (Math.imul(h, 2654435761)) >>> 0 };
+}
+
+/* 把 photoMeta（真实 Canvas 分析 或 视觉模型注入）归一化为识别信号。
+   关键：信号只来自图片「内容」，绝不引用上传下标 i —— 这是 P0-6 验收「不按上传顺序轮流套分类」的根基。 */
+function metaToSignals(m) {
+  const orientation = m.orientation || "landscape";
+  const quality = (m.quality_score != null) ? m.quality_score : 0.6;
+  const avgLum = (m.avgLum != null) ? m.avgLum : 128;
+  const sat = (m.sat != null) ? m.sat : 0;
+  const edge = (m.edge != null) ? m.edge : 8;
+  const blueRatio = (m.blueRatio != null) ? m.blueRatio : 0;
+  const warmRatio = (m.warmRatio != null) ? m.warmRatio : 0;
+  const skinRatio = (m.skinRatio != null) ? m.skinRatio : 0;
+  const peopleCount = (m.people_count != null) ? m.people_count
+    : (skinRatio > 0.20 ? 3 : (skinRatio > 0.10 ? 2 : (skinRatio > 0.04 ? 1 : 0)));
+  const actionFlag = !!(m.action) || !!(m.actionFlag);
+  const motionScore = (m.motionScore != null) ? m.motionScore : 0;
+  const isWater = !!(m.isWater) || blueRatio > 0.28;
+  const isNight = !!(m.isNight) || avgLum < 70;
+  const isGear = !!(m.isGear);
+  const isHike = !!(m.isHike);
+  const isRoute = !!(m.isRoute);
+  const isDetail = edge > 26 && blueRatio < 0.18 && warmRatio < 0.45;
+  const pHash = (m.pHash != null) ? m.pHash : null;
+  return {
+    orientation, quality, avgLum, sat, edge, blueRatio, warmRatio, skinRatio,
+    peopleCount, actionFlag, motionScore, isWater, isNight, isGear, isHike, isRoute, isDetail,
+    pHash,
+    category: m.category || "内容识别", emotion: m.emotion || "真实",
+    actionLabel: m.action || "", sceneLabel: m.sceneLabel || "",
+    safe_text_area: m.safe_text_area || "top-right",
+    recommended_use: m.recommended_use || ["story"],
+    focal_point: m.focal_point || { x: 0.5, y: 0.45 },
+    cropRisk: m.crop_risk || null,
+  };
+}
+
+/* 无真实分析时的确定性内容指纹（仅基于 src 内容，不使用上传下标）。
+   与旧版 piRand(index) 的根本区别：同一张图无论排第几都得到相同识别，
+   不同内容（不同 src）得到不同识别——绝不按上传顺序轮流套分类。 */
+function piFallbackMeta(src) {
+  const h = piHash(src || "x");
+  const r = (k) => { const x = Math.sin((h + k) * 12.9898) * 43758.5453; return x - Math.floor(x); };
+  const orientation = r(1) < 0.34 ? "portrait" : (r(2) < 0.72 ? "landscape" : "square");
+  const quality = Number((0.56 + r(3) * 0.38).toFixed(2));
+  const blueRatio = r(4) * 0.5;
+  const warmRatio = r(5) * 0.5;
+  const skinRatio = r(6) * 0.3;
+  const avgLum = 70 + r(7) * 150;
+  const sat = r(8) * 0.5;
+  const edge = 8 + r(9) * 22;
+  const peopleCount = skinRatio > 0.18 ? 3 : (skinRatio > 0.09 ? 2 : (skinRatio > 0.04 ? 1 : 0));
+  return {
+    orientation, quality, avgLum, sat, edge, blueRatio, warmRatio, skinRatio,
+    peopleCount, actionFlag: r(10) > 0.8, motionScore: r(11) * 0.4,
+    isWater: blueRatio > 0.28, isNight: avgLum < 70,
+    isGear: r(12) > 0.85, isHike: r(13) > 0.8, isRoute: r(14) > 0.8,
+    isDetail: edge > 26 && blueRatio < 0.18 && warmRatio < 0.45,
+    pHash: null,
+    category: "内容识别", emotion: r(15) < 0.5 ? "明快" : "沉静",
+    actionLabel: "", sceneLabel: "", safe_text_area: "top-right",
+    recommended_use: ["story"], focal_point: { x: 0.5, y: 0.45 }, cropRisk: null,
+  };
+}
+
+/* P0-6 核心：14 类内容识别（纯函数，输入信号 → 输出多标签）。
+   识别严格基于图片「内容信号」，与上传顺序无关。 */
+function piTagPhoto(sig) {
+  const tags = [];
+  if (!sig) return ["细节"];
+  const q = sig.quality != null ? sig.quality : 0.6;
+  const lum = sig.avgLum != null ? sig.avgLum : 128;
+  const sat = sig.sat != null ? sig.sat : 0;
+  const blue = sig.blueRatio != null ? sig.blueRatio : 0;
+  const warm = sig.warmRatio != null ? sig.warmRatio : 0;
+  const skin = sig.skinRatio != null ? sig.skinRatio : 0;
+  const people = sig.peopleCount || 0;
+  const action = sig.actionFlag;
+  const motion = sig.motionScore || 0;
+  const edge = sig.edge != null ? sig.edge : 8;
+  const isNight = lum < 70;
+  const isWater = sig.isWater || blue > 0.28;
+  const lowQuality = q < 0.5;
+  if (isNight) tags.push("夜景");
+  if (isWater) tags.push("水上");
+  if (people >= 3) tags.push("合影");
+  else if (people >= 1) tags.push("人物");
+  if (action || motion > 0.5) tags.push("动作");
+  if (sig.isHike) tags.push("徒步");
+  if (sig.isRoute) tags.push("路线");
+  if (sig.isGear) tags.push("装备");
+  // 餐食：暖色主导 + 有人 + 非水上
+  if (warm > 0.42 && people >= 1 && !isWater) tags.push("餐食");
+  // 露营：暖色 + 夜景 + 有人（篝火/营地场景近似）
+  if (warm > 0.3 && isNight && people >= 1) tags.push("露营");
+  // 风景：自然/开阔、无人、非夜景、非纯细节
+  if (!people && !isNight && (sat > 0.3 || edge > 16)) tags.push("风景");
+  // 细节：高边缘、低蓝低暖（近景纹理/特写）
+  if (edge > 26 && blue < 0.18 && warm < 0.45) tags.push("细节");
+  if (!tags.length) tags.push(isNight ? "夜景" : (people ? "人物" : "细节"));
+  if (lowQuality) tags.push("低质量图");
+  return tags;
+}
+
+/* 主场景（单值）：从多标签中取优先级最高的场景语义键，供版式/角色系统使用 */
+function piPrimaryScene(tags) {
+  const pri = ["合影", "人物", "动作", "水上", "徒步", "露营", "餐食", "装备", "夜景", "路线", "风景", "细节"];
+  for (const t of pri) if (tags.indexOf(t) >= 0) return PI_TAG_TO_SCENE[t];
+  return "detail";
+}
+function piSubject(tags) {
+  if (tags.indexOf("合影") >= 0 || tags.indexOf("人物") >= 0) return "人物";
+  if (tags.indexOf("水上") >= 0) return "水景";
+  if (tags.indexOf("餐食") >= 0) return "餐食";
+  if (tags.indexOf("装备") >= 0) return "装备";
+  if (tags.indexOf("夜景") >= 0) return "夜景";
+  if (tags.indexOf("风景") >= 0) return "环境";
+  return "细节";
+}
+
+/* 亮点文案 ↔ 图片标签语义匹配（用于亮点卡片配图，避免按上传顺序轮流） */
+function piSellMatch(kw, p) {
+  const tags = p.tags || [];
+  const k = String(kw || "");
+  const map = [
+    ["风景", /风景|景|山|湖|林|自然|风光/],
+    ["人物", /人|队友|领队|陪伴|故事/],
+    ["合影", /合影|团队|大家|一起/],
+    ["动作", /挑战|运动|爬|登|涉水|刺激|体验/],
+    ["水上", /水|溪|桨|漂|泳|清凉/],
+    ["徒步", /徒步|步道|路线|登山|爬山/],
+    ["露营", /露营|营地|篝火|星空|帐篷/],
+    ["餐食", /餐|吃|美食|补给|野炊/],
+    ["装备", /装备|物资|背包|帐篷|穿/],
+    ["夜景", /夜|星空|篝火|日落/],
+    ["细节", /细节|特写|质感|纹理/],
+    ["路线", /路线|轨迹|里程|海拔/],
+  ];
+  for (const m of map) if (tags.indexOf(m[0]) >= 0 && m[1].test(k)) return true;
+  return false;
+}
+
+/* ---------- P0-6：Photo Analysis 2.0（内容识别 + 重复/低质量标记） ---------- */
+function piAnalyzeOne(src, i, phashSeen) {
   const m = (typeof photoMeta === "function") ? photoMeta(src) : null;
-  const h = piHash(src + "#" + i);
-  const orientation = (m && m.orientation) || (piRand(h) < 0.34 ? "portrait" : (piRand(h + 1) < 0.72 ? "landscape" : "square"));
-  const quality = (m && m.quality_score != null) ? m.quality_score : Number((0.56 + piRand(h + 2) * 0.38).toFixed(2));
-  const cat = (m && m.category) || "未分析";
-  const scene = PI_SCENE_BY_CAT[cat] || "detail";
-  // P2-3：若已接入真实视觉模型，优先采用其 people_count / action（见 piApplyVision）
-  const people = (m && m.people_count != null) ? m.people_count : (scene === "people" ? 1 + (h % 4) : (piRand(h + 3) < 0.3 ? 1 : 0));
-  const action = (m && m.action) ? m.action : ((h % 5 === 0 && scene !== "sky") ? "动态" : "");
-  const subject = scene === "people" ? "人物" : (scene === "scenic" ? "环境" : (scene === "sky" ? "天空" : "细节"));
-  const emotion = (m && m.emotion) || (piRand(h + 4) < 0.5 ? "明快" : "沉静");
-  const safeTextArea = (m && m.safe_text_area) || "top-right";
-  const recommendedUse = (m && m.recommended_use) || ["story"];
+  const sig = m ? metaToSignals(m) : piFallbackMeta(src); // 信号只来自内容，不引用 i
+  const tags = piTagPhoto(sig).slice();
+  const isLow = (sig.quality != null ? sig.quality : 0.6) < 0.5;
+  // 批量重复图检测：真实 pHash 优先，否则用 src 代理哈希做近邻比较（汉明距离 ≤ 4 判重）
+  const ph = (sig.pHash != null) ? sig.pHash : piProxyPhash(src);
+  let dupOf = null;
+  if (phashSeen) {
+    for (const seen of phashSeen) { if (piPhashHamming(ph, seen.ph) <= 4) { dupOf = seen.id; break; } }
+    phashSeen.push({ id: "ph_" + i, ph: ph });
+  }
+  if (dupOf) tags.push("重复图");
+  if (isLow) tags.push("低质量图");
+  // 重复图退为 detail，避免抢占封面/Hero
+  const scene = dupOf ? "detail" : piPrimaryScene(tags);
+  const people = sig.peopleCount || 0;
+  const action = sig.actionLabel || (sig.actionFlag ? "动态" : "");
+  const subject = piSubject(tags);
+  const emotion = sig.emotion || "真实";
+  const safeTextArea = sig.safe_text_area || "top-right";
+  const recommendedUse = sig.recommended_use || ["story"];
+  const cropRisk = sig.cropRisk || null;
+  // P0-6：完整 11 字段 schema + tags + 重复/低质量标记
   return {
     imageId: "ph_" + i, src: src, index: i,
-    orientation: orientation, quality: quality, scene: scene, sceneLabel: PI_SCENE_LABEL[scene] || scene,
-    subject: subject, people: people, action: action, emotion: emotion, category: cat,
+    orientation: sig.orientation, quality: sig.quality,
+    scene: scene, sceneLabel: PI_SCENE_LABEL[scene] || scene,
+    subject: subject, people: people, action: action, emotion: emotion,
+    tags: tags, category: sig.category || "内容识别",
     safeTextArea: safeTextArea, recommendedUse: recommendedUse,
-    focal: (m && m.focal_point) || { x: 0.5, y: 0.45 },
-    cropRisk: (m && m.crop_risk) || null, // P2-3：真实视觉模型给出的裁切风险（low/medium/high）
+    focal: sig.focal_point || { x: 0.5, y: 0.45 },
+    cropRisk: cropRisk,
     simulated: !(m && m.simulated === false),
-    dupKey: cat + "|" + orientation,
+    dupOf: dupOf, lowQuality: isLow,
   };
 }
 function piAnalyze(photos) {
   const list = (photos || []).filter(Boolean);
   const uniq = list.filter((s, i) => list.indexOf(s) === i); // 同源去重
-  return uniq.map((s, i) => piAnalyzeOne(s, i));
+  const phashSeen = [];
+  return uniq.map((s, i) => piAnalyzeOne(s, i, phashSeen));
 }
 
 /* ---------- P0-7：自动筛图（去重 / 质量 / 数量策略） ---------- */
@@ -64,17 +236,13 @@ function piSelect(analysis) {
   const n = analysis.length;
   const strat = piStrategy(n);
   const cap = strat.cap(n);
-  const dupCount = {};
-  analysis.forEach((p) => { dupCount[p.dupKey] = (dupCount[p.dupKey] || 0) + 1; });
-  const seen = {};
+  // P0-6：弃用/降权依据改为「内容识别结果」（重复图/低质量图），不再依赖上传下标 dupKey
   const scored = analysis.map((p) => {
     let score = p.quality * 100;
     if (p.orientation === "landscape") score += 6;
-    if (p.scene === "scenic") score += 5;
-    if (p.scene === "people") score += 3;
-    if (p.quality < 0.58) score -= 22;
-    const ord = seen[p.dupKey] || 0; seen[p.dupKey] = ord + 1;
-    if (ord) score -= 12 + ord * 6;
+    if (["scenic", "people", "group", "action", "water"].indexOf(p.scene) >= 0) score += 5;
+    if (p.lowQuality) score -= 30;        // 低质量图：强降权
+    if (p.dupOf) score -= 40;             // 重复图：几乎必弃
     return Object.assign({}, p, { score: Math.round(score) });
   });
   const ranked = scored.slice().sort((a, b) => b.score - a.score);
@@ -83,7 +251,7 @@ function piSelect(analysis) {
   used.forEach((p) => { usedIds[p.imageId] = true; });
   const discarded = ranked.filter((p) => !usedIds[p.imageId]).map((p, k) => ({
     imageId: p.imageId, src: p.src,
-    reason: p.quality < 0.58 ? "画质偏低" : (dupCount[p.dupKey] > 1 ? "与其他图重复/近似" : (n > 20 ? "与主题相关性较弱" : "超出推荐张数")),
+    reason: p.lowQuality ? "画质偏低" : (p.dupOf ? "与其他图重复/近似" : (n > 20 ? "与主题相关性较弱" : "超出推荐张数")),
   }));
   return { strategy: strat.label, cap: cap, total: n, usedIds: used.map((p) => p.imageId), used: used, discarded: discarded };
 }
@@ -109,10 +277,10 @@ function piAssignRoles(used) {
 /* ---------- P0-9：图片-行程/段落匹配 ---------- */
 /* section.kind 提示 → 偏好场景；无 kind 时按关键词兜底 */
 const PI_KIND_SCENES = {
-  opening: ["scenic", "sky", "route"], scenic: ["scenic", "sky", "route"], landscape: ["scenic", "sky"],
-  experience: ["action", "people", "water", "camp"], people: ["people", "action"], action: ["action", "people"],
-  water: ["water", "action"], camp: ["camp", "sky", "people"], meal: ["meal", "detail"], gear: ["gear", "detail"],
-  detail: ["detail", "gear"], ending: ["sky", "scenic", "people"], fit: ["people", "detail"], info: ["detail", "gear"],
+  opening: ["scenic", "sky", "route", "hike"], scenic: ["scenic", "sky", "route", "hike"], landscape: ["scenic", "sky"],
+  experience: ["action", "people", "group", "water", "camp", "hike"], people: ["people", "group", "action"], action: ["action", "people", "group"],
+  water: ["water", "action"], camp: ["camp", "sky", "people", "group"], meal: ["meal", "detail"], gear: ["gear", "detail"],
+  detail: ["detail", "gear"], ending: ["sky", "scenic", "people", "group", "night"], fit: ["people", "group", "detail"], info: ["detail", "gear"], night: ["night", "scenic"],
 };
 function piKindFromText(txt) {
   const h = String(txt || "");
@@ -152,13 +320,13 @@ function piMatchSections(sections, used, roles) {
 
 /* ---------- P0-9：图片↔「行程段落」匹配（按 contentRole 语义绑定） ---------- */
 const PI_ROLE_SCENES = {
-  opening: ["route", "scenic", "sky", "detail"],
-  arrival: ["route", "scenic", "detail"],
-  warmup: ["people", "gear", "detail"],
-  core: ["action", "people", "water", "camp", "scenic"],
-  meal: ["meal", "detail", "people"],
-  rest: ["people", "scenic", "detail"],
-  closing: ["sky", "scenic", "people", "detail"],
+  opening: ["route", "scenic", "sky", "hike", "detail"],
+  arrival: ["route", "scenic", "hike", "detail"],
+  warmup: ["people", "group", "gear", "detail"],
+  core: ["action", "people", "group", "water", "camp", "scenic", "hike"],
+  meal: ["meal", "detail", "people", "group"],
+  rest: ["people", "group", "scenic", "detail"],
+  closing: ["sky", "scenic", "people", "group", "night", "detail"],
 };
 /* 输入 structureItinerary() 的 timeline（含 contentRole/day），输出「每天 → 匹配到的图」
    语义优先、不重复用图；某天匹配不足时不再强行凑图（宁缺毋滥） */
