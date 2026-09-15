@@ -200,21 +200,38 @@
         else refreshPreview();
         break;
       }
-      case "regenEditorial": {
-        // P0-12：同一活动连续生成不同「角度/结构/图片/密度」的图文详情页（相邻两版四维度均不同）
-        const cur = (state.draft && state.draft.editorialVariantId)
-          || (state.view === "detail" && state.params && state.params.id && getActivity(state.params.id) ? getActivity(state.params.id).editorialVariantId : "")
+      case "regenLayout": {
+        // P0-13：换版式——只推进 editorialLayoutId（布局/图片组合/留白/字体/章节视觉），文案与事实冻结
+        const cur = (state.draft && state.draft.editorialLayoutId)
+          || (state.view === "detail" && state.params && state.params.id && getActivity(state.params.id) ? getActivity(state.params.id).editorialLayoutId : "")
           || "";
-        const next = pickEditorialVariant(null, cur);
-        if (state.draft) { state.draft.editorialVariantId = next.id; saveState(); }
+        const next = pickEditorialLayout(cur);
+        if (state.draft) { state.draft.editorialLayoutId = next.id; saveState(); }
         if (state.view === "detail" && state.params && state.params.id) {
           const aa = getActivity(state.params.id);
-          if (aa) { aa.editorialVariantId = next.id; saveState(); }
+          if (aa) { aa.editorialLayoutId = next.id; saveState(); }
+        }
+        if (state.view === "detail") showView("detail", state.params);
+        else { refreshPreview(); }
+        const ll = { "L-mosaic-story": "拼图·叙事序", "L-solo-route": "大图·行程序", "L-strip-exp": "图廊·体验序", "L-thumbs-social": "缩略图·社交序", "L-mixed-value": "混合·价值序" }[next.id] || next.id;
+        toast("已换版式：" + ll);
+        break;
+      }
+      case "regenStyle": {
+        // P0-13：换风格——只推进 editorialStyleId（角度/密度/Family/章节表达），守住 confirmedFacts
+        const cur = (state.draft && state.draft.editorialStyleId)
+          || (state.view === "detail" && state.params && state.params.id && getActivity(state.params.id) ? getActivity(state.params.id).editorialStyleId : "")
+          || "";
+        const next = pickEditorialStyle(cur);
+        if (state.draft) { state.draft.editorialStyleId = next.id; saveState(); }
+        if (state.view === "detail" && state.params && state.params.id) {
+          const aa = getActivity(state.params.id);
+          if (aa) { aa.editorialStyleId = next.id; saveState(); }
         }
         if (state.view === "detail") showView("detail", state.params);
         else { refreshPreview(); }
         const angLabel = (typeof EDITORIAL_ANGLES !== "undefined" && EDITORIAL_ANGLES[next.angle]) ? EDITORIAL_ANGLES[next.angle].label : next.angle;
-        toast("已换一版：" + angLabel + " · " + next.density);
+        toast("已换风格：" + angLabel + " · " + next.density);
         break;
       }
       case "doLogin": {

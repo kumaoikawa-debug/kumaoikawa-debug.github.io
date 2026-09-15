@@ -667,6 +667,8 @@
       contentDirections: [], contentDirection: 0, contentApproved: false,
       brandTone: "",
       editorialVariantId: "",
+      editorialLayoutId: "",
+      editorialStyleId: "",
       useMemberPrice: false, allowPoints: false, allowCoupons: false, tierPrices: {},
     };
   }
@@ -3708,6 +3710,7 @@
     documentary: { maxPara: 99, trunc: 0,  quote: false, cta: false },
   };
   // 一组精选「版式预设」：每一版都好看，且彼此在四维度上明显不同（连续生成相邻两版必不同）
+  // —— P0-13：保留该合并列表仅用于向后兼容（P0-12 回归脚本与旧数据）；新版改为「版式」「风格」双轴 ——
   const EDITORIAL_VARIANTS = [
     { id: "v-scenery-mag",     angle: "scenery",    structure: "story",      img: "hero-mosaic",   density: "magazine" },
     { id: "v-challenge-doc",   angle: "challenge",  structure: "route",      img: "big-solo",      density: "documentary" },
@@ -3717,15 +3720,103 @@
     { id: "v-freedom-doc",     angle: "freedom",    structure: "route",      img: "big-solo",      density: "documentary" },
     { id: "v-lifestyle-conv",  angle: "lifestyle",  structure: "value",      img: "gallery-strip", density: "conversion" },
   ];
+
+  /* === P0-13：版式 / 风格 双轴 ===
+     换版式：保持 事实 / 主题 / 文案；只改 图片组合(structure→顺序, img→图组) / 布局 / 留白(typo) / Typography / 章节视觉(tone)。
+     换风格：保持 confirmedFacts；重生成 内容角度(angle) / 标题 / 章节表达 / 文案节奏(density) / 图片策略 / Family / Layout。
+     —— 正文段落只由 style 轴(angle→标题, density→裁剪) 与活动数据决定，版式轴绝不触碰文案，故「换版式后正文不变」。 */
+  const EDITORIAL_LAYOUTS = [
+    { id: "L-mosaic-story",  structure: "story",      img: "hero-mosaic",   typo: "serif" },
+    { id: "L-solo-route",    structure: "route",      img: "big-solo",      typo: "condensed" },
+    { id: "L-strip-exp",     structure: "experience", img: "gallery-strip", typo: "airy" },
+    { id: "L-thumbs-social", structure: "social",     img: "small-thumbs",  typo: "grid" },
+    { id: "L-mixed-value",   structure: "value",      img: "mixed",         typo: "classic" },
+  ];
+  const EDITORIAL_STYLES = [
+    { id: "S-scenery-mag",     angle: "scenery",    density: "magazine",    family: "magazine" },
+    { id: "S-challenge-doc",   angle: "challenge",  density: "documentary", family: "diary" },
+    { id: "S-companion-album", angle: "companion",  density: "album",       family: "family" },
+    { id: "S-social-conv",     angle: "social",     density: "conversion",  family: "social" },
+    { id: "S-season-mag",      angle: "season",     density: "magazine",    family: "album" },
+    { id: "S-freedom-doc",     angle: "freedom",    density: "documentary", family: "diary" },
+    { id: "S-lifestyle-conv",  angle: "lifestyle",  density: "conversion",  family: "gallery" },
+  ];
+  // 旧版单一变体 → (版式, 风格) 映射（向后兼容已发布/回归数据）
+  const EDITORIAL_VARIANT_LEGACY_BY_OLD = {
+    "v-scenery-mag":     { layout: "L-mosaic-story",  style: "S-scenery-mag" },
+    "v-challenge-doc":   { layout: "L-solo-route",    style: "S-challenge-doc" },
+    "v-companion-album": { layout: "L-strip-exp",     style: "S-companion-album" },
+    "v-social-conv":     { layout: "L-thumbs-social", style: "S-social-conv" },
+    "v-season-mag":      { layout: "L-mosaic-story",  style: "S-season-mag" },
+    "v-freedom-doc":     { layout: "L-solo-route",    style: "S-freedom-doc" },
+    "v-lifestyle-conv":  { layout: "L-strip-exp",     style: "S-lifestyle-conv" },
+  };
+  // 反查：组合 id → 旧版合并 id（默认/未知组合回退为组合串）
+  const EDITORIAL_VARIANT_LEGACY = {};
+  Object.keys(EDITORIAL_VARIANT_LEGACY_BY_OLD).forEach(function (k) {
+    const m = EDITORIAL_VARIANT_LEGACY_BY_OLD[k];
+    EDITORIAL_VARIANT_LEGACY[m.layout + "|" + m.style] = k;
+  });
+  function editorialLayoutOf(a) {
+    a = a || {};
+    if (a.editorialLayoutId) {
+      const L = EDITORIAL_LAYOUTS.filter(function (x) { return x.id === a.editorialLayoutId; })[0];
+      if (L) return L;
+    }
+    if (a.editorialVariantId) {
+      const m = EDITORIAL_VARIANT_LEGACY_BY_OLD[a.editorialVariantId];
+      if (m) return EDITORIAL_LAYOUTS.filter(function (x) { return x.id === m.layout; })[0] || EDITORIAL_LAYOUTS[0];
+    }
+    return EDITORIAL_LAYOUTS[0];
+  }
+  function editorialStyleOf(a) {
+    a = a || {};
+    if (a.editorialStyleId) {
+      const S = EDITORIAL_STYLES.filter(function (x) { return x.id === a.editorialStyleId; })[0];
+      if (S) return S;
+    }
+    if (a.editorialVariantId) {
+      const m = EDITORIAL_VARIANT_LEGACY_BY_OLD[a.editorialVariantId];
+      if (m) return EDITORIAL_STYLES.filter(function (x) { return x.id === m.style; })[0] || EDITORIAL_STYLES[0];
+    }
+    return EDITORIAL_STYLES[0];
+  }
+  // 合并出 {angle,structure,img,density,...}（兼容旧调用点）；双轴字段优先，旧 editorialVariantId 兜底
   function editorialVariantOf(a) {
     a = a || {};
-    const id = a.editorialVariantId;
-    const v = (id && EDITORIAL_VARIANTS.filter(function (x) { return x.id === id; })[0]) || null;
-    return v || EDITORIAL_VARIANTS[0];
+    const L = editorialLayoutOf(a), S = editorialStyleOf(a);
+    const combo = L.id + "|" + S.id;
+    const legacyId = EDITORIAL_VARIANT_LEGACY[combo] || "";
+    const rawId = (a.editorialVariantId && EDITORIAL_VARIANT_LEGACY_BY_OLD[a.editorialVariantId]) ? a.editorialVariantId : "";
+    return {
+      id: rawId || legacyId || combo,
+      angle: S.angle, structure: L.structure, img: L.img, density: S.density,
+      layout: L.id, style: S.id, typo: L.typo, family: S.family
+    };
   }
-  // 连续生成：给定上一版 id，挑下一版（相邻两版在 angle/structure/img/density 上都有差异）
+  // 连续生成：给定上一版 id，挑下一版（相邻两版在 angle/structure/img/density 上都有差异）—— 向后兼容
   function pickEditorialVariant(a, prevId) {
     const list = EDITORIAL_VARIANTS;
+    let i = 0;
+    if (prevId) {
+      const idx = list.map(function (x) { return x.id; }).indexOf(prevId);
+      i = (idx >= 0 ? (idx + 1) % list.length : 0);
+    }
+    return list[i];
+  }
+  // P0-13：换版式 —— 仅推进版式轴（布局/图片组合/留白/字体/章节视觉），文案与事实冻结
+  function pickEditorialLayout(prevId) {
+    const list = EDITORIAL_LAYOUTS;
+    let i = 0;
+    if (prevId) {
+      const idx = list.map(function (x) { return x.id; }).indexOf(prevId);
+      i = (idx >= 0 ? (idx + 1) % list.length : 0);
+    }
+    return list[i];
+  }
+  // P0-13：换风格 —— 仅推进风格轴（角度/密度/Family/章节表达），守住 confirmedFacts
+  function pickEditorialStyle(prevId) {
+    const list = EDITORIAL_STYLES;
     let i = 0;
     if (prevId) {
       const idx = list.map(function (x) { return x.id; }).indexOf(prevId);
@@ -3758,8 +3849,12 @@
   function buildEditorialOutline(a) {
     a = a || {};
     // P0-12：同一活动按不同「变体」生成不同角度/结构/图片/密度的图文长页
+    // P0-13：版式轴(layout→structure/img/typo) 与 风格轴(style→angle/density/family) 解耦
     const variant = (arguments.length > 1 && arguments[1]) ? arguments[1] : editorialVariantOf(a);
     const vAngle = variant.angle, vStruct = variant.structure, vImg = variant.img, vDens = variant.density;
+    const layout = (variant.layout && EDITORIAL_LAYOUTS.filter(function (x) { return x.id === variant.layout; })[0]) || editorialLayoutOf(a);
+    const style = (variant.style && EDITORIAL_STYLES.filter(function (x) { return x.id === variant.style; })[0]) || editorialStyleOf(a);
+    const vTypo = layout.typo, vFamily = style.family;
     const dna = (typeof activityDNAOf === "function") ? activityDNAOf(a) : null;
     const fb = (typeof dnaCopyFor === "function") ? dnaCopyFor(dna || {}) : {};
     const theme = (dna && dna.mainTheme) || a.storyPurpose || a.editorialTitle || a.title || "这一程";
@@ -3778,7 +3873,7 @@
       if (!list.length) return;
       const ic = editorialImgCount(vImg, key);
       byGroup[group] = byGroup[group] || [];
-      byGroup[group].push({ group: group, key: key, kind: kind, heading: heads[key] || baseHeading || theme, paras: list, imgCount: ic.count, imgKind: ic.kind, angle: vAngle, density: vDens });
+      byGroup[group].push({ group: group, key: key, kind: kind, heading: heads[key] || baseHeading || theme, paras: list, imgCount: ic.count, imgKind: ic.kind, angle: vAngle, density: vDens, typo: vTypo, family: vFamily });
     };
 
     make("why", "why", "scenic", st.whyGo || "为什么值得去", pick(a.whyGo, fb.whyGo));

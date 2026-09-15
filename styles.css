@@ -5095,6 +5095,32 @@ body{
 .xh-ed-lead p { margin: 0 0 12px; }
 .xh-ed-lead p:first-child::first-letter { font-family: var(--display); font-size: 34px; font-weight: 800; float: left; line-height: 1; margin: 4px 8px 0 0; color: var(--brand-700, #2F5D50); }
 
+/* P0-13 版式/风格双轴视觉差异 */
+/* 版式轴：Typography / 留白 / 间距（换版式只动这些，文案不变） */
+.xh-ed.typo-serif .xh-ed-h { font-family: "Songti SC", "Noto Serif SC", var(--display); }
+.xh-ed.typo-condensed .xh-ed-h { letter-spacing: -.02em; }
+.xh-ed.typo-condensed .xh-ed-sec { margin: 24px 0 0; }
+.xh-ed.typo-condensed .xh-ed-paras p { line-height: 1.7; }
+.xh-ed.typo-airy .xh-ed-sec { margin: 46px 0 0; }
+.xh-ed.typo-airy .xh-ed-paras p { line-height: 2.05; margin-bottom: 14px; }
+.xh-ed.typo-grid .xh-ed-sec { margin: 22px 0 0; }
+.xh-ed.typo-grid .xh-ed-figs { gap: 5px; }
+.xh-ed.typo-classic .xh-ed-sec { margin: 34px 0 0; }
+.xh-ed.typo-classic .xh-ed-paras p { line-height: 1.85; }
+/* 风格轴：Family 章节视觉强调色（换风格时变化；换版式保持不变） */
+.xh-ed.tone-magazine .xh-ed-num { color: #b8632e; }
+.xh-ed.tone-diary .xh-ed-num { color: #3a6b4f; }
+.xh-ed.tone-family .xh-ed-num { color: #c0703a; }
+.xh-ed.tone-social .xh-ed-num { color: #3f6aa8; }
+.xh-ed.tone-album .xh-ed-num { color: #7a5aa0; }
+.xh-ed.tone-gallery .xh-ed-num { color: #a0506a; }
+.xh-ed.tone-magazine .xh-ed-cta { border-top: 3px solid #b8632e; }
+.xh-ed.tone-diary .xh-ed-cta { border-top: 3px solid #3a6b4f; }
+.xh-ed.tone-family .xh-ed-cta { border-top: 3px solid #c0703a; }
+.xh-ed.tone-social .xh-ed-cta { border-top: 3px solid #3f6aa8; }
+.xh-ed.tone-album .xh-ed-cta { border-top: 3px solid #7a5aa0; }
+.xh-ed.tone-gallery .xh-ed-cta { border-top: 3px solid #a0506a; }
+
 .xh-ed-sec { margin: 34px 0 0; }
 .xh-ed-num { font-size: 10.5px; letter-spacing: .2em; color: var(--muted); margin-bottom: 8px; font-weight: 700; }
 .xh-ed-h { font-family: var(--display); font-size: 22px; line-height: 1.35; margin: 0 0 14px; color: var(--ink); font-weight: 700; }

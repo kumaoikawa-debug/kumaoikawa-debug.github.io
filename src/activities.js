@@ -54,13 +54,16 @@
   }
   function editorialVariantSwitch(a) {
     a = a || {};
-    const v = (typeof editorialVariantOf === "function") ? editorialVariantOf(a) : { angle: "scenery", density: "magazine", img: "hero-mosaic" };
-    const ang = (typeof EDITORIAL_ANGLES !== "undefined" && EDITORIAL_ANGLES[v.angle]) ? EDITORIAL_ANGLES[v.angle].label : v.angle;
-    const densLabel = { magazine: "杂志型", album: "画册型", documentary: "纪实型", conversion: "转化型" }[v.density] || v.density;
-    const imgLabel = (typeof EDITORIAL_IMG !== "undefined" && EDITORIAL_IMG[v.img] && EDITORIAL_IMG[v.img].hero === "band") ? "小图带" : "大图Hero";
+    const L = (typeof editorialLayoutOf === "function") ? editorialLayoutOf(a) : { id: "L-mosaic-story", structure: "story", img: "hero-mosaic", typo: "serif" };
+    const S = (typeof editorialStyleOf === "function") ? editorialStyleOf(a) : { id: "S-scenery-mag", angle: "scenery", density: "magazine", family: "magazine" };
+    const ang = (typeof EDITORIAL_ANGLES !== "undefined" && EDITORIAL_ANGLES[S.angle]) ? EDITORIAL_ANGLES[S.angle].label : S.angle;
+    const densLabel = { magazine: "杂志型", album: "画册型", documentary: "纪实型", conversion: "转化型" }[S.density] || S.density;
+    const imgLabel = (typeof EDITORIAL_IMG !== "undefined" && EDITORIAL_IMG[L.img] && EDITORIAL_IMG[L.img].hero === "band") ? "小图带" : "大图Hero";
+    const structLabel = { story: "叙事序", experience: "体验序", route: "行程序", value: "价值序", social: "社交序" }[L.structure] || L.structure;
     return `<div class="detail-mode-switch editorial-variant-switch">`
-      + `<button type="button" class="dms-chip" data-action="regenEditorial" title="换一版不同角度/结构/图片/密度的详情页">${ICON("refresh")} 换一版</button>`
-      + `<span class="dms-cur">${esc(ang)} · ${esc(densLabel)} · ${esc(imgLabel)}</span>`
+      + `<button type="button" class="dms-chip" data-action="regenLayout" title="只换图片组合/布局/留白/字体，文案与事实不变">${ICON("layout")} 换版式</button>`
+      + `<button type="button" class="dms-chip" data-action="regenStyle" title="重生成角度/标题/节奏/图片策略/版式，守住已确认事实">${ICON("sparkles")} 换风格</button>`
+      + `<span class="dms-cur">${esc(imgLabel)}·${esc(structLabel)} ｜ ${esc(ang)}·${esc(densLabel)}</span>`
       + `</div>`;
   }
   function xhFig(a, i, cap) {
@@ -74,7 +77,10 @@
     if (typeof setPagePhotoIntel === "function") setPagePhotoIntel(a);
     const dna = (typeof activityDNAOf === "function") ? activityDNAOf(a) : null;
     // P0-12：读取当前详情页变体（角度/结构/图片/密度），驱动整页多样生成
-    const variant = (typeof editorialVariantOf === "function") ? editorialVariantOf(a) : { angle: "scenery", structure: "story", img: "hero-mosaic", density: "magazine" };
+    // P0-13：版式轴(layout→structure/img/typo) 与 风格轴(style→angle/density/family) 解耦
+    const variant = (typeof editorialVariantOf === "function") ? editorialVariantOf(a) : { angle: "scenery", structure: "story", img: "hero-mosaic", density: "magazine", layout: "L-mosaic-story", style: "S-scenery-mag", typo: "serif", family: "magazine" };
+    const layout = (typeof editorialLayoutOf === "function") ? editorialLayoutOf(a) : { id: "L-mosaic-story", structure: "story", img: "hero-mosaic", typo: "serif" };
+    const style = (typeof editorialStyleOf === "function") ? editorialStyleOf(a) : { id: "S-scenery-mag", angle: "scenery", density: "magazine", family: "magazine" };
     const ac = styleAccent(a);
     const photos = a.photos || [];
     const coverIdx = Math.max(0, Math.min(+(a.coverIndex || 0), Math.max(0, photos.length - 1)));
@@ -203,7 +209,7 @@
     const imgCfg = (typeof EDITORIAL_IMG !== "undefined" && EDITORIAL_IMG[variant.img]) || { hero: "full" };
     const heroCls = imgCfg.hero === "band" ? " band" : "";
     return `
-      <div class="activity-page xh-ed">
+      <div class="activity-page xh-ed typo-${esc(layout.typo)} tone-${esc(style.family)}">
       <div class="ps-topbar">${psLogo()}</div>
       ${detailModeSwitch()}
       ${editorialVariantSwitch(a)}
