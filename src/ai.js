@@ -77,7 +77,7 @@
       " \"narrativePlan\": {\"coreMessage\":\"\",\"whyGo\":\"\",\"whatExperience\":\"\",\"whatGain\":\"\",\"decisionInfo\":\"\",\"closingEmotion\":\"\"}",
       "}"
     ].join("\n");
-    const userMsg = ["请分析以下真实活动资料，严格按 Schema 返回 JSON：", text, "JSON Schema:", schema].join("\n\n");
+    const userMsg = ["请分析以下真实活动资料，严格按 Schema 返回 JSON：", text, dnaPromptBlock({ raw: text }), "JSON Schema:", schema].join("\n\n");
     try {
       return await clubLLM({ system: STRATEGY_PROMPT, user: userMsg, json: true, temperature: 0.4 });
     } catch (e) { console.error("AI 策略分析异常:", e); return null; }
@@ -114,7 +114,7 @@
       " \"shareCopies\":{\"wechat\":\"\",\"moments\":\"\",\"xhs\":\"\",\"gzh\":\"\",\"voice\":\"\"}",
       "}"
     ].join("\n");
-    const userMsg = ["【已确认活动资料】", text, "【内容策略（必须严格服从，所有渠道同一主主题）】", stratTxt, "请严格按 Schema 返回 JSON。要求：1) 必须返回 Schema 中所有字段，不得省略；2) 每个字段都必须有有效内容，禁止空字符串、null 或省略；3) 正文必须是一篇连贯长文，围绕上面的主传播主题展开，不得各写一段再拼接；4) 若某字段信息不足，可基于已确认事实合理推断，但字段必须存在且有内容。"].join("\n\n");
+    const userMsg = ["【已确认活动资料】", text, dnaPromptBlock({ raw: text }), "【内容策略（必须严格服从，所有渠道同一主主题）】", stratTxt, "请严格按 Schema 返回 JSON。要求：1) 必须返回 Schema 中所有字段，不得省略；2) 每个字段都必须有有效内容，禁止空字符串、null 或省略；3) 正文必须是一篇连贯长文，围绕上面的主传播主题展开，不得各写一段再拼接；4) 若某字段信息不足，可基于已确认事实合理推断，但字段必须存在且有内容。"].join("\n\n");
     try {
       return await clubLLM({ system: AI_SYSTEM_PROMPT, user: userMsg, json: true, temperature: 0.7 });
     } catch (e) { console.error("AI 叙事生成异常:", e); return null; }
@@ -440,7 +440,7 @@
       return "";
     });
     const schema = `{ ${schemaParts.join(", ")} }`;
-    const userMsg = `已有活动事实：${factsText}\n\n${stratTxt ? "内容策略：\n" + stratTxt + "\n\n" : ""}请严格补全以下空缺字段，每个字段都必须有有效内容，禁止空字符串或省略：${need.join("、")}。\n\n严格只返回如下 JSON：\n${schema}`;
+    const userMsg = `${dnaPromptBlock(a)}\n\n已有活动事实：${factsText}\n\n${stratTxt ? "内容策略：\n" + stratTxt + "\n\n" : ""}请严格补全以下空缺字段，每个字段都必须有有效内容，禁止空字符串或省略：${need.join("、")}。\n\n严格只返回如下 JSON：\n${schema}`;
     try {
       const json = await clubLLM({ system: AI_SYSTEM_PROMPT, user: userMsg, json: true, temperature: 0.7 });
       if (!json) return false;
@@ -556,7 +556,7 @@
     const currentRef = isList
       ? `当前已有版本（仅供参考，请勿重复，需全新角度）：${JSON.stringify(Array.isArray(current) ? current : [])}`
       : `当前已有版本（仅供参考，请勿重复，需全新角度）：${typeof current === "string" ? current : ""}`;
-    const userMsg = `已有活动事实：${JSON.stringify(ctx)}\n\n请只重新生成「${def.label}」这一项。要求：${def.rule}。${currentRef}\n\n严格只返回如下 JSON Schema 中的一个字段：\n${schemaField}`;
+    const userMsg = `${dnaPromptBlock(a)}\n\n已有活动事实：${JSON.stringify(ctx)}\n\n请只重新生成「${def.label}」这一项。要求：${def.rule}。${currentRef}\n\n严格只返回如下 JSON Schema 中的一个字段：\n${schemaField}`;
     try {
       const json = await clubLLM({ system: AI_SYSTEM_PROMPT, user: userMsg, json: true, temperature: 0.85 });
       if (json == null) return false;
@@ -590,7 +590,7 @@
     };
     const existing = a.sellingPoints.map((s, i) => (i === idx ? null : `${s.title || ""}｜${s.desc || ""}`)).filter(Boolean);
     const current = a.sellingPoints[idx];
-    const userMsg = `已有活动事实：${JSON.stringify(ctx)}\n\n现有卖点（禁止重复或近义）：${existing.join("；") || "无"}\n\n请只重新生成第 ${idx + 1} 条卖点。要求：\n1. title 一句话事实点（8-20字），不要空泛形容词；\n2. desc 写清为什么这个点对用户重要（30-60字）；\n3. 必须与上面「现有卖点」角度明显不同；\n4. 从稀缺场景 / 真实体验 / 服务保障 / 季节时机 / 人群匹配 / 完成感 中任选一个不重复的角度。\n\n严格只返回如下 JSON Schema：\n{ "title": "卖点标题", "desc": "卖点描述" }`;
+    const userMsg = `${dnaPromptBlock(a)}\n\n已有活动事实：${JSON.stringify(ctx)}\n\n现有卖点（禁止重复或近义）：${existing.join("；") || "无"}\n\n请只重新生成第 ${idx + 1} 条卖点。要求：\n1. title 一句话事实点（8-20字），不要空泛形容词；\n2. desc 写清为什么这个点对用户重要（30-60字）；\n3. 必须与上面「现有卖点」角度明显不同；\n4. 从稀缺场景 / 真实体验 / 服务保障 / 季节时机 / 人群匹配 / 完成感 中任选一个不重复的角度。\n\n严格只返回如下 JSON Schema：\n{ "title": "卖点标题", "desc": "卖点描述" }`;
     try {
       const json = await clubLLM({ system: AI_SYSTEM_PROMPT, user: userMsg, json: true, temperature: 0.85 });
       if (json == null) return false;
@@ -1002,6 +1002,7 @@
     else if (activityForm === "camp") coreMotivation = "social";
     else if (activityForm === "photo") coreMotivation = "photo";
     else if (activityForm === "water") coreMotivation = "release";
+    else if (environment === "water" && /清凉|溯溪|溪|水|夏/.test((season || "") + " " + t)) coreMotivation = "release";
     else if (/治愈|放松|冥想|减压|慢生活|疗愈/.test(t)) coreMotivation = "healing";
     else if (/社交|交友|团建|脱单|聚会/.test(t)) coreMotivation = "social";
     else if (/运动|健身|拉练|体能/.test(t)) coreMotivation = "sport";
@@ -1055,16 +1056,196 @@
     else if (activityForm === "family") commercialAngle = "family_value";
     evidence.commercialAngle = price != null ? "价格=¥" + price + " / 天数=" + days : "无价格，按默认体验价值";
 
+    // ---- P0-2 差异化描述符：由 12 维组合派生，真正驱动文案差异 ----
+    // 目的：同样「徒步」，秋彩林 / 夏溪谷 / 雪山 / 亲子 产出不同 sceneSignature / copyAngles / toneWords
+    const DNA_SCENE_BY_ENV = {
+      snow: { winter: "仰头是刃脊般的雪线，山风把云层撕开一道缝，脚下的碎石随每一步松动", autumn: "秋阳斜打在雪坡上，雪线以上白得晃眼，雪线以下是大片金黄", default: "雪线之上世界只剩呼吸和脚步，风声比人声更清楚" },
+      forest: { autumn: "脚下是铺满红黄落叶的木栈道，头上是层叠的彩林，风一过就落一阵叶雨", summer: "林子里绿得发亮，蝉声把暑气挡在树冠之外", default: "树影浓得化不开，呼吸里全是松脂和湿土的味道" },
+      water: { summer: "把脚泡进溪水里，暑气立刻被冲散，水花溅在小腿上发亮", autumn: "溪水瘦了一圈，卵石露出来，岸边的芦苇白了头", default: "踩进齐踝的溪水，凉意顺着脚踝往上爬，两岸是浓绿的灌木" },
+      meadow: { summer: "草甸被晒得暖烘烘的，野花铺到天边", autumn: "草色转黄，风一过就是一片起伏的金浪", default: "草甸一直铺到天边，云影在绿浪上慢慢挪" },
+      canyon: { default: "两壁夹出一线天，阳光只在正午漏进来一小块" },
+      coast: { summer: "海风裹着咸味扑过来，浪把脚印一遍遍抹平", default: "潮水退去，礁石上留着一窝窝小海鲜" },
+      mountain: { default: "山脊在云里时隐时现，每转一个弯就换一幅远景" },
+      urban: { default: "巷子深处飘出饭菜香，老墙根的猫比你更懂慢生活" },
+      unspecified: { default: "路在脚下慢慢铺开，沿途的风景还没被名字定义" }
+    };
+    const envSceneMap = DNA_SCENE_BY_ENV[environment] || DNA_SCENE_BY_ENV.unspecified;
+    const sceneSignature = (season && envSceneMap[season]) ? envSceneMap[season] : (envSceneMap.default || "");
+
+    const DNA_THEME = {
+      hike: { scenery: "把脚步交给风景，让路自己说话", healing: "在林子里把城市调成静音", sport: "用双腿重新丈量山野", social: "和同频的人走同一条路", default: "走一段少有人走的路" },
+      mountain: { challenge: "向雪线之上，要走一遭", sport: "把体力推过临界点", default: "山就在那里，去靠近它" },
+      water: { release: "把整个夏天泡进水里", sport: "让水流替你冲掉疲惫", default: "顺着水走，凉意一路相随" },
+      camp: { social: "把聚会搬到星空下", healing: "在篝火边把时钟调慢", default: "把卧室搬到山野里" },
+      family: { family: "把第一次山野，留给孩子", default: "陪孩子，认识世界的第一页" },
+      ride: { sport: "用车轮丈量风的形状", default: "风从耳边过，路在轮下长" },
+      photo: { photo: "等一束光，等一片云", default: "把镜头对准没人去的角度" },
+      culture: { healing: "在老街旧物里，把节奏慢下来", default: "在城郊的旧时光里走神" },
+      explore: { default: "去地图边缘，看看没被命名的地方" }
+    };
+    const themeMap = DNA_THEME[activityForm] || DNA_THEME.explore;
+    const mainTheme = themeMap[coreMotivation] || themeMap.default || "走一段值得记住的路";
+
+    const DNA_ANGLES_BY_MOTIV = {
+      scenery: ["把镜头交给沿途，不赶路", "用脚步丈量一条小众路线", "把看过变成走过"],
+      healing: ["把手机调成飞行模式，听林子说话", "允许自己什么都不做，只是待着", "让山野替你按下重启键"],
+      release: ["把整个夏天泡进溪水里", "用一脚清凉换一身暑气全消", "水花溅起的那刻，城市就远了"],
+      challenge: ["把体力推到临界点，再往上走一步", "冲顶那一刻，所有的累都值了", "用坚持换一片只有山顶才有的视野"],
+      family: ["把孩子交给泥土和树叶，而不是屏幕", "第一次爬山，由你陪他走完", "在自然课堂上，你也是学生"],
+      sport: ["用一次拉练换一周好睡眠", "让心率回到山林的节奏", "把通勤久坐的身体重新打开"],
+      social: ["和一群同频的人走同一条路", "路上聊的比目的地更难忘", "把聚会从会议室搬到山里"],
+      photo: ["把相机对焦在没人去的角度", "等一束光，等一片云", "出片是顺便，不是目的"],
+      default: ["走一段值得记住的路", "把日子过成户外", "让风景替你说话"]
+    };
+    const DNA_ENV_ANGLE = {
+      forest: { autumn: "把红叶装进相册，也装进回忆", summer: "在绿荫里躲过整个酷暑" },
+      water: { summer: "溯溪而上，每一段都是天然空调", autumn: "浅溪瘦水，正好教孩子辨认石头" },
+      snow: { default: "雪线之上，世界只剩呼吸和脚步" },
+      meadow: { summer: "躺在草甸上，看云慢慢走", autumn: "风一过，整片草浪都金了" },
+      canyon: { default: "一线天里，光只肯在正午露一小块" },
+      coast: { summer: "海风把咸味拍在脸上，浪抹平脚印" },
+      mountain: { default: "每个转弯，都换一幅远景" },
+      urban: { default: "巷子深处的饭菜香，比景点更动人" }
+    };
+    const envAngleMap = DNA_ENV_ANGLE[environment];
+    const envAngle = envAngleMap ? ((season && envAngleMap[season]) ? envAngleMap[season] : (envAngleMap.default || null)) : null;
+    const motivAngles = DNA_ANGLES_BY_MOTIV[coreMotivation] || DNA_ANGLES_BY_MOTIV.default;
+    const copyAngles = (envAngle ? [envAngle] : []).concat(motivAngles).slice(0, 4);
+
+    const DNA_TONE = {
+      scenery: ["松弛", "通透", "沉浸", "慢下来"],
+      healing: ["安静", "清透", "留白", "出神"],
+      release: ["清凉", "痛快", "沁凉", "畅快"],
+      challenge: ["硬核", "突破", "炽热", "登顶"],
+      family: ["陪伴", "惊喜", "安心", "生长"],
+      sport: ["舒展", "酣畅", "元气", "律动"],
+      social: ["相聚", "热闹", "联结", "同频"],
+      photo: ["光影", "氛围", "定格", "出片"],
+      default: ["真实", "自然", "当下", "在场"]
+    };
+    const toneWords = DNA_TONE[coreMotivation] || DNA_TONE.default;
+
+    const DNA_ENV_TAGS = {
+      snow: ["雪线", "刃脊", "冰川", "垭口"],
+      forest: ["林间", "松脂", "树影", "彩林", "落叶"],
+      water: ["溪水", "卵石", "水花", "清凉", "浅滩"],
+      meadow: ["草甸", "野花", "云影", "风"],
+      canyon: ["崖壁", "一线天", "光影", "回响"],
+      coast: ["海风", "浪", "礁石", "咸味"],
+      mountain: ["山脊", "云海", "远景", "转弯"],
+      urban: ["老街", "旧物", "巷子", "慢生活"],
+      unspecified: ["路", "风景", "远方", "脚步"]
+    };
+    const envTags = DNA_ENV_TAGS[environment] || DNA_ENV_TAGS.unspecified;
+    const sceneTags = [environmentLabel || "山野"].concat(envTags).slice(0, 6);
+
+    const editorialTitle = (season ? season + "，" : "") + (environmentLabel || "山野") + "里的一场" + (DNA_FORM_LABELS[activityForm] || "出行");
+    const pullQuote = mainTheme;
+    evidence.descriptors = "由 " + (DNA_FORM_LABELS[activityForm] || "户外活动") + " × " + (environmentLabel || "未定地貌") + " × " + (season || "未定季节") + " × " + (DNA_MOTIVATION_LABELS[coreMotivation] || "户外体验") + " 组合派生";
+
     return {
       activityForm, activityFormLabel: DNA_FORM_LABELS[activityForm] || "户外活动",
       intensity, environment, environmentLabel, season,
       coreMotivation, coreMotivationLabel: DNA_MOTIVATION_LABELS[coreMotivation] || "户外体验",
       socialLevel, challengeLevel, professionalLevel,
       visualPotential, targetAudience, tripRhythm, commercialAngle,
+      sceneSignature, mainTheme, copyAngles, toneWords, sceneTags, pullQuote, editorialTitle,
       _evidence: evidence,
     };
   }
   function activityDNAOf(a, photos) { return (a && a.activityDNA) || buildActivityDNA(a, photos); }
+
+  // P0-2：把活动基因拼成一段给 LLM 的「差异化指令」，强制按基因写不同文案（禁止套通用模板）
+  function dnaPromptBlock(a) {
+    const dna = (a && a.activityDNA) || buildActivityDNA(a);
+    if (!dna) return "";
+    const lines = [
+      "【活动基因 Activity DNA（必须依此写出差异化，禁止套用通用徒步/户外模板）】",
+      "- 活动形式：" + (dna.activityFormLabel || dna.activityForm),
+      "- 环境地貌：" + (dna.environmentLabel || dna.environment || "未定"),
+      "- 季节：" + (dna.season || "未定"),
+      "- 强度：" + dna.intensity + "（挑战度 " + dna.challengeLevel + " / 专业度 " + dna.professionalLevel + "）",
+      "- 核心动机：" + (dna.coreMotivationLabel || dna.coreMotivation),
+      "- 社交形态：" + dna.socialLevel,
+      "- 目标人群：" + (dna.targetAudience || "通用"),
+      "- 行程节奏：" + dna.tripRhythm,
+      "- 商业角度：" + dna.commercialAngle,
+      "- 标志性场景（写进文案的具体画面）：" + (dna.sceneSignature || "无"),
+      "- 本次主主题（贯穿所有渠道）：" + (dna.mainTheme || "无"),
+      "- 推荐内容角度（挑 2-3 个展开，不要全用）：" + (dna.copyAngles || []).join("；"),
+      "- 推荐语气词（仅参考，不要堆砌）：" + (dna.toneWords || []).join("、"),
+      "- 场景标签（可用于标题/配文）：" + (dna.sceneTags || []).join("、"),
+      "要求：以上基因相同主题/场景/角度的文案才算「贴合本场」；若你写出的内容换成任何其他户外活动也能成立，说明还不够具体，必须回到本场才有的基因重写。"
+    ];
+    return lines.join("\n");
+  }
+
+  // P0-2：纯本地、由基因派生的文案（无 Key / LLM 失败时的兜底，确保 4 种徒步也明显不同）
+  function dnaCopyFor(dna) {
+    dna = dna || {};
+    const sig = dna.sceneSignature || "";
+    const theme = dna.mainTheme || "走一段值得记住的路";
+    const angles = dna.copyAngles || [];
+    const tones = dna.toneWords || [];
+    const tags = dna.sceneTags || [];
+    const envLabel = dna.environmentLabel || "山野";
+    const heroHook = (angles[0] || theme) + (sig ? "。" + sig.slice(0, 24) : "");
+    const hook = angles[0] || theme;
+    const editorialTitle = dna.editorialTitle || theme;
+    const pullQuote = dna.pullQuote || theme;
+    const intro = ((angles[1] || theme) + "。") + (sig ? sig + "。" : "") + "这一程，把脚步交给" + envLabel + "本身。";
+    const body = [
+      "为什么值得去：" + (angles[1] || theme) + "。",
+      "来了会体验什么：" + (sig || (tags.join("、") + "，构成这一程最具体的画面。")),
+      "参加完能得到什么：" + (angles[2] || (tones.join("、") + "，是这趟行程留给你的余韵。")),
+      "适不适合你：" + (dna.targetAudience || "想换个节奏的人") + "，都可以在这里找到自己的步频。"
+    ];
+    const sellingPoints = [
+      { title: envLabel + "本场才有的画面", desc: sig || "这一程最具体的风景，只属于这条路线。" },
+      { title: theme, desc: "围绕「" + theme + "」组织整场表达，让参与者一眼知道为什么来。" },
+      { title: (angles[1] || "具体而真实的体验"), desc: (angles[1] || "用真实场景替代空泛形容词，让文案站得住脚。") }
+    ];
+    const forewordTitles = [
+      (dna.season ? dna.season + "的" : "") + envLabel + "，值得用脚步丈量",
+      theme,
+      (tags[1] ? tags[1] + "里的一场" + (dna.activityFormLabel || "出行") : (dna.activityFormLabel || "出行") + "邀请"),
+      (angles[1] || "走一段少有人走的路"),
+      (dna.targetAudience ? "写给" + dna.targetAudience : "把日子过成户外")
+    ];
+    return {
+      heroHook, hook, editorialTitle, pullQuote, intro, body, sellingPoints, forewordTitles,
+      posterTagline: (dna.season ? dna.season + "，" : "") + envLabel + "在等你",
+      storyPurpose: theme
+    };
+  }
+
+  // P0-2：把基因文案兜底填进活动对象（缺啥补啥，不覆盖 AI 已生成的内容）
+  function applyDnaCopyFallback(a) {
+    if (!a) return a;
+    if (!a.activityDNA) a.activityDNA = buildActivityDNA(a);
+    const c = dnaCopyFor(a.activityDNA);
+    if (!a.heroHook) a.heroHook = c.heroHook;
+    if (!a.hook) a.hook = c.hook;
+    if (!a.editorialTitle) a.editorialTitle = c.editorialTitle;
+    if (!a.pullQuote) a.pullQuote = c.pullQuote;
+    if (!a.intro) a.intro = c.intro;
+    if (!Array.isArray(a.body) || !a.body.length) a.body = c.body;
+    if (!Array.isArray(a.sellingPoints) || !a.sellingPoints.length) {
+      a.sellingPoints = c.sellingPoints;
+      const mt = dedupeTitles ? dedupeTitles(c.forewordTitles) : c.forewordTitles.slice();
+      a.forewordTitles = (typeof fillTitlesFromPool === "function") ? fillTitlesFromPool(mt, a) : mt;
+      const first = (a.forewordTitles && a.forewordTitles[0]) || a.title || "";
+      a.titleVariants = { brand: first, info: first, wechat: first, xhs: first, moments: first };
+      if (!a.title) a.title = first;
+    }
+    if (!a.posterTagline) a.posterTagline = c.posterTagline;
+    if (!a.storyPurpose) a.storyPurpose = c.storyPurpose;
+    if (!a.contentStrategy) a.contentStrategy = { name: (a.activityDNA && a.activityDNA.coreMotivationLabel) || "主表达", headline: c.heroHook, reason: c.intro, intro: c.intro, posterLine: c.posterTagline };
+    a.pipeline = a.pipeline || { foreword: { titles: [] }, itinerary: { days: a.days || 1 }, details: {} };
+    a.pipeline.foreword = { titles: a.forewordTitles || [], intro: a.intro || "" };
+    a.pipeline.sellingPoints = (a.sellingPoints || []).map((s) => ({ title: String((s && s.title) || ""), desc: String((s && s.desc) || "") }));
+    return a;
+  }
 
   /* ===== P0-5 行程结构化：结构型时间表（事实层）+ 内容型叙事（表达层）=====
      原则：时间表只搬运真实行程；叙事只做表达，不新增事件、不臆造天气/感受。 */

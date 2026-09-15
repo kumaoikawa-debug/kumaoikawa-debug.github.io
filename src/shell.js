@@ -201,7 +201,7 @@
       case "generate": generateFromInput(); break;
       case "voice": toast("语音输入为视觉占位，Demo 中请直接输入文字"); break;
       case "paste": { const ta = $("#createInput"); if (ta) { ta.value = PASTE_SAMPLE; ta.focus(); } toast("已填入一段示例旧文案"); break; }
-      case "example": { const ta = $("#createInput"); if (ta) { ta.value = d.text; } else { state.draft = blankActivity(); state.draft.raw = d.text; parseActivityWithAI(d.text).then(async (json) => { if (json && !json._error && !json._needKey) { applyAIResult(json, state.draft); await ensureNarrativeFields(state.draft); await ensureItineraryFields(state.draft); syncItineraryDays(state.draft); } showView("factConfirm"); }); } break; }
+      case "example": { const ta = $("#createInput"); if (ta) { ta.value = d.text; } else { state.draft = blankActivity(); state.draft.raw = d.text; parseActivityWithAI(d.text).then(async (json) => { if (json && !json._error && !json._needKey) { applyAIResult(json, state.draft); await ensureNarrativeFields(state.draft); } else { if (typeof syncDerived === "function") syncDerived(state.draft); applyDnaCopyFallback(state.draft); } await ensureItineraryFields(state.draft); syncItineraryDays(state.draft); showView("factConfirm"); }); } break; }
       case "back": {
         const prev = backStack.pop();
         if (prev) showView(prev); else showView("dashboard");
@@ -1575,8 +1575,21 @@
     state.draft.raw = text;
     showGenerating();
     parseActivityWithAI(text).then(async (json) => {
-      if (!json || json._needKey) { toast("请先在「AI 设置」填写 DeepSeek API Key"); openAISettings(); return; }
-      if (json._error) { toast("AI 解析失败：" + json._error + "（可在 AI 设置更换 Key / 模型）"); return; }
+      // P0-2：无 Key / AI 失败，用本地 Activity DNA 兜底生成（差异化，不依赖 LLM），仍进入确认卡
+      if (!json || json._needKey || json._error) {
+        const base = state.draft;
+        base.raw = base.raw || text;
+        if (typeof syncDerived === "function") syncDerived(base);
+        applyDnaCopyFallback(base);
+        await ensureItineraryFields(base);
+        syncItineraryDays(base);
+        const sims = similarList(base);
+        if (sims.length) base._similarList = sims.map((s) => ({ id: s.id, title: s.title }));
+        showView("factConfirm");
+        if (json && json._needKey) toast("未配置 AI Key，已用本地基因模板生成（配 Key 可解锁 AI 文案）");
+        else if (json && json._error) toast("AI 生成失败，已用本地基因模板兜底");
+        return;
+      }
       applyAIResult(json, state.draft);
       await ensureNarrativeFields(state.draft);
       await ensureItineraryFields(state.draft);
