@@ -1478,9 +1478,11 @@
         xf.styleSeed = Math.floor(Date.now() % 1000000) + Math.floor(Math.random() * 1000);
         xf.genState = "loading"; showView(state.view);
         try {
-          xf.strategy = await genStrategy(a, xf.photos, xf.notes || xf.recapNotes, xf.scenario);
+          const swPhotos = (typeof xfActivePhotos === "function") ? xfActivePhotos(xf) : (xf.photos || []); // P1-2：换风格时也尊重轻确认里的「删除某图」
+          xf.strategy = await genStrategy(a, swPhotos, xf.notes || xf.recapNotes, xf.scenario);
+          xfApplyCoverOverride(xf); // P1-2：老板选的封面落到生成的 hero
           if (xf.scenario === "recruit") xf.out = await genRecruit(a, xf.master, xf.strategy);
-          else xf.recap = await genRecap(a, xf.master, xf.strategy, xf.photos, xf.recapNotes);
+          else xf.recap = await genRecap(a, xf.master, xf.strategy, swPhotos, xf.recapNotes);
           xf.family = xf.strategy.editorialDirection.family;
           xf.variant = xf.strategy.editorialDirection.variant;
           xf._styleHistory.push({ family: xf.family, variant: xf.variant });
@@ -1503,11 +1505,13 @@
         xf.genState = "loading"; showView(state.view);
         try {
           xf.strategy = await genStrategy(a, actPhotos, xf.notes, "recruit");
+          xfApplyCoverOverride(xf); // P1-2：老板选的封面落到生成的 hero
           xf.master.keyImages = await xfAttachPhotoCaptions(xf.master.keyImages, xf.master.confirmedFacts, xf.strategy.editorialDirection);
           xf.out = await genRecruit(a, xf.master, xf.strategy);
           // §41：版式质量不达标 → 重选家族/变体（重生成 ED/Layout）一次
           if (aiAuthMode() && state.xf.quality && state.xf.quality.editorialRisk) {
             xf.strategy = await genStrategy(a, actPhotos, xf.notes, "recruit");
+            xfApplyCoverOverride(xf); // P1-2
             xf.out = await genRecruit(a, xf.master, xf.strategy);
           }
           xf.family = xf.strategy.editorialDirection.family;
@@ -1548,11 +1552,13 @@
         xf.genState = "loading"; showView(state.view);
         try {
           xf.strategy = await genStrategy(a, actPhotos, xf.recapNotes, "recap");
+          xfApplyCoverOverride(xf); // P1-2：老板选的封面落到生成的 hero
           xf.master.keyImages = await xfAttachPhotoCaptions(xf.master.keyImages, xf.master.confirmedFacts, xf.strategy.editorialDirection);
           xf.recap = await genRecap(a, xf.master, xf.strategy, xf.photos, xf.recapNotes);
           // §41：版式质量不达标 → 重选家族/变体（重生成 ED/Layout）一次
           if (aiAuthMode() && state.xf.quality && state.xf.quality.editorialRisk) {
             xf.strategy = await genStrategy(a, actPhotos, xf.recapNotes, "recap");
+            xfApplyCoverOverride(xf); // P1-2
             xf.recap = await genRecap(a, xf.master, xf.strategy, xf.photos, xf.recapNotes);
           }
           xf.recapType = xfRecapType(a, xf.photos);

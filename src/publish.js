@@ -1223,6 +1223,21 @@ function xfCoverIndex(xf) {
   }
   return 0;
 }
+// P1-2：把老板在轻确认里选的「封面」，落到生成结果的 photoIntel.heroId。
+// 否则 genStrategy 会按内容自己选封面，导致「改封面」在生成后无效（只改了预览、没改输出）。
+function xfApplyCoverOverride(xf) {
+  const ov = xf.photoOverrides || {};
+  if (ov.cover == null || ov.cover < 0) return;
+  const src = (xf.photos || [])[ov.cover];
+  if (!src) return;
+  const intel = xf.strategy && xf.strategy.photoIntel;
+  if (!intel || !intel.used) return;
+  const p = intel.used.find((u) => u.src === src);
+  if (!p) return; // 已弃用的图不可作封面
+  if (intel.heroId && intel.roles) intel.roles[intel.heroId] = "SectionLeadImage";
+  intel.roles[p.imageId] = "HeroImage";
+  intel.heroId = p.imageId;
+}
 function xfPhotoReview(xf) {
   const photos = xf.photos || [];
   if (!photos.length) return "";
