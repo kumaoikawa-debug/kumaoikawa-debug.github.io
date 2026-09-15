@@ -197,19 +197,33 @@ function xfConfirmedFacts(a, photos) {
     photosCount: (photos || []).length,
   };
 }
-/* P0-5 / P0-6 实际活动数据：与原计划事实严格分离；只采用用户在「补充资料」中确认的信息。
-   报名人数 ≠ 实际参加人数——未明确提供实际人数时保持 null，回顾不得写「XX 人参加」。 */
+/* P0-5 / P0-6 / P0-17 实际活动数据：与原计划事实严格分离；只采用用户在「补充资料 / actualActivityData」中确认的信息。
+   报名人数(registeredParticipants) ≠ 实际参加人数(actualParticipants)——两者是独立字段，未明确提供实际人数时保持 null，回顾不得写「XX 人参加」。
+   P0-17：actualActivityData 为独立对象（活动上持久存储），优先取结构化字段；仅当结构化字段为空时才从 notes 文本解析兜底。 */
 function xfActualActivityData(a, notes) {
-  const registered = a.signups || (a.departures ? a.departures.reduce((s, d) => s + (d.sign || 0), 0) : 0) || null;
+  const stored = (a && a.actualActivityData) || {};
+  // 报名人数：优先用结构化 actualActivityData.registeredParticipants，否则回退原计划 signups/departures
+  const registered = (stored.registeredParticipants != null && stored.registeredParticipants !== "")
+    ? +stored.registeredParticipants
+    : (a.signups || (a.departures ? a.departures.reduce((s, d) => s + (d.sign || 0), 0) : 0) || null);
   const txt = (notes || "").trim();
-  let actual = null;
-  const mActual = txt.match(/(?:实际|到场|实到|共|参加)[^。；\n]{0,10}?(\d+)\s*(?:人|位|名)/);
-  if (mActual) actual = +mActual[1];
+  // 实际参与人数：优先用结构化 actualActivityData.actualParticipants（独立确认），否则从补充资料文本解析兜底
+  let actual = (stored.actualParticipants != null && stored.actualParticipants !== "") ? +stored.actualParticipants : null;
+  if (actual == null) {
+    const mActual = txt.match(/(?:实际|到场|实到|共|参加)[^。；\n]{0,10}?(\d+)\s*(?:人|位|名)/);
+    if (mActual) actual = +mActual[1];
+  }
+  const arr = (x) => (Array.isArray(x) ? x.filter(Boolean).map(String) : (x ? String(x).split(/[；;\n]/).map((s) => s.trim()).filter(Boolean) : []));
+  const str = (x) => (x == null ? "" : (Array.isArray(x) ? x.filter(Boolean).join("；") : String(x)));
   return {
     registeredParticipants: registered,
     actualParticipants: actual,
-    actualWeather: "", actualHighlights: [], memorableMoments: [], actualFeedback: [],
-    completionSummary: "", actualRouteChange: "",
+    actualWeather: str(stored.actualWeather) || "",
+    actualHighlights: arr(stored.actualHighlights),
+    actualFeedback: arr(stored.actualFeedback),
+    memorableMoments: arr(stored.memorableMoments),
+    completionSummary: str(stored.completionSummary) || "",
+    actualRouteChange: str(stored.actualRouteChange) || "",
     providedNotes: txt, // 用户在「补充资料」里填写的真实信息，是唯一可用的实际事件来源
   };
 }
@@ -770,10 +784,14 @@ function xfRecapBody(h, a, m, act, notes, type, photos) {
   }
   if (/参与体验|强度|节奏/.test(h || "")) {
     const bits = [];
+    // P0-17 人数护栏：仅当用户「独立确认」实际参与人数时才写"实际参加 N 人"；报名人数(registeredParticipants) 绝不被视为实际到场，未确认则不写任何参加人数。
+    if (act && act.actualParticipants != null && act.actualParticipants !== "") bits.push("实际参加 " + act.actualParticipants + " 人");
     if (f.difficulty) bits.push("强度为 " + f.difficulty);
     if (f.distance) bits.push("路线约 " + f.distance);
     if (act && act.completionSummary) bits.push(act.completionSummary); // 仅用户确认的实际完成情况
-    return bits.length ? bits.join("，") + "。" : (photoCount ? `本次以现场照片为准，可看下方影像记录。` : `以下为本次活动的已确认信息。`);
+    if (bits.length) return bits.join("，") + "。";
+    if (photoCount) return `本次以现场照片为准，可看下方影像记录。`;
+    return `以下为本次活动的已确认信息。`;
   }
   if (/瞬间|记得|特别/.test(h || "")) return notesTxt ? `这次特别记下：${notesTxt}` : (photoCount ? `现场的照片里留住了当天的若干瞬间。` : "（如需补充现场瞬间，可在「补充资料」里填写。）");
   if (/收获|得到/.test(h || "")) {
@@ -881,7 +899,7 @@ function xfContentQuality(out, dir, scenario, facts, adv) {
     const hasList = (x) => (Array.isArray(x) ? x.filter(Boolean).length > 0 : !!x);
     const extraClaims = [
       { k: /(万里无云|阳光明媚|晴空万里|下起了雨|突然放晴|阴雨绵绵|艳阳高照|天气很(好|差))/, ok: !!A.actualWeather, w: "天气" },
-      { k: /(\d+)\s*(人|位|名)\s*(参加|到场|实到|出席)|共\s*\d+\s*人/, ok: A.actualParticipants != null, w: "实际人数" },
+      { k: /(\d+)\s*(人|位|名)\s*(参加|到场|实到|出席)|共\s*\d+\s*人|实际参加\s*\d+/, ok: A.actualParticipants != null, w: "实际人数" },
       { k: /(走完|完成)(了)?(全程|整条|整段|路线)|全员登顶|我们登顶|一个不落/, ok: !!A.completionSummary, w: "完成情况" },
       { k: /(有人说|大家(都)?(表示|说)|(队员|学员|家长|参与者)(们)?(都)?(表示|反馈|说)|好评如潮|纷纷点赞|大家一致)/, ok: hasList(A.actualFeedback), w: "用户反馈" },
       { k: /(路线(很|非常)?成熟|成熟的?(路线|线路)|老少皆宜|男女皆宜|毫无难度|闭眼可走|零门槛)/, ok: !!(facts.routeMaturity), w: "路线成熟度" },

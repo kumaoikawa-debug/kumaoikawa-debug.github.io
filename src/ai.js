@@ -671,6 +671,13 @@
       editorialLayoutId: "",
       editorialStyleId: "",
       useMemberPrice: false, allowPoints: false, allowCoupons: false, tierPrices: {},
+      // P0-17 独立的活动实际数据：与招募 facts 严格分离，由用户「补充资料」逐项确认填写。
+      // 报名人数(registeredParticipants) ≠ 实际参与人数(actualParticipants)；未确认 actualParticipants 时回顾禁止写"XX人参加"。
+      actualActivityData: {
+        registeredParticipants: null, actualParticipants: null,
+        actualWeather: "", actualHighlights: [], actualFeedback: [], memorableMoments: [],
+        completionSummary: "", actualRouteChange: "",
+      },
     };
   }
 
