@@ -3,7 +3,7 @@
     state.view = view; state.params = params || {};
     const app = $("#app");
     if (view === "login") { app.innerHTML = renderLogin(); return; }
-    const backend = ["dashboard", "create", "advice", "editor", "factConfirm", "list", "customers", "operator", "mallConsole", "settings", "decorate", "analytics", "signups", "membership", "ai", "brand", "plans", "memberMarketing", "membershipAdmin"];
+    const backend = ["dashboard", "create", "advice", "editor", "factConfirm", "list", "activityPage", "customers", "operator", "mallConsole", "settings", "decorate", "analytics", "signups", "membership", "ai", "brand", "plans", "memberMarketing", "membershipAdmin"];
     if (backend.includes(view)) {
       let content = "";
       if (view === "dashboard") content = renderDashboard();

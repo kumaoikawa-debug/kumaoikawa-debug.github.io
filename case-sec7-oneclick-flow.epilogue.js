@@ -76,6 +76,11 @@ rec("§七-4 ★不再跳到 AI 宣发中心（operator）", state.view !== "ope
 rec("§七-4 全程未进入逐字段编辑器", state.view !== "editor", state.view);
 rec("§七-4 草稿已释放（未在编辑器里挂着改）", !state.draft);
 rec("§七-4 默认输出「图文长页」（有感染力的详情页）", state.detailMode === "editorial", state.detailMode);
+/* ★渲染层断言：只看 state.view 会被「view 设对了但渲染走兜底分支」骗过（backend 数组漏登记时正是如此） */
+const appHtml = (document.querySelector("#app") || {}).innerHTML || "";
+rec("§七-4 ★#app 真的渲染出活动详情工作区（ap-head）", has(appHtml, "ap-head"), appHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 60));
+rec("§七-4 ★#app 渲染出图文长页（xh-ed）", has(appHtml, "xh-ed"));
+rec("§七-4 ★#app 不是兜底的前台首页", !has(appHtml, "front-v16") && !has(appHtml, "home-hero"));
 
 /* ---------- 5) 自动生成【完整活动】：关键决策字段无需老板逐项填写 ---------- */
 const keyFields = ["title", "type", "place", "date", "price", "limit", "difficulty"];
