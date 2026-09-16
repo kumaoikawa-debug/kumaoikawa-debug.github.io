@@ -1,14 +1,16 @@
 /* §七 最终完成标准 · 端到端一键闭环验收
    模拟老板的真实操作：输入一句话 → 上传图片 → AI 自动理解 → 系统只问必要问题
    → 自动生成完整活动 → 自动生成图文详情页 → 换版式/换风格 → 确认发布。
-   并通过「反面对照」断言老板不再需要：逐字段修改 / 自己挑图 / 自己配图 / 自己排版 / 自己检查裁图。 
+
+   v188 关键回归：落点必须是【后台「活动详情」工作区 activityPage】，
+   绝不能再跳到 AI 宣发中心（operator）——宣发文案是可选后置步骤。
 
    契约：epilogue 为裸脚本 + 顶层 return {ok,total,passed,checks} */
 
 state = (typeof initState === "function") ? initState() : (typeof loadState === "function" ? loadState() : state);
 if (state && !Array.isArray(state.activities)) state.activities = [];
 if (state && !Array.isArray(state.signups)) state.signups = [];
-if (state) state.xf = null;
+if (state) { state.xf = null; state.params = {}; state.draft = null; }
 
 /* DOM stub 补丁：showView → updateBrandColor 会写 documentElement.style.setProperty，
    极简 stub 的 style 只有普通对象，这里补齐，避免链路断言被 harness 限制误判。 */
@@ -44,6 +46,7 @@ a.date = "2026-09-20";
 a.dateMD = "9月20日";
 a.price = 168;
 a.limit = 25;
+a.limitUnit = "人";
 a.meetTime = "07:30";
 a.meeting = "天府广场";
 a.route = "赵公山环线";
@@ -64,60 +67,87 @@ rec("§七-3 确认卡主按钮 = 一键生成图文详情页", has(fcHtml, "con
 rec("§七-3 确认卡仍只问必要问题（确认卡区块存在）", has(fcHtml, "gc-block"));
 rec("§七-3 已上传照片数在确认卡可见", has(fcHtml, "已上传 3 张"), typeof fcHtml === "string" ? (has(fcHtml, "已上传 3 张") ? "ok" : fcHtml.match(/已上传[^，<]{0,12}/) || "未命中") : fcHtml);
 
-/* ---------- 4) 一键闭环：确认卡 → 落库 → 直接生成图文详情页 ---------- */
+/* ---------- 4) 一键闭环：确认卡 → 落库 → 【活动详情】工作区（★本轮修复点） ---------- */
 await confirmFactsToPage();
 const lib = (state.activities || []).find((x) => x.id === a.id);
 rec("§七-4 活动自动落库（老板无需手动保存）", !!lib);
-const xf = publishState();
-rec("§七-4 场景自动切到「活动招募」且指向本活动", xf.scenario === "recruit" && xf.aid === a.id, xf.scenario + "/" + xf.aid);
-rec("§七-4 旧资料/原话自动带入 AI", typeof xf.notes === "string" && xf.notes.indexOf("赵公山") >= 0, xf.notes);
-rec("§七-4 照片自动带进生成链路", (xf.photos || []).length === 3, (xf.photos || []).length);
-rec("§七-4 自动生成图文详情页（step=result 且 gzh 非空）", xf.step === "result" && !!xf.out && !!xf.out.gzh, xf.step + "/" + !!xf.out);
+rec("§七-4 ★落点 = 后台「活动详情」工作区（activityPage）", state.view === "activityPage", state.view);
+rec("§七-4 ★不再跳到 AI 宣发中心（operator）", state.view !== "operator", state.view);
 rec("§七-4 全程未进入逐字段编辑器", state.view !== "editor", state.view);
 rec("§七-4 草稿已释放（未在编辑器里挂着改）", !state.draft);
+rec("§七-4 默认输出「图文长页」（有感染力的详情页）", state.detailMode === "editorial", state.detailMode);
 
-/* ---------- 5) 自动排版 / 自动配图 / 自动筛选 / 自动裁切安全 ---------- */
-const dir = xf.strategy && xf.strategy.editorialDirection;
-rec("§七-5 自动选定编辑家族与版式变体（无需自己排版）", !!(dir && dir.family) && typeof dir.variant === "number", dir && dir.family + "/" + (dir && dir.variant));
-rec("§七-5 自动产出章节结构", !!(dir && dir.structure && dir.structure.length), dir && (dir.structure || []).length);
-const intel = xf.strategy && xf.strategy.photoIntel;
-rec("§七-5 照片智能自动执行（筛选+角色分配，无需自己挑图/配图）", !!intel && !!intel.roleLabel, intel ? "roles=" + Object.keys(intel.roles || {}).length : "no intel");
-rec("§七-5 裁切安全自动评估（无需自己检查人物是否被裁坏）", !!t(() => evaluateCropSafety(a.photos, intel && intel.analysis, "hero")) , "evaluateCropSafety 可自动调用");
-const resHtml = t(() => recruitResult());
-rec("§七-5 详情页已渲染出来（含公众号正文）", has(resHtml, "xf-theme") || has(resHtml, "xf-gzh-head"), typeof resHtml === "string" ? resHtml.length : resHtml);
+/* ---------- 5) 自动生成【完整活动】：关键决策字段无需老板逐项填写 ---------- */
+const keyFields = ["title", "type", "place", "date", "price", "limit", "difficulty"];
+const missing = keyFields.filter((k) => !lib || lib[k] === undefined || lib[k] === null || String(lib[k]).trim() === "");
+rec("§七-5 完整活动：关键决策字段齐备", missing.length === 0, "缺失=" + (missing.join(",") || "无"));
+const factsN = (typeof confirmedFacts === "function" && lib) ? confirmedFacts(lib).length : 0;
+rec("§七-5 已确认事实进入发布检查链路", factsN > 0, factsN + " 项");
 
-/* ---------- 6) 不满意就换版式 / 换风格 ---------- */
-rec("§七-6 详情页提供「换一种版式」", has(resHtml, "nextVariant"));
-rec("§七-6 详情页提供「换一种风格」", has(resHtml, "switchStyle"));
-const factsBefore = JSON.stringify((xf.master || {}).confirmedFacts || {});
-const quick = t(() => { quickStyle("magazine"); return "ok"; });
-rec("§七-6 换风格可执行（quickStyle 不报错）", quick === "ok", quick);
-const factsAfter = JSON.stringify((publishState().master || {}).confirmedFacts || {});
-rec("§七-6 换风格后事实不变（只改视觉/表达，不改事实）", factsBefore === factsAfter && factsBefore.length > 2, factsBefore.length + "→" + factsAfter.length);
+/* ---------- 6) 自动生成【图文详情页】+ 自动筛图/配图/裁切 ---------- */
+const pageHtml = t(() => renderActivityPage());
+rec("§七-6 活动详情工作区渲染出图文长页（xh-ed）", has(pageHtml, "xh-ed"), typeof pageHtml === "string" ? pageHtml.length : pageHtml);
+rec("§七-6 详情页含本活动标题", has(pageHtml, "赵公山轻装徒步"));
+rec("§七-6 详情页含 AI 自动完成摘要（事实/选图/角色）", has(pageHtml, "ap-meta"));
+rec("§七-6 详情页提供换版式 / 换风格", has(pageHtml, "regenLayout") && has(pageHtml, "regenStyle"));
+rec("§七-6 详情页提供确认发布出口", has(pageHtml, "confirmPublishPage"));
+rec("§七-6 宣发文案降级为可选按钮", has(pageHtml, "operatorFromActivity"));
+rec("§七-6 未手动指定封面（AI 自动选最佳封面）", !!lib && lib.coverIndex !== undefined && !lib._coverManual, lib && lib.coverIndex);
+rec("§七-6 自动选定版式与风格（无需自己排版）", !!lib && !!lib.editorialLayoutId && !!lib.editorialStyleId, lib ? lib.editorialLayoutId + "/" + lib.editorialStyleId : "none");
+const intel = (lib && lib.photos) ? t(() => buildPhotoIntelligence(lib.photos, lib, [], "recruit")) : null;
+rec("§七-6 照片智能自动执行（筛选+角色分配，无需自己挑图/配图）", !!intel && typeof intel === "object" && Object.keys(intel.roles || {}).length > 0, intel && typeof intel === "object" ? "roles=" + Object.keys(intel.roles || {}).length: "no intel");
+rec("§七-6 裁切安全自动评估（无需自己检查人物是否被裁坏）", !!t(() => evaluateCropSafety(lib.photos, (intel && intel.analysis) || [], "hero")), "evaluateCropSafety 可自动调用");
 
-/* ---------- 7) 确认发布 ---------- */
-rec("§七-7 详情页提供「确认发布」出口", has(resHtml, "confirmPublishPage"));
+/* ---------- 7) 不满意就换版式 / 换风格（且事实不变） ---------- */
+const factsBefore = JSON.stringify((typeof confirmedFacts === "function") ? confirmedFacts(lib) : {});
+const layoutBefore = lib.editorialLayoutId;
+await handleClick("regenLayout", { dataset: {} });
+const layoutAfter = ((state.activities || []).find((x) => x.id === a.id) || {}).editorialLayoutId;
+rec("§七-7 换版式生效（版式轴推进）", !!layoutAfter && layoutAfter !== layoutBefore, layoutBefore + " → " + layoutAfter);
+rec("§七-7 换版式后仍停留在活动详情页", state.view === "activityPage", state.view);
+const styleBefore = lib.editorialStyleId;
+await handleClick("regenStyle", { dataset: {} });
+const styleAfter = ((state.activities || []).find((x) => x.id === a.id) || {}).editorialStyleId;
+rec("§七-7 换风格生效（风格轴推进）", !!styleAfter && styleAfter !== styleBefore, styleBefore + " → " + styleAfter);
+const factsAfter = JSON.stringify((typeof confirmedFacts === "function") ? confirmedFacts(lib) : {});
+rec("§七-7 换版式/换风格后事实不变（只改视觉，不改事实）", factsBefore === factsAfter && factsBefore.length > 2, factsBefore.length + " → " + factsAfter.length);
+
+/* ---------- 8) 宣发文案是【可选后置步骤】（不是默认落点） ---------- */
+await handleClick("operatorFromActivity", { dataset: {} });
+const xf = publishState();
+rec("§七-8 点「生成宣发文案」才进 AI 宣发中心", state.view === "operator", state.view);
+rec("§七-8 宣发中心已自动指向本活动（无需重新选择）", xf.aid === a.id && !!xf._a, xf.aid);
+rec("§七-8 照片自动带入宣发链路", (xf.photos || []).length === 3, (xf.photos || []).length);
+
+/* ---------- 9) 确认发布（最后一环） ---------- */
+showView("activityPage", { id: a.id });
 confirmPublishPage();
 const published = (state.activities || []).find((x) => x.id === a.id);
-rec("§七-8 确认发布后活动状态变为「招募中」", !!published && published.status === "recruiting", published && published.status);
-rec("§七-8 发布后自动进历史活动库（下次一键沿用）", (state.history || []).some((h) => h.id === a.id));
+rec("§七-9 确认发布后活动状态变为「招募中」", !!published && published.status === "recruiting", published && published.status);
+rec("§七-9 发布后自动进历史活动库（下次一键沿用）", (state.history || []).some((h) => h.id === a.id));
+rec("§七-9 发布后仍停在活动详情（不被打断去别处）", state.view === "activityPage", state.view);
 
-/* ---------- 9) 反面对照：事实不全时不硬发，回到确认卡补全 ---------- */
+/* ---------- 10) 活动列表入口：能随时回到「详情页」工作区 ---------- */
+showView("list");
+const listHtml = t(() => renderList());
+rec("§七-10 活动列表可进入「详情页」工作区", has(listHtml, "openActivityPage"));
+
+/* ---------- 11) 反面对照：事实不全时不硬发，回到确认卡补全 ---------- */
 const b = blankActivity();
 b.title = "只写了一句话的活动";
 b.raw = "下周去爬山";
 b.factConfirmed = {};
 upsert(b);
-const xf2 = publishState();
-xf2.scenario = "recruit"; xf2.aid = b.id; xf2._a = b; xf2.out = null; xf2.master = null; xf2.step = null;
+showView("activityPage", { id: b.id });
 confirmPublishPage();
 const bAfter = (state.activities || []).find((x) => x.id === b.id);
-rec("§七-9 关键事实不全 → 不硬发（状态仍非招募中）", !!bAfter && bAfter.status !== "recruiting", bAfter && bAfter.status);
-rec("§七-9 自动回到确认卡补全（而不是丢进编辑器）", state.view === "factConfirm", state.view);
+rec("§七-11 关键事实不全 → 不硬发（状态仍非招募中）", !!bAfter && bAfter.status !== "recruiting", bAfter && bAfter.status);
+rec("§七-11 自动回到确认卡补全（而不是丢进编辑器）", state.view === "factConfirm", state.view);
 
-/* ---------- 10) 反面对照汇总 ---------- */
-rec("§七-10 未手动指定封面（photoOverrides.cover 仍为空=AI 自动选）", (xf.photoOverrides || {}).cover === null || (xf.photoOverrides || {}).cover == null, JSON.stringify((xf.photoOverrides || {}).cover));
-rec("§七-10 未手动排除任何图（excluded 为空=AI 自动筛）", Object.keys((xf.photoOverrides || {}).excluded || {}).length === 0);
+/* ---------- 12) 反面对照汇总：老板没动手挑图/配图/指定封面 ---------- */
+const xf2 = publishState();
+rec("§七-12 未手动指定封面（photoOverrides.cover 为空=AI 自动选）", (xf2.photoOverrides || {}).cover === null || (xf2.photoOverrides || {}).cover == null, JSON.stringify((xf2.photoOverrides || {}).cover));
+rec("§七-12 未手动排除任何图（excluded 为空=AI 自动筛）", Object.keys((xf2.photoOverrides || {}).excluded || {}).length === 0);
 
 const failed = checks.filter((c) => !c.pass);
 return {

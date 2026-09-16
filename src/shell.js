@@ -12,6 +12,7 @@
       else if (view === "factConfirm") content = renderFactConfirm();
       else if (view === "editor") content = renderEditor();
       else if (view === "list") content = renderList();
+      else if (view === "activityPage") content = renderActivityPage(); // §七：创建后的默认落点 = 活动详情
       else if (view === "customers") content = renderCustomers();
       else if (view === "operator") content = renderFabu();
       else if (view === "mallConsole") { state.mallCtx = "console"; content = renderClubMallConsole(); }
@@ -21,7 +22,7 @@
       else if (view === "signups") content = renderSignups();
       else if (view === "membership" || view === "membershipAdmin") content = renderMembershipAdmin();
       else if (view === "ai" || view === "brand" || view === "plans" || view === "memberMarketing") content = renderSettings();
-      app.innerHTML = renderShell(content, view);
+      app.innerHTML = renderShell(content, view === "activityPage" ? "list" : view);
       if (view === "editor") bindEditorExtras();
       // 进入编辑器即按地点联网自动搜索风景图（仅一次、且仅当已有地点且无图时），供「为什么值得去」配图
       if (view === "editor" && state.draft && state.draft.place && !state.draft.placePhotos && !state.draft._autoPhoto) {
@@ -198,42 +199,52 @@
         // P0-4：在「简洁报名」与「AI 图文长页」两种详情页输出之间切换
         state.detailMode = (d.mode === "editorial") ? "editorial" : "lean";
         saveState();
-        if (state.view === "detail") showView("detail", state.params);
+        if (showDetailLikeView()) showView(state.view, state.params);
         else refreshPreview();
         break;
       }
       case "regenLayout": {
         // P0-13：换版式——只推进 editorialLayoutId（布局/图片组合/留白/字体/章节视觉），文案与事实冻结
-        const cur = (state.draft && state.draft.editorialLayoutId)
-          || (state.view === "detail" && state.params && state.params.id && getActivity(state.params.id) ? getActivity(state.params.id).editorialLayoutId : "")
-          || "";
+        const target = viewingActivity();
+        const cur = (target && target.editorialLayoutId) || (state.draft && state.draft.editorialLayoutId) || "";
         const next = pickEditorialLayout(cur);
-        if (state.draft) { state.draft.editorialLayoutId = next.id; saveState(); }
-        if (state.view === "detail" && state.params && state.params.id) {
-          const aa = getActivity(state.params.id);
-          if (aa) { aa.editorialLayoutId = next.id; saveState(); }
-        }
-        if (state.view === "detail") showView("detail", state.params);
-        else { refreshPreview(); }
+        if (target) target.editorialLayoutId = next.id;
+        if (state.draft) state.draft.editorialLayoutId = next.id;
+        saveState();
+        if (showDetailLikeView()) showView(state.view, state.params);
+        else refreshPreview();
         const ll = { "L-mosaic-story": "拼图·叙事序", "L-solo-route": "大图·行程序", "L-strip-exp": "图廊·体验序", "L-thumbs-social": "缩略图·社交序", "L-mixed-value": "混合·价值序" }[next.id] || next.id;
         toast("已换版式：" + ll);
         break;
       }
       case "regenStyle": {
         // P0-13：换风格——只推进 editorialStyleId（角度/密度/Family/章节表达），守住 confirmedFacts
-        const cur = (state.draft && state.draft.editorialStyleId)
-          || (state.view === "detail" && state.params && state.params.id && getActivity(state.params.id) ? getActivity(state.params.id).editorialStyleId : "")
-          || "";
+        const target = viewingActivity();
+        const cur = (target && target.editorialStyleId) || (state.draft && state.draft.editorialStyleId) || "";
         const next = pickEditorialStyle(cur);
-        if (state.draft) { state.draft.editorialStyleId = next.id; saveState(); }
-        if (state.view === "detail" && state.params && state.params.id) {
-          const aa = getActivity(state.params.id);
-          if (aa) { aa.editorialStyleId = next.id; saveState(); }
-        }
-        if (state.view === "detail") showView("detail", state.params);
-        else { refreshPreview(); }
+        if (target) target.editorialStyleId = next.id;
+        if (state.draft) state.draft.editorialStyleId = next.id;
+        saveState();
+        if (showDetailLikeView()) showView(state.view, state.params);
+        else refreshPreview();
         const angLabel = (typeof EDITORIAL_ANGLES !== "undefined" && EDITORIAL_ANGLES[next.angle]) ? EDITORIAL_ANGLES[next.angle].label : next.angle;
         toast("已换风格：" + angLabel + " · " + next.density);
+        break;
+      }
+      case "operatorFromActivity": {
+        // §七（可选后置）：活动详情 → 生成宣发文案（公众号 / 小红书 …）
+        const a = viewingActivity() || (state.draft ? state.draft : null);
+        if (!a) { toast("找不到这场活动"); break; }
+        if (a.pinned) a.pinnedAt = Date.now();
+        upsert(a); saveState();
+        const xf = publishState();
+        xf.scenario = "recruit";
+        xf.aid = a.id;
+        xf._a = a;
+        xf.step = null; xf.master = null; xf.out = null; xf.recap = null; xf.strategy = null; xf.quality = null;
+        xf.photos = (a.photos || []).slice();
+        xf.photoOverrides = { cover: null, excluded: {} };
+        showView("operator");
         break;
       }
       case "doLogin": {
@@ -300,6 +311,7 @@
       }
       case "finishPublish": { closePublishSuccess(); break; }
       case "openFront": { const mm = document.querySelector(".modal-mask"); if (mm) mm.remove(); if (d.id) showView("detail", { id: d.id }); break; }
+      case "openActivityPage": { const mm = document.querySelector(".modal-mask"); if (mm) mm.remove(); if (d.id) showView("activityPage", { id: d.id }); break; }
       case "openFrontHome": showView("frontHome"); break;
       case "focusSearch": { const inp = $("#frontSearchInput"); if (inp) { inp.focus(); toast("输入关键词，AI 将推荐相关活动"); } break; }
       case "edit": { const a = getActivity(d.id); if (a) { state.draft = JSON.parse(JSON.stringify(a)); showView("editor"); } break; }
@@ -1608,10 +1620,19 @@
   }
   /* ===== §七 一键闭环：一句话 + 传图 → AI 理解 → 只问必要问题 → 自动生成完整活动
      → 自动生成图文详情页 → 换版式/换风格 → 确认发布。
-     下面四个函数把原是「两个互不相通模块」的链路接上：
-       runRecruitGen / runRecapGen  —— 生成逻辑（供 picker 按钮与一键闭环复用）
-       confirmFactsToPage           —— 确认卡 → 落库 → 直接生成图文详情页（不经过逐字段编辑器）
-       confirmPublishPage           —— 详情页 → 确认发布（含发布前事实检查与回退）           */
+     落点是【后台「活动详情」工作区 activityPage】（不是 AI 宣发中心），
+     宣发文案属可选后置步骤，点「生成宣发文案」才进 operator。 */
+  /* 当前「正在看」的活动：后台活动详情页 / 前台详情页（均带 state.params.id） */
+  function viewingActivity() {
+    if (state.view === "detail" || state.view === "activityPage") {
+      const id = state.params && state.params.id;
+      if (id) { const a = getActivity(id); if (a) return a; }
+    }
+    return null;
+  }
+  function showDetailLikeView() {
+    return state.view === "detail" || state.view === "activityPage";
+  }
 
   /* 生成宣传内容（原 recruitGen handler 抽出，逻辑不变；notes 为空时不覆盖已有补充资料） */
   async function runRecruitGen() {
@@ -1694,49 +1715,60 @@
     showView(state.view);
   }
 
-  /* §七 关键一跳：确认卡 → 直接生成图文详情页。
-     不再让老板「进编辑器逐字段改」，而是把活动落库后立刻走 AI 生成链路，
-     直接落到可换版式/换风格的结果页；编辑器仍可从结果页随时进入。 */
+  /* §七 关键一跳：确认卡 → 生成【完整活动 + 图文详情页】并落到后台「活动详情」工作区。
+     这里不再把老板丢进 AI 宣发中心，也不需要「进编辑器逐字段改」；
+     宣发文案（公众号/小红书）改为详情页上的可选按钮。 */
   async function confirmFactsToPage() {
     const fa = state.draft;
     if (!fa) return;
+    // 1) 应用确认卡上补的关键事实
     document.querySelectorAll("[id^='gap_']").forEach((el) => {
       const key = el.id.replace("gap_", "");
       if (el.value && el.value.trim()) applyBossFact(fa, key, el.value);
     });
+    // 2) AI 补齐派生内容（章节 / 行程 / 文案）。全部幂等，失败不阻断落库。
+    try {
+      if (typeof syncDerived === "function") syncDerived(fa);
+      if (typeof ensureNarrativeFields === "function") await ensureNarrativeFields(fa);
+      if (typeof ensureItineraryFields === "function") await ensureItineraryFields(fa);
+      if (typeof syncItineraryDays === "function") syncItineraryDays(fa);
+    } catch (e) { /* 兜底：仍能生成详情页 */ }
+    // 3) 照片：老板没手动指定时自动选最佳封面（§七：不自己挑图/配图）
+    fa.photos = fa.photos || [];
+    if (!fa._coverManual && fa.photos.length && typeof bestCoverIndex === "function") fa.coverIndex = bestCoverIndex(fa);
+    // 4) 图文详情页的版式与风格自动选定（纯本地，保证一定有页可看）
+    if (!fa.editorialLayoutId && typeof pickEditorialLayout === "function") fa.editorialLayoutId = pickEditorialLayout("").id;
+    if (!fa.editorialStyleId && typeof pickEditorialStyle === "function") fa.editorialStyleId = pickEditorialStyle("").id;
+    // 5) 落库 + 直接进「活动详情」工作区
     fa.status = fa.status || "draft";
     if (fa.pinned) fa.pinnedAt = Date.now();
     fa._autoPageGeneratedAt = Date.now();
-    upsert(fa); // 宣发中心按 id 从活动库取活动，必须先落库
+    upsert(fa); // 详情页与宣发中心都按 id 从活动库取活动，必须先落库
     saveState();
     state._pendingPhotos = []; // 照片已并入这场活动，避免下一场活动误带旧图
-    const xf = publishState();
-    xf.scenario = "recruit";
-    xf.aid = fa.id;
-    xf.step = null;
-    xf.master = null; xf.out = null; xf.recap = null;
-    xf.strategy = null; xf.quality = null;
-    xf.photos = (fa.photos || []).slice();
-    xf.photoOverrides = { cover: null, excluded: {} };
-    xf._a = fa;
-    if (fa.raw) xf.notes = String(fa.raw).slice(0, 800); // 旧资料/原话一并交给 AI
-    state.draft = null;
-    showView("operator");
-    await runRecruitGen();
+    state.detailMode = "editorial"; // §七：默认给「有感染力的图文详情页」
+    state.draft = null;             // 不挂在编辑器里，老板不需要逐字段改
+    showView("activityPage", { id: fa.id });
+    toast("活动详情页已生成");
   }
 
-  /* §七 最后一环：详情页 → 确认发布。事实不全时不硬发，回到确认卡补全后重生成。 */
+  /* §七 最后一环：详情页 → 确认发布。事实不全时不硬发，回到确认卡补全后重生成。
+     三种语境都支持：后台「活动详情」工作区（activityPage）/ 前台详情页（detail）/ 宣发中心结果页。 */
   function confirmPublishPage() {
-    const xf = publishState();
-    const a = xf._a || (state.activities || []).find((x) => x.id === xf.aid);
+    const xf = (typeof publishState === "function") ? publishState() : null;
+    const viewed = viewingActivity();
+    const a = viewed
+      || (xf && xf._a)
+      || ((xf && xf.aid) ? (state.activities || []).find((x) => x.id === xf.aid) : null);
     if (!a) { toast("找不到这场活动，请重新选择"); return; }
-    const isRecap = xf.scenario === "recap";
+    const isRecap = !viewed && !!xf && xf.scenario === "recap";
     if (!isRecap) {
       const chk = (typeof runPublishCheck === "function") ? runPublishCheck(a) : { blocking: [] };
       if (chk.blocking && chk.blocking.length) {
         toast("还差 " + chk.blocking.length + " 项关键事实，补全后即可发布");
+        const keepPhotos = (xf && typeof activePhotos === "function") ? activePhotos(xf) : (a.photos || []);
         state.draft = JSON.parse(JSON.stringify(a));
-        state.draft.photos = ((typeof activePhotos === "function") ? activePhotos(xf) : (xf.photos || [])).slice();
+        state.draft.photos = (keepPhotos && keepPhotos.length) ? keepPhotos.slice() : (a.photos || []).slice();
         showView("factConfirm");
         return;
       }
@@ -1754,6 +1786,7 @@
     state.history.unshift(snap);
     state.history = state.history.slice(0, 30);
     saveState();
+    if (showDetailLikeView()) showView(state.view, state.params);
     showPublishSuccess(a.id);
   }
 

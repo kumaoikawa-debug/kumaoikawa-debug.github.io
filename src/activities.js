@@ -45,6 +45,10 @@
   function detailModeOf() {
     return (typeof state !== "undefined" && state && state.detailMode === "editorial") ? "editorial" : "lean";
   }
+  /* 后台「活动详情」工作区（renderActivityPage）已在页外提供同组控件，页内不再重复渲染 */
+  function showInlineDetailChrome() {
+    return !(typeof state !== "undefined" && state && state.view === "activityPage");
+  }
   function detailModeSwitch() {
     const m = detailModeOf();
     return `<div class="detail-mode-switch">`
@@ -217,8 +221,8 @@
     return `
       <div class="activity-page xh-ed typo-${esc(layout.typo)} tone-${esc(style.family)}${ac.warm ? " warm-tone" : ""}">
       <div class="ps-topbar">${psLogo()}</div>
-      ${detailModeSwitch()}
-      ${editorialVariantSwitch(a)}
+      ${showInlineDetailChrome() ? detailModeSwitch() : ""}
+      ${showInlineDetailChrome() ? editorialVariantSwitch(a) : ""}
       <header class="xh-ed-hero${heroCls}" ${coverSrc ? `style="background-image:url('${coverSrc}')"` : `style="background:${ac.grad}"`}>
         <div class="xh-ed-hero-mask"></div>
         ${!coverSrc ? `<div class="xh-ed-hero-empty">${isAdminMode() ? "待上传主视觉" : "活动图片待机构补充"}</div>` : ""}
@@ -480,6 +484,72 @@
       ${withBack ? `<div style="max-width:480px;margin:0 auto;padding:0 16px"><button class="btn btn-ghost btn-sm" data-action="back">${ICON("arrow-left")} 返回</button></div>` : ""}
       <div class="phone"><div class="phone-notch"></div><div class="phone-screen" id="previewScreen">${inner}</div></div>
     </div>`;
+  }
+
+  /* ===== §七-2：后台「活动详情」工作区 =====
+     老板「一句话 + 传图 → 确认卡」之后的默认落点。
+     这里先让他看到 AI 生成好的【完整活动】与【图文详情页】，再决定换版式/换风格/发布；
+     宣发文案（公众号/小红书）是可选后置步骤，点「生成宣发文案」后才进 AI 宣发中心。 */
+  function renderActivityPage() {
+    const id = (state.params && state.params.id) || "";
+    const a = (typeof getActivity === "function") ? getActivity(id) : null;
+    if (!a) {
+      return `<div class="section-head"><div class="section-title">活动详情</div></div>
+        <div class="empty"><div class="e-ic">🗂</div><div>这场活动不存在或已被删除。</div>
+        <button class="btn btn-soft btn-sm" data-action="nav" data-view="list">返回「活动内容」</button></div>`;
+    }
+    const statusMap = { draft: "草稿", recruiting: "招募中", ended: "已结束", full: "已满员" };
+    const statusKey = a.status || "draft";
+    const photos = a.photos || [];
+    const intel = (photos.length && typeof buildPhotoIntelligence === "function")
+      ? buildPhotoIntelligence(photos, a, [], "recruit") : null;
+    const usedN = intel ? (intel.used || []).length : 0;
+    const roleN = intel ? Object.keys(intel.roles || {}).length : 0;
+    const factsN = (typeof confirmedFacts === "function") ? confirmedFacts(a).length : 0;
+    const L = (typeof editorialLayoutOf === "function") ? editorialLayoutOf(a) : null;
+    const S = (typeof editorialStyleOf === "function") ? editorialStyleOf(a) : null;
+    const layoutLabel = { "L-mosaic-story": "拼图·叙事序", "L-solo-route": "大图·行程序", "L-strip-exp": "图廊·体验序", "L-thumbs-social": "缩略图·社交序", "L-mixed-value": "混合·价值序" }[L && L.id] || (L && L.id) || "自动";
+    const angleLabel = (S && typeof EDITORIAL_ANGLES !== "undefined" && EDITORIAL_ANGLES[S.angle] && EDITORIAL_ANGLES[S.angle].label) || (S && S.angle) || "自动";
+    const densLabel = { magazine: "杂志型", album: "画册型", documentary: "纪实型", conversion: "转化型" }[S && S.density] || "";
+    const mode = detailModeOf();
+    const chip = (on, action, mode_, icon, label, tip) =>
+      `<button type="button" class="dms-chip ${on ? "on" : ""}" data-action="${action}"${mode_ ? ` data-mode="${mode_}"` : ""} title="${esc(tip || "")}">${ICON(icon)} ${label}</button>`;
+    return `
+    <div class="section-head">
+      <div class="section-title">活动详情</div>
+      <div class="section-sub">AI 已按你的一句话和照片生成完整活动与图文详情页。不满意直接换版式 / 换风格，确认后即可发布到机构主页。</div>
+    </div>
+
+    <div class="ap-head">
+      <div class="ap-head-txt">
+        <div class="ap-title-row"><b class="ap-title">${esc(a.title || "未命名活动")}</b><span class="ap-status ap-st-${esc(statusKey)}">${esc(statusMap[statusKey] || statusKey)}</span></div>
+        <div class="ap-meta">
+          <span>${ICON("check")} AI 已自动完成</span>
+          <span>事实 <b>${factsN}</b> 项</span>
+          <span>选图 <b>${usedN}/${photos.length}</b></span>
+          <span>角色 <b>${roleN}</b></span>
+          <span>版式 <b>${esc(layoutLabel)}</b></span>
+          <span>风格 <b>${esc(angleLabel)}${densLabel ? "·" + densLabel : ""}</b></span>
+        </div>
+      </div>
+      <div class="ap-actions">
+        <button class="btn btn-ghost btn-sm" data-action="nav" data-view="list">${ICON("list")} 返回活动内容</button>
+        <button class="btn btn-ghost btn-sm" data-action="operatorFromActivity" title="可选：生成公众号 / 小红书宣发文案">${ICON("send")} 生成宣发文案</button>
+        <button class="btn btn-soft btn-sm" data-action="edit" data-id="${esc(a.id)}" title="需要时可逐项微调字段">${ICON("edit")} 微调字段</button>
+        <button class="btn btn-primary" data-action="confirmPublishPage">${ICON("check")} 确认发布</button>
+      </div>
+    </div>
+
+    <div class="ap-switch">
+      <span class="ap-switch-l">${ICON("layout")} 活动详情页</span>
+      ${chip(mode === "lean", "setDetailMode", "lean", "layout", "简洁报名", "固定结构的报名详情页")}
+      ${chip(mode === "editorial", "setDetailMode", "editorial", "sparkles", "图文长页", "杂志式长图文，更适合传播")}
+      <span class="ap-switch-sep"></span>
+      ${chip(false, "regenLayout", "", "layout", "换版式", "只换图片组合 / 布局 / 留白 / 字体，文案与事实不变")}
+      ${chip(false, "regenStyle", "", "sparkles", "换风格", "重生成角度 / 标题 / 节奏 / 图片策略，守住已确认事实")}
+    </div>
+
+    <div class="ap-phone">${wrapPhone(renderActivityPhone(a), false)}</div>`;
   }
 
   /* ---------------- backend shell ---------------- */
@@ -1309,9 +1379,9 @@ function channelMeta(ch) {
       </div>
       <div class="act-row-actions">
         ${shelfBtn}
-        <button class="btn btn-soft btn-sm" data-action="edit" data-id="${a.id}">${ICON("edit")} 编辑</button>
+        <button class="btn btn-soft btn-sm" data-action="openActivityPage" data-id="${a.id}">${ICON("eye")} 详情页</button>
+        <button class="btn btn-ghost btn-sm" data-action="edit" data-id="${a.id}">${ICON("edit")} 编辑</button>
         <button class="btn btn-ghost btn-sm" data-action="filterSignups" data-id="${a.id}">${ICON("users")} 报名名单</button>
-        <button class="btn btn-ghost btn-sm" data-action="openFront" data-id="${a.id}">${ICON("eye")} 查看</button>
         <button class="btn btn-ghost btn-sm" data-action="share" data-id="${a.id}">${ICON("share")}</button>
       </div>
     </div>`;

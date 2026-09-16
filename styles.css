@@ -5073,6 +5073,25 @@ body{
 .xf-secregen { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 12px; }
 
 /* ============ P0-4 AI 图文活动详情页（长图文输出，浅色杂志感：沉浸大图 + 衬线小节标题 + 编号索引） ============ */
+/* ===== §七：后台「活动详情」工作区（一句话创建的默认落点） ===== */
+.ap-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; flex-wrap: wrap; padding: 16px 18px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.ap-head-txt { flex: 1; min-width: 260px; }
+.ap-title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ap-title { font-size: 17px; color: var(--ink); }
+.ap-status { font-size: 11.5px; font-weight: 700; padding: 2px 9px; border-radius: 999px; background: var(--brand-tint); color: var(--brand-700); }
+.ap-status.ap-st-recruiting { background: var(--brand-soft); color: var(--brand-700); }
+.ap-status.ap-st-ended, .ap-status.ap-st-draft { background: var(--surface-2); color: var(--muted); }
+.ap-meta { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; font-size: 12.5px; color: var(--muted); }
+.ap-meta b { color: var(--ink); font-weight: 700; }
+.ap-meta svg { width: 13px; height: 13px; vertical-align: -2px; }
+.ap-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.ap-switch { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 14px 2px 0; }
+.ap-switch-l { font-size: 12.5px; font-weight: 700; color: var(--muted); margin-right: 4px; display: inline-flex; align-items: center; gap: 4px; }
+.ap-switch-l svg { width: 13px; height: 13px; }
+.ap-switch-sep { width: 1px; height: 18px; background: var(--line); margin: 0 6px; }
+.ap-phone { display: flex; justify-content: center; padding: 12px 0 6px; }
+.ap-phone > div { width: 100%; }
+
 .detail-mode-switch { display: flex; gap: 6px; padding: 10px 16px 0; justify-content: flex-end; }
 .dms-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; cursor: pointer; }
 .dms-chip.on { color: #fff; background: var(--brand-700, #2F5D50); border-color: var(--brand-700, #2F5D50); }
