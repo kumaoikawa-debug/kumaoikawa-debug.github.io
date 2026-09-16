@@ -5103,6 +5103,16 @@ body{
 .xh-ed-hero { position: relative; min-height: 440px; display: flex; align-items: flex-end; background-size: cover; background-position: center; background-color: var(--line-2); }
 /* P0-12：小图带形态（缩略图版式用更矮的 Hero，把版面留给章节小图） */
 .xh-ed-hero.band { min-height: 300px; }
+/* P0-B 第六点：竖图/人物封面「降 FullBleed」——原比例展示，不横裁主体。
+   原比例两侧留白用同图模糊底图垫住（.xh-ed-hero-backdrop），避免「一块脏留白」。 */
+.xh-ed-hero.keep { background-size: contain; background-repeat: no-repeat; background-position: center; background-color: #17140f; }
+.xh-ed-hero-backdrop { position: absolute; inset: -24px; background-size: cover; background-position: center; filter: blur(26px) saturate(.9); opacity: .55; z-index: 0; }
+.xh-ed-hero.keep .xh-ed-hero-mask { z-index: 1; }
+.xh-ed-hero.keep .xh-ed-hero-txt { z-index: 2; }
+/* P0-B：整组原比例时的不对称排版（原比例 Solo / PortraitPair），不再硬裁成统一格子 */
+.xh-ed-figs.orig.two { grid-template-columns: 1fr 1fr; gap: 6px; align-items: start; }
+.xh-ed-figs.orig.three { grid-template-columns: repeat(2, 1fr); gap: 6px; align-items: start; }
+.xh-ed-figs.orig.three .xh-ed-fig:first-child { grid-row: span 2; }
 .xh-ed-hero-mask { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.05) 0%, rgba(0,0,0,.30) 45%, rgba(0,0,0,.78) 100%); }
 .xh-ed-hero-empty { position: absolute; top: 16px; left: 16px; font-size: 12px; color: rgba(255,255,255,.85); background: rgba(0,0,0,.28); border-radius: 999px; padding: 4px 10px; }
 .xh-ed-hero-txt { position: relative; z-index: 2; padding: 28px 22px 24px; width: 100%; }

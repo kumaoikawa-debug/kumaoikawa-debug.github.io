@@ -838,3 +838,28 @@
     if (range) return `会员价 ¥${range.min}起`;
     return "";
   }
+
+/* ---------------- v193 模块完整性清单（P0-5） ----------------
+   「UI 有入口但函数不存在」是最难查的一类线上问题：按钮点下去才报错。
+   这里把「必须存在」的模块集中登记；boot.js 在启动时调用 checkRequiredModules() 自检，
+   缺失则 console.error（本地开发环境额外显示横幅）。放在 core.js 是为了让冒烟脚本
+   （会跳过 boot.js）也能断言这张清单本身。 */
+const REQUIRED_MODULE_FILES = {
+  renderEconomics: "economics.js",
+  renderPrep: "ops.js",
+  renderPrepSummary: "ops.js",
+  renderEconCostPanel: "economics.js",
+  econAnswer: "economics.js",
+};
+const REQUIRED_MODULES = Object.keys(REQUIRED_MODULE_FILES);
+/* 返回「缺失的模块名 → 应在文件」清单；全部就绪返回空数组 */
+function checkRequiredModules() {
+  const out = [];
+  for (let i = 0; i < REQUIRED_MODULES.length; i++) {
+    const name = REQUIRED_MODULES[i];
+    const hit = (typeof window !== "undefined" && window && typeof window[name] === "function")
+      || (typeof globalThis !== "undefined" && globalThis && typeof globalThis[name] === "function");
+    if (!hit) out.push(name + " → " + REQUIRED_MODULE_FILES[name]);
+  }
+  return out;
+}

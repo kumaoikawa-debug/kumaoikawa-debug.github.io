@@ -103,8 +103,12 @@ try {
   pagePhotoContain = realContain;
   add("出图·真实比例的高风险人物图允许 contain（容器等比例 → 不会留白）",
     /ph-safe/.test(figP) && /object-fit:contain/.test(figP) && /--ar:\s*0\.667/.test(figP), figP.slice(0, 170));
-  add("出图·★比例被收敛的极端长图禁止 contain（否则又会露留白）",
-    !/ph-safe/.test(figX) && /object-fit:cover/.test(figX), figX.slice(0, 170));
+  /* ★ v193 P0-B 取代旧契约：旧做法是「比例被 clamp → 禁用 contain → 退回 cover」，
+     代价是必须裁掉主体（老板反馈的「图片处理很差」根因之一）。
+     P0-B 改为「需要原比例时不 clamp 比例」，容器比例直接等于图片真实比例 →
+     既不裁切、也不产生留白色带，因此不再需要用 cover 去「填满」。 */
+  add("出图·★需原比例的极端长图：容器比例 = 图片真实比例（不 clamp）且 contain（不裁切·不露留白）",
+    /ph-safe/.test(figX) && /object-fit:contain/.test(figX) && /--ar:\s*0\.33/.test(figX), figX.slice(0, 200));
 
   let pageHtml = "";
   try { pageHtml = (typeof renderActivityEditorial === "function") ? renderActivityEditorial(af) : ""; } catch (e) { pageHtml = ""; }

@@ -30,6 +30,9 @@ const PI_SCENE_LABEL = {
   scenic: "风景", sky: "天空", people: "人物", group: "合影", action: "动作",
   water: "水上", hike: "徒步", camp: "露营", meal: "餐食", gear: "装备",
   night: "夜景", detail: "细节", route: "路线",
+  // P1：细粒度识别标签（桨板/皮划艇/帐篷/营地/车辆/森林/雪山/日出日落/水域）
+  paddle: "桨板", kayak: "皮划艇", tent: "帐篷", campsite: "营地",
+  vehicle: "车辆", forest: "森林", snow: "雪山", sunrise: "日出日落",
 };
 const PI_TAG_TO_SCENE = { "风景": "scenic", "人物": "people", "合影": "group", "动作": "action", "水上": "water", "徒步": "hike", "露营": "camp", "餐食": "meal", "装备": "gear", "夜景": "night", "细节": "detail", "路线": "route" };
 /* P0-6：14 类内容识别（多标签——一张图可命中多个类，与上传顺序无关） */
@@ -860,6 +863,13 @@ function applyVision(src, data) {
   try {
     const prev = PHOTO_FOCUS_CACHE.get(src) || {};
     PHOTO_FOCUS_CACHE.set(src, Object.assign({}, prev, data, { simulated: false }));
+    /* P1：同步登记统一 visionResult —— 让 evidenceScope / groundingTags / 细粒度场景
+       在「真实视觉结果」写回后立即可用（不依赖再跑一次 batch）。 */
+    try {
+      if (typeof visionUnifiedOf === "function" && typeof VISION_RESULTS !== "undefined") {
+        VISION_RESULTS[src] = visionUnifiedOf(src, Object.assign({}, prev, data, { simulated: false }));
+      }
+    } catch (e2) {}
     return true;
   } catch (e) { return false; }
 }
@@ -1857,6 +1867,86 @@ function applyVisionBatch(map) {
     if (mo >= 9 && mo <= 11) return "秋季";
     return "冬季";
   }
+  /* ===== P0-A（v193）Activity DNA 事实边界 =====
+     DNA 拆两层：① Fact-grounded DNA（可参与事实表达）② Creative Context（只影响表达方式）。
+     groundedScenes 只有 4 个受控来源：
+       Source A 用户明确输入 ｜ Source B 行程明确出现 ｜ Source C 图片真实 Vision 识别 ｜ Source D 老板手动确认。
+     禁止：秋季森林→一定有红叶 / 夏季溪谷→一定下水 / 露营→一定有篝火 /
+           高山→一定有云海 / 冬季→一定有雪 / 高海拔→一定登顶。 */
+  const GROUNDED_SCENE_LEXICON = [
+    { scene: "红叶", kw: ["红叶", "红枫", "枫叶", "秋叶", "叶子红了"] },
+    { scene: "彩林", kw: ["彩林", "彩叶", "层林尽染", "金色林", "金黄林"] },
+    { scene: "落叶", kw: ["落叶", "叶雨"] },
+    { scene: "溪水", kw: ["溪水", "溪流", "溯溪", "戏水", "玩水", "泡水", "下水", "踩水"] },
+    { scene: "瀑布", kw: ["瀑布", "跌水"] },
+    { scene: "雪景", kw: ["雪景", "雪线", "积雪", "雪坡", "下雪", "雪地", "雪山"] },
+    { scene: "云海", kw: ["云海", "云瀑"] },
+    { scene: "篝火", kw: ["篝火", "营火", "火堆"] },
+    { scene: "星空", kw: ["星空", "银河", "星轨", "星河", "观星"] },
+    { scene: "野花", kw: ["野花", "花海", "花田"] },
+    { scene: "日出日落", kw: ["日出", "日落", "朝霞", "晚霞"] },
+    { scene: "草甸", kw: ["草甸", "高山草", "草原"] },
+    { scene: "露营", kw: ["帐篷", "营地", "露营"] },
+    { scene: "海景", kw: ["海浪", "海边", "沙滩", "潮水", "礁石"] },
+    { scene: "晨雾", kw: ["晨雾", "云影", "雾凇"] },
+  ];
+  const GROUNDED_SOURCE_LABEL = {
+    user_input: "老板明确输入", itinerary: "行程明确出现",
+    vision: "图片真实识别", owner_confirmed: "老板手动确认"
+  };
+  function groundedAdd(out, seen, scene, source, confidence, evidenceText) {
+    if (!scene || seen[scene]) return;
+    seen[scene] = true;
+    out.push({ scene: scene, source: source, confidence: (confidence == null ? 1 : Number(confidence)), evidence: evidenceText || "" });
+  }
+  function groundedScan(out, seen, text, source, label) {
+    if (!text) return;
+    const str = String(text);
+    GROUNDED_SCENE_LEXICON.forEach(function (g) {
+      const hit = g.kw.filter(function (k) { return str.indexOf(k) >= 0; })[0];
+      if (hit) groundedAdd(out, seen, g.scene, source, source === "vision" ? 0.9 : 1, label + "：" + hit);
+    });
+  }
+  /* 汇总 4 个受控来源；photos 传入时额外采纳真实 Vision 识别结果（Source C） */
+  function collectGroundedScenes(a, photos) {
+    a = a || {};
+    const out = [], seen = {};
+    // Source A：用户明确输入（老板自己写的字）
+    groundedScan(out, seen, [a.raw, a.title, a.intro, a.whyGo, a.experience, a.gain, a.notes].filter(Boolean).join(" "), "user_input", "老板输入");
+    groundedScan(out, seen, (a.body || []).join(" "), "user_input", "老板输入正文");
+    groundedScan(out, seen, (a.highlights || []).map(function (h) { return Array.isArray(h) ? h[0] : h; }).join(" "), "user_input", "亮点");
+    groundedScan(out, seen, (a.sellingPoints || []).map(function (x) { return x && ((x.title || "") + " " + (x.desc || "")); }).join(" "), "user_input", "卖点");
+    // Source B：行程明确出现
+    groundedScan(out, seen, (a.itineraryDays || []).map(function (d) {
+      return ((d && d.label) || "") + " " + ((d && d.sub) || "") + " " + ((d && d.items) || []).map(function (i) { return i && (i.text || i.title || ""); }).join(" ");
+    }).join(" "), "itinerary", "行程");
+    // Source C：图片真实 Vision 识别（只证明「素材里有什么」，不证明活动当天发生了什么）
+    const vtags = (typeof visionGroundingTags === "function") ? visionGroundingTags(photos || a.photos || []) : [];
+    vtags.forEach(function (t) { groundedAdd(out, seen, t.scene, "vision", t.confidence, "图片识别：" + t.scene); });
+    // Source D：老板手动确认（确认卡 / 手动补充）
+    (a.confirmedScenes || []).forEach(function (x) {
+      groundedAdd(out, seen, (typeof x === "string" ? x : (x && x.scene)), "owner_confirmed", 1, "老板确认");
+    });
+    return out;
+  }
+  /* P0-A：季节只影响「情绪 / 配色 / 节奏」，不得自动生成现场事实（disclaimer 固定 creative_only） */
+  function seasonalCreativeContextFor(a) {
+    const s = seasonOf(a || {});
+    const MOOD = {
+      "春": { mood: ["苏醒", "轻快", "新绿"], palette: ["嫩绿", "浅灰蓝"], rhythm: "轻快" },
+      "夏": { mood: ["通透", "清爽", "旺盛"], palette: ["深绿", "水蓝"], rhythm: "舒展" },
+      "秋": { mood: ["清爽", "成熟", "层次感"], palette: ["暖色", "大地色"], rhythm: "舒展" },
+      "冬": { mood: ["克制", "安静", "清晰"], palette: ["冷灰", "素白"], rhythm: "缓慢" }
+    };
+    const key = String(s || "").replace("季", "").slice(0, 1);
+    const m = MOOD[key] || { mood: ["真实", "自然"], palette: ["中性色"], rhythm: "自然" };
+    return { season: s || "", mood: m.mood.slice(), palette: m.palette.slice(), rhythm: m.rhythm, disclaimer: "creative_only" };
+  }
+  function seasonalCreativeContextOf(a) {
+    if (a && a.activityDNA && a.activityDNA.seasonalCreativeContext) return a.activityDNA.seasonalCreativeContext;
+    return seasonalCreativeContextFor(a || {});
+  }
+
   function buildActivityDNA(a, photos) {
     a = a || {};
     const t = ((a.type || "") + " " + (a.title || "") + " " + (a.raw || "") + " " + ((a.gear || []).map((g) => g && (g.name || g)).join(" ")) + " " + (a.audience || []).join("")).toLowerCase();
@@ -1894,6 +1984,13 @@ function applyVisionBatch(map) {
     // season 季节
     const season = seasonOf(a);
     evidence.season = (a.date || a.dateMD) ? "活动日期" : "无日期";
+
+    // P0-A：已确认场景（只有受控来源才能进入事实层）
+    const groundedScenesRaw = collectGroundedScenes(a, photos);
+    const groundedNames = groundedScenesRaw.map(function (g) { return g.scene; });
+    const groundedHas = function (kw) {
+      return groundedNames.some(function (n) { return kw.indexOf(n) >= 0 || n.indexOf(kw) >= 0; });
+    };
 
     // coreMotivation 核心动机
     let coreMotivation = "scenery";
@@ -1970,12 +2067,24 @@ function applyVisionBatch(map) {
       unspecified: { default: "路在脚下慢慢铺开，沿途的风景还没被名字定义" }
     };
     const envSceneMap = DNA_SCENE_BY_ENV[environment] || DNA_SCENE_BY_ENV.unspecified;
-    const sceneSignature = (season && envSceneMap[season]) ? envSceneMap[season] : (envSceneMap.default || "");
+    /* —— P0-A 事实边界 ——
+       environment + season 只能决定「创意气质（visualMood）」，不得自动生成现场画面。
+       只有 groundedScenes 里确实存在该地貌的具体物象时，才允许把画面写进正文；
+       否则 sceneSignature 留空，文案退回中性表达。
+       Case 1：10月青城山徒步（无照片无红叶信息）→ 不得写「漫山红叶铺满山路」。 */
+    const SCENE_NEEDS = {
+      snow: ["雪景"], forest: ["红叶", "彩林", "落叶"], water: ["溪水", "瀑布"],
+      meadow: ["草甸", "野花"], canyon: [], coast: ["海景"], mountain: ["云海"], urban: []
+    };
+    const needScenes = SCENE_NEEDS[environment] || [];
+    const sceneGrounded = needScenes.length ? needScenes.some(function (n) { return groundedHas(n); }) : false;
+    const visualMood = (season && envSceneMap[season]) ? envSceneMap[season] : (envSceneMap.default || "");
+    const sceneSignature = sceneGrounded ? visualMood : "";
 
     const DNA_THEME = {
       hike: { scenery: "把脚步交给风景，让路自己说话", healing: "在林子里把城市调成静音", sport: "用双腿重新丈量山野", social: "和同频的人走同一条路", default: "走一段少有人走的路" },
-      mountain: { challenge: "向雪线之上，要走一遭", sport: "把体力推过临界点", default: "山就在那里，去靠近它" },
-      water: { release: "把整个夏天泡进水里", sport: "让水流替你冲掉疲惫", default: "顺着水走，凉意一路相随" },
+      mountain: { challenge: "往更高处走一遭", sport: "把体力推过临界点", default: "山就在那里，去靠近它" },
+      water: { release: "把这一季的燥热交给水", sport: "让水流替你冲掉疲惫", default: "顺着水走，凉意一路相随" },
       camp: { social: "把聚会搬到山野的夜色里", healing: "在营地的暖光里把时钟调慢", default: "把卧室搬到山野里" },
       family: { family: "把第一次山野，留给孩子", default: "陪孩子，认识世界的第一页" },
       ride: { sport: "用车轮丈量风的形状", default: "风从耳边过，路在轮下长" },
@@ -1989,8 +2098,8 @@ function applyVisionBatch(map) {
     const DNA_ANGLES_BY_MOTIV = {
       scenery: ["把镜头交给沿途，不赶路", "用脚步丈量一条小众路线", "把看过变成走过"],
       healing: ["把手机调成飞行模式，听林子说话", "允许自己什么都不做，只是待着", "让山野替你按下重启键"],
-      release: ["把整个夏天泡进溪水里", "用一脚清凉换一身暑气全消", "水花溅起的那刻，城市就远了"],
-      challenge: ["把体力推到临界点，再往上走一步", "冲顶那一刻，所有的累都值了", "用坚持换一片只有山顶才有的视野"],
+      release: ["把这一趟走成一次彻底的深呼吸", "让身心重新回到更轻的状态", "把一整个夏天的燥热留在路上"],
+      challenge: ["把体力推到临界点，再往上前一步", "走到筋疲力尽那一刻，答案自己出现", "用坚持换一段只有走到的人才知道的视野"],
       family: ["把孩子交给泥土和树叶，而不是屏幕", "第一次爬山，由你陪他走完", "在自然课堂上，你也是学生"],
       sport: ["用一次拉练换一周好睡眠", "让心率回到山林的节奏", "把通勤久坐的身体重新打开"],
       social: ["和一群同频的人走同一条路", "路上聊的比目的地更难忘", "把聚会从会议室搬到山里"],
@@ -2010,13 +2119,17 @@ function applyVisionBatch(map) {
     const envAngleMap = DNA_ENV_ANGLE[environment];
     const envAngle = envAngleMap ? ((season && envAngleMap[season]) ? envAngleMap[season] : (envAngleMap.default || null)) : null;
     const motivAngles = DNA_ANGLES_BY_MOTIV[coreMotivation] || DNA_ANGLES_BY_MOTIV.default;
-    const copyAngles = (envAngle ? [envAngle] : []).concat(motivAngles).slice(0, 4);
+    /* P0-A：环境角度本身含具体画面（如「把红叶装进相册」/「溯溪而上」），
+       只有在 groundedScenes 命中该地貌场景时才允许作为内容角度；否则它只留在
+       creativeContext 里作为气质参考，不得出现在正文角度中。 */
+    const envAngleAllowed = (envAngle && sceneGrounded) ? envAngle : null;
+    const copyAngles = (envAngleAllowed ? [envAngleAllowed] : []).concat(motivAngles).slice(0, 4);
 
     const DNA_TONE = {
       scenery: ["松弛", "通透", "沉浸", "慢下来"],
       healing: ["安静", "清透", "留白", "出神"],
       release: ["清凉", "痛快", "沁凉", "畅快"],
-      challenge: ["硬核", "突破", "炽热", "登顶"],
+      challenge: ["硬核", "突破", "炽热", "耐力"],
       family: ["陪伴", "惊喜", "安心", "生长"],
       sport: ["舒展", "酣畅", "元气", "律动"],
       social: ["相聚", "热闹", "联结", "同频"],
@@ -2025,32 +2138,56 @@ function applyVisionBatch(map) {
     };
     const toneWords = DNA_TONE[coreMotivation] || DNA_TONE.default;
 
+    /* P0-A：中性标签（只含地貌/动作类抽象词，不含具体现场物象）。
+       具体物象（红叶/彩林/落叶/溪水/水花/雪线/云海…）只能来自 groundedScenes，
+       不得由 environment + season 自动生成。 */
     const DNA_ENV_TAGS = {
-      snow: ["雪线", "刃脊", "冰川", "垭口"],
-      forest: ["林间", "松脂", "树影", "彩林", "落叶"],
-      water: ["溪水", "卵石", "水花", "清凉", "浅滩"],
-      meadow: ["草甸", "野花", "云影", "风"],
-      canyon: ["崖壁", "一线天", "光影", "回响"],
-      coast: ["海风", "浪", "礁石", "咸味"],
-      mountain: ["山脊", "云海", "远景", "转弯"],
-      urban: ["老街", "旧物", "巷子", "慢生活"],
+      snow: ["高海拔", "风口", "垭口"],
+      forest: ["林间路", "树影", "湿润"],
+      water: ["水道", "河谷", "浅滩"],
+      meadow: ["开阔地", "缓坡", "风"],
+      canyon: ["峡谷", "窄谷", "石壁"],
+      coast: ["海岸线", "堤岸", "风"],
+      mountain: ["山脊线", "爬升", "转弯"],
+      urban: ["街巷", "院落", "慢行"],
       unspecified: ["路", "风景", "远方", "脚步"]
     };
     const envTags = DNA_ENV_TAGS[environment] || DNA_ENV_TAGS.unspecified;
-    const sceneTags = [environmentLabel || "山野"].concat(envTags).slice(0, 6);
+    const sceneTags = [environmentLabel || "山野"].concat(groundedNames).concat(envTags)
+      .filter(function (v, i, arr) { return !!v && arr.indexOf(v) === i; }).slice(0, 6);
 
     const editorialTitle = (season ? season + "，" : "") + (environmentLabel || "山野") + "里的一场" + (DNA_FORM_LABELS[activityForm] || "出行");
     const pullQuote = mainTheme;
     evidence.descriptors = "由 " + (DNA_FORM_LABELS[activityForm] || "户外活动") + " × " + (environmentLabel || "未定地貌") + " × " + (season || "未定季节") + " × " + (DNA_MOTIVATION_LABELS[coreMotivation] || "户外体验") + " 组合派生";
 
+    /* P0-A：分层返回 —— Fact-grounded DNA（可参与事实表达）+ Creative Context（只影响表达方式） */
+    const creativeContext = {
+      mainTheme: mainTheme,
+      toneWords: toneWords,
+      suggestedAngles: motivAngles.slice(),
+      visualMood: visualMood,
+      seasonalMood: seasonalCreativeContextFor(a).mood.join("、"),
+      envAngleHint: envAngle || ""
+    };
     return {
+      // —— Fact-grounded DNA：可以参与事实表达 ——
       activityForm, activityFormLabel: DNA_FORM_LABELS[activityForm] || "户外活动",
       intensity, environment, environmentLabel, season,
       coreMotivation, coreMotivationLabel: DNA_MOTIVATION_LABELS[coreMotivation] || "户外体验",
       socialLevel, challengeLevel, professionalLevel,
       visualPotential, targetAudience, tripRhythm, commercialAngle,
-      sceneSignature, mainTheme, copyAngles, toneWords, sceneTags, pullQuote, editorialTitle,
-      _evidence: evidence,
+      groundedScenes: groundedNames,
+      groundedSceneDetails: groundedScenesRaw,
+      seasonalCreativeContext: seasonalCreativeContextFor(a),
+      evidence: evidence,
+      _evidence: evidence, // 向后兼容旧字段名
+      // —— Creative Context：只能影响表达方式，不得写成事实 ——
+      creativeContext: creativeContext,
+      // 以下字段保留同名（下游渲染/回归大量消费），但语义已收窄为「表达层」：
+      mainTheme: mainTheme, toneWords: toneWords,
+      sceneSignature: sceneSignature, copyAngles: copyAngles, sceneTags: sceneTags,
+      visualMood: visualMood,
+      pullQuote: pullQuote, editorialTitle: editorialTitle,
     };
   }
   function activityDNAOf(a, photos) { return (a && a.activityDNA) || buildActivityDNA(a, photos); }
@@ -2070,12 +2207,27 @@ function applyVisionBatch(map) {
       "- 目标人群：" + (dna.targetAudience || "通用"),
       "- 行程节奏：" + dna.tripRhythm,
       "- 商业角度：" + dna.commercialAngle,
-      "- 标志性场景（写进文案的具体画面）：" + (dna.sceneSignature || "无"),
+      "【已确认场景】（只有这里列出的具体景象才可以写进正文）",
+      (function () {
+        const g = dna.groundedSceneDetails || [];
+        if (!g.length) return "- 无。本次没有任何已确认的具体景象：正文不得出现红叶 / 彩林 / 落叶 / 溪水 / 水花 / 雪线 / 云海 / 篝火 / 星空等具体画面，宁可留白。";
+        return g.map(function (x) {
+          const src = GROUNDED_SOURCE_LABEL[x.source] || x.source;
+          return "- " + x.scene + "（来源：" + src + "｜" + (x.evidence || "已确认") + "）";
+        }).join("\n");
+      })(),
+      "【创意方向】（只能影响文字气质、叙事角度与视觉语言；不得把其中内容写成真实发生的天气、景色、事件或体验）",
       "- 本次主主题（贯穿所有渠道）：" + (dna.mainTheme || "无"),
       "- 推荐内容角度（挑 2-3 个展开，不要全用）：" + (dna.copyAngles || []).join("；"),
       "- 推荐语气词（仅参考，不要堆砌）：" + (dna.toneWords || []).join("、"),
-      "- 场景标签（可用于标题/配文）：" + (dna.sceneTags || []).join("、"),
-      "要求：以上基因相同主题/场景/角度的文案才算「贴合本场」；若你写出的内容换成任何其他户外活动也能成立，说明还不够具体，必须回到本场才有的基因重写。"
+      "- 视觉气质：" + ((dna.creativeContext && dna.creativeContext.visualMood) || "无"),
+      "- 季节气质：" + ((dna.seasonalCreativeContext && dna.seasonalCreativeContext.season) || "未定") +
+        "｜情绪 " + (((dna.seasonalCreativeContext || {}).mood) || []).join("、") +
+        "｜配色 " + (((dna.seasonalCreativeContext || {}).palette) || []).join("、"),
+      "【硬性要求】",
+      "1) 以上基因相同主题/场景/角度的文案才算「贴合本场」；换成任何其他户外活动也能成立的写法，说明还不够具体，必须回到本场基因重写。",
+      "2) 严禁把季节经验当作现场事实：秋季森林≠一定有红叶、夏季溪谷≠一定下水、露营≠一定有篝火、高山≠一定有云海、冬季≠一定有雪、高海拔≠一定登顶。",
+      "3) 没有依据的天气 / 景色 / 事件 / 体验一律不写；允许创造表达，不允许创造事实。"
     ];
     return lines.join("\n");
   }
@@ -2096,7 +2248,7 @@ function applyVisionBatch(map) {
     const intro = ((angles[1] || theme) + "。") + (sig ? sig + "。" : "") + "这一程，把脚步交给" + envLabel + "本身。";
     // 结构化叙事字段（供消费者详情页「场景体验 / 活动价值 / 适合谁」区块直接消费）
     const whyGo = ((angles[1] || theme) + "。") + (sig ? sig + "。" : "");
-    const experience = sig || (tags.join("、") + "，构成这一程最具体的画面。");
+    const experience = sig || (tags.length ? tags.slice(0, 4).join("、") + "，构成这一段路的基本样子。" : "这一段路的具体样子，留给现场。");
     const gain = angles[2] || (tones.join("、") + "，是这趟行程留给你的余韵。");
     const fitFor = (dna.targetAudience || "想换个节奏的人") + "，都可以在这里找到自己的步频。";
     const body = [
@@ -2609,13 +2761,18 @@ function applyVisionBatch(map) {
     const text = (table[key] && table[key][s]) || table.default[s] || "";
     return { season: s, place: key, text };
   }
+  /* P0-A：季节/气候只能提供「情绪与准备方向」，不得把
+     「午后偶有阵雨 / 金光遍野 / 瀑布正丰」这类未经确认的当季画面写成活动现场事实。
+     故此处不再引用 climateFor().text 作为可写素材，disclaimer 固定 creative_only。 */
   function climateDirections(a) {
-    const c = climateFor(a);
-    if (!c.text) return [];
-    const p = a.place || "这里";
+    const sc = seasonalCreativeContextOf(a);
+    if (!sc.season) return [];
+    const p = (a && a.place) || "这里";
+    const mood = (sc.mood || []).join("、");
+    const palette = (sc.palette || []).join("、");
     return [
-      { name: "气候在场", headline: `${c.text}，${p}的这趟路，从体感开始。`, reason: "把当季体感写进邀请，比罗列日期更有画面。", mood: "时令" },
-      { name: "带着天气出发", headline: `知道${c.text}，${p}才值得认真准备。`, reason: "气候是真实的出发理由，也自然带出装备与状态。", mood: "真实" }
+      { name: "季节气质", headline: `${sc.season}的${p}，适合用「${mood}」的节奏走一趟。`, reason: "只借用季节的情绪与配色，不对当天天气或景色作任何断言。", mood: "时令", disclaimer: "creative_only" },
+      { name: "按季节准备", headline: `${sc.season}出发，${p}这趟路值得按${palette}的色调、${sc.rhythm}的节奏来准备。`, reason: "把季节当作准备理由，而不是现场事实。", mood: "准备", disclaimer: "creative_only" }
     ];
   }
 
@@ -4103,13 +4260,14 @@ function applyVisionBatch(map) {
   function mediaBlock(a, i, label) {
     const ph = (a.photos || []);
     if (ph[i]) {
-      // P0-11 安全裁切：含人物/竖图关键景物/高风险图改用原比例展示，宁可留白也不裁坏主体
-      const contain = (typeof pagePhotoContain === "function") ? pagePhotoContain(ph[i]) : false;
+      // P0-B：统一走 CropPolicy —— 高风险图强制原比例(contain)，最终渲染不得因容器比例改回 cover
+      const cr = (typeof cropRenderOf === "function") ? cropRenderOf(ph[i]) : { contain: (typeof pagePhotoContain === "function" ? pagePhotoContain(ph[i]) : false), pos: smartPos(ph[i]), mode: "cover", risk: "low" };
+      const contain = cr.contain;
       // P0-8：角色决定视觉重要度——给容器打上角色类，CSS 据此差异化尺寸/透明度
       const role = (typeof pagePhotoRole === "function") ? pagePhotoRole(ph[i]) : null;
       const roleCls = role && PI_ROLES && PI_ROLES[role] ? PI_ROLES[role].cls : "";
       const roleAttr = role ? ` data-role="${role}"` : "";
-      return `<div class="ph ${roleCls} ${contain ? "ph-safe" : ""}"${roleAttr}><img class="ph-img" data-smart-img src="${ph[i]}" alt="" style="object-position:${smartPos(ph[i])};object-fit:${contain ? "contain" : "cover"}"></div>`;
+      return `<div class="ph ${roleCls} ${contain ? "ph-safe" : ""}"${roleAttr} data-crop-mode="${cr.mode}" data-crop-risk="${cr.risk}"><img class="ph-img" data-smart-img src="${ph[i]}" alt="" style="object-position:${cr.pos};object-fit:${contain ? "contain" : "cover"}"></div>`;
     }
     const ac = styleAccent(a);
     return `<div class="ph ph-ph" style="background:${ac.grad}"><span class="ph-ic">${ICON("camera")}</span><span class="ph-lab">${esc(label || "现场实拍")}</span></div>`;
@@ -4955,6 +5113,279 @@ function applyVisionBatch(map) {
     }
     return list[i];
   }
+  /* ===== P0-C（v193）「换风格」必须真正重生成内容，而不是只换 CSS =====
+     换版式：冻结 事实/DNA 事实层/策略/方向/文案 → 只改 LayoutPlan。
+     换风格：冻结 confirmedFacts / actualActivityData / DNA 事实层 / Photo Intelligence，
+             重生成 内容角度 → 主主题 → 标题 → 副标题 → 导语 → 章节标题与正文 →
+             金句 → 图片叙事策略 → Editorial Direction → LayoutPlan，并重跑 Claim→Fact 检查。
+     实现方式：把「重生成结果」存成 stylePack，渲染层优先消费它；事实字段（时间/地点/价格/
+     行程/装备/保险/领队）永远从 canonical 字段渲染，所以「换风格后事实一字不变」是结构保证，
+     不依赖文案生成器自觉。 */
+  const EDITORIAL_STYLE_PHOTO = {
+    "S-scenery-mag":     { name: "风景优先·大图慢节奏", galleryBias: 0.9,  perSectionBias: 1.3 },
+    "S-challenge-doc":   { name: "纪实·少而稳",         galleryBias: 0.5,  perSectionBias: 1.0 },
+    "S-companion-album": { name: "陪伴·人物密集",       galleryBias: 1.2,  perSectionBias: 1.4 },
+    "S-social-conv":     { name: "社交·快节奏图组",     galleryBias: 1.0,  perSectionBias: 1.2 },
+    "S-season-mag":      { name: "季节·拼图铺陈",       galleryBias: 1.1,  perSectionBias: 1.35 },
+    "S-freedom-doc":     { name: "自由·留白优先",       galleryBias: 0.6,  perSectionBias: 1.0 },
+    "S-lifestyle-conv":  { name: "生活方式·切片感",     galleryBias: 1.0,  perSectionBias: 1.25 },
+  };
+  /* 事实切片：只放「canonical 字段 + DNA 事实层」里确实存在的东西。
+     任何未确认的天气/景色/事件都不会被写进这里 —— 这是 P0-A 事实边界的落地。 */
+  function editorialFacts(a, dna) {
+    a = a || {};
+    const season = (dna && dna.season) || seasonOf(a) || "";
+    const ground = (dna && dna.groundedScenes) || [];
+    const days = a.itineraryDays || [];
+    const items0 = (days[0] && days[0].items) || [];
+    const firstTime = (items0[0] && items0[0].time) || "";
+    const last = items0.length ? items0[items0.length - 1] : null;
+    const svc = [];
+    if (a.includeLeader) svc.push("专业领队");
+    if (a.includeInsurance) svc.push("户外保险");
+    if (a.includeTransport) svc.push("往返交通");
+    if (a.includeMeal) svc.push("餐食");
+    (a.feeInclude || []).forEach(function (x) { const t = String(x || "").trim(); if (t && svc.indexOf(t) < 0) svc.push(t); });
+    const dif = String(a.difficulty || "").trim();
+    const difWord = /高|难|挑战|进阶/.test(dif) ? "偏难" : (/低|轻松|入门|休闲/.test(dif) ? "轻松" : (dif ? "适中" : ""));
+    return {
+      place: String(a.place || "").trim(),
+      hasPlace: !!String(a.place || "").trim(),
+      P: String(a.place || "").trim() || "这条路线",
+      dateShort: String(a.dateMD || a.date || "").trim(),
+      D: String(a.dateMD || a.date || "").trim() || "这一天",
+      season: season,
+      seasonWord: season ? season : "",
+      distance: (+a.distance > 0) ? +a.distance : 0,
+      elevation: (+a.elevation > 0) ? +a.elevation : 0,
+      difficulty: dif, difficultyWord: difWord,
+      days: (+a.days > 0) ? +a.days : 0,
+      dayWord: (+a.days > 1) ? (+a.days + " 天") : "一天",
+      limit: (+a.limit > 0) ? +a.limit : 0,
+      limitUnit: a.limitUnit || "人",
+      price: (a.price != null && +a.price > 0) ? +a.price : 0,
+      services: svc,
+      audience: String(a.targetAudience || "").trim(),
+      startTime: firstTime,
+      endTime: (last && last.time) || "",
+      ground: ground,
+      envLabel: (dna && dna.environmentLabel) || (String(a.place || "").trim() || "山野"),
+      formLabel: (dna && dna.activityFormLabel) || "户外活动",
+      distWord: (+a.distance > 0) ? (+a.distance + " 公里") : "",
+      eleWord: (+a.elevation > 0) ? ("海拔 " + (+a.elevation) + " 米") : "",
+    };
+  }
+  /* 7 个角度的「表达声音」：动词/意象/结构句都不同 —— 保证连点换风格得到的不是换皮。 */
+  const EDITORIAL_ANGLE_VOICE = {
+    scenery: {
+      label: "看风景", verb: "看", focus: "风景",
+      titles: ["{P}{D}，把视野一层层打开", "{P}这条线，看得比走得更远", "在{P}，把{seasonWord}的风景走完"],
+      leads: ["{P}这条路，风景不是背景，是主线。{D}出发，不赶点，把脚步交给山水。",
+              "从集合点出发走完{P}。{distWord}{eleWord}，一路都在换视野。"],
+      paras: {
+        why: ["去{P}，不是为了打卡，是为了把被楼宇切碎的视野重新接起来。", "这条路的价值在视野：走一段，就换一幅。"],
+        experience: ["{difficultyWord}的强度配得上{dayWord}的路程，走完不会觉得赶。", "沿线以{envLabel}为主，节奏由自己和队伍一起决定。"],
+        route: ["按行程走：{startTime}集合出发，{endTime}回到集合点。", "全程约{distWord}，沿途依据实际路况调整休息点。"],
+        gain: ["带走的不是照片数量，是一整天连续的视野。", "把{D}这一天的节奏完整地还给自己。"],
+        fit: ["{audience}，以及想安安静静看一天风景的人。", "有基础体力、愿意按自己步频走的人都能跟上。"],
+        reasons: ["路线成熟、节奏可控，领队随队，把注意力留给风景。", "人数控制在{limit}{limitUnit}内，队形不散。"],
+      },
+      quotes: ["风景不在终点，在每一段转弯之后。", "把{D}交给一条有视野的路。", "走完才知道，视野是需要一步步换来的。"],
+    },
+    freedom: {
+      label: "自由", verb: "松开", focus: "节奏",
+      titles: ["{D}，在{P}关掉闹钟", "把自己还给{P}", "{P}：{dayWord}不用赶路的走法"],
+      leads: ["{D}这天没有闹钟，只有{P}。走多快、停多久，自己说了算。",
+              "去{P}不是为了完成清单，是为了把节奏调回来。{distWord}，走成自己的样子。"],
+      paras: {
+        why: ["城市里的时间被切得很碎，{P}能把它重新连成一条线。", "离开固定安排{dayWord}，节奏自然会慢下来。"],
+        experience: ["不设打卡点，累了就停。{difficultyWord}的强度刚好留出喘息的余地。", "在{envLabel}里走，注意力从屏幕移回脚下。"],
+        route: ["{startTime}出发，{endTime}回到集合点，中间的时间归自己安排。", "全程约{distWord}，不赶路，按队伍状态调整。"],
+        gain: ["一天结束时，手里多出来的是一点松弛。", "把被日程表占据的注意力要回来。"],
+        fit: ["{audience}，以及最近想喘口气的人。", "不喜欢被行程推着走、愿意自己掌握节奏的人。"],
+        reasons: ["不设硬性打卡点，把时间还给参与者。", "限{limit}{limitUnit}，小队伍更好照顾各自的节奏。"],
+      },
+      quotes: ["真正的休息，是把时间从表格里拿回来。", "走慢一点，才听得见自己的节奏。", "把{D}还给不做计划的自己。"],
+    },
+    challenge: {
+      label: "挑战", verb: "走完", focus: "体力",
+      titles: ["{eleWord}，{D}走完{P}这条线", "{P}{D}：走到累，也走到值", "在{P}，把体力用在该用的地方"],
+      leads: ["{D}这条线不轻松：{distWord}{eleWord}，{difficultyWord}的强度。走完它，答案自己出现。",
+              "{P}不是散步的路线。{distWord}走下来，需要的是节奏和坚持，而不是冲动。"],
+      paras: {
+        why: ["难度是这条线的一部分：{difficultyWord}的强度，才配得上走完之后的踏实。", "选择{P}，是想用{dayWord}换一个明确的完成感。"],
+        experience: ["前段爬升集中，中后段趋于稳定，身体会经历一个明确的临界点。", "{eleWord}的落差带来真实的体力消耗，也带来真实的消耗感。"],
+        route: ["{startTime}集合出发，{endTime}回到集合点，中途按体力设休息点。", "全程约{distWord}，{difficultyWord}；领队控速，禁止超越前队。"],
+        gain: ["得到的是一个自己能确认的完成度。", "把{dayWord}的体力完整地用在该用的地方。"],
+        fit: ["{audience}，以及有徒步基础、能接受{difficultyWord}强度的人。", "身体状态稳定、愿意按队伍节奏推进的人。"],
+        reasons: ["路线难度与队伍配比经过匹配，不硬拼。", "限{limit}{limitUnit}，保证领队能照顾到队尾。"],
+      },
+      quotes: ["难的部分，往往才是记得住的部分。", "不是征服高度，是完整经历一天。", "走到累，才知道自己还剩多少。"],
+    },
+    companion: {
+      label: "陪伴", verb: "陪着", focus: "一起",
+      titles: ["带他走一次{P}", "{P}{D}：陪孩子走完这一程", "在{P}，一起攒一段路"],
+      leads: ["{D}带孩子去{P}。{distWord}的强度适合第一次走长线的小朋友，家长在旁，一起走完。",
+              "把周末交给{P}：孩子在前面探路，大人跟在后面，{dayWord}就这样过。"],
+      paras: {
+        why: ["带孩子来{P}，是想让他知道路是要自己走完的。", "{difficultyWord}的路线对孩子友好，成就感来得刚刚好。"],
+        experience: ["孩子会经历从兴奋到疲惫再到坚持的完整过程，这比说教有用。", "一路上大人小孩同速前进，节奏由队伍里最慢的人决定。"],
+        route: ["{startTime}集合出发，{endTime}返回，途中的休息点按孩子状态调整。", "全程约{distWord}，留足玩耍与休息的时间。"],
+        gain: ["带回去的是一起完成一件事的记忆。", "孩子得到一次自己走完的经验，家长得到一天不被打扰的相处。"],
+        fit: ["{audience}，以及愿意陪孩子慢慢走的家庭。", "孩子能独立走完短程、家长愿意全程陪同的家庭。"],
+        reasons: ["路线难度对亲子友好，不设置硬性挑战段。", "限{limit}{limitUnit}，保证每家的孩子都在视野内。"],
+      },
+      quotes: ["第一次走完全程，是他自己挣来的。", "陪他走的路，比替他走的路长。", "一起走完，才算一起出发。"],
+    },
+    social: {
+      label: "社交", verb: "约", focus: "同频",
+      titles: ["{D}，把朋友约到{P}", "{P}：一场不用会议室的聚会", "和同频的人去{P}走{dayWord}"],
+      leads: ["{D}不做室内局，约在{P}。{distWord}边走边聊，比坐在桌前更容易说开。",
+              "把聚会搬到{P}：一起出发、一起走完、一起吃个饭。"],
+      paras: {
+        why: ["换掉会议室，{P}里并排走一段，话题自然就有了。", "一起走过一段路，比交换名片更容易记住彼此。"],
+        experience: ["队伍规模控制在{limit}{limitUnit}，不喧闹，也不至于冷场。", "{difficultyWord}的强度刚好：有点喘，但不影响说话。"],
+        route: ["{startTime}集合，热身之后出发，{endTime}左右回到集合点。", "全程约{distWord}，中间设一次集体休息。"],
+        gain: ["多认识几个能一起走路的人。", "把{dayWord}的相处时间换成一段共同经历。"],
+        fit: ["{audience}，以及想找人一起出去走走的你。", "愿意和陌生人并排走一段路、聊几句的人。"],
+        reasons: ["小队伍制，限{limit}{limitUnit}，保证每个人都插得上话。", "路线强度适中，注意力可以留给同伴。"],
+      },
+      quotes: ["并排走过一段路，比并排坐一天更有用。", "同频的人，是在路上遇到的。", "聚会不必有桌子，有路就够了。"],
+    },
+    season: {
+      label: "季节", verb: "赶", focus: "时令",
+      titles: ["{seasonWord}的{P}，值得赶一趟", "{P}{D}：只有这一季才有的样子", "踩准{seasonWord}的步点去{P}"],
+      leads: ["{seasonWord}的{P}，一年只有这一段时间。{D}出发，把这一季收进脚步里。",
+              "{D}去{P}。{seasonWord}的时令不等人，{distWord}走完，正好赶上这一季。"],
+      paras: {
+        why: ["{seasonWord}有明确的窗口期，错过就要等一年。", "选在{D}，是为了赶上{P}这一季才成立的状态。"],
+        experience: ["{seasonWord}的体感与其它季节不同，出发前按当季准备衣物更稳妥。", "{difficultyWord}的强度配{seasonWord}的天气，节奏需要按当季调整。"],
+        route: ["{startTime}集合出发，{endTime}返回，预留应对当季日照的时间。", "全程约{distWord}，按当季路况安排休息。"],
+        gain: ["把{seasonWord}的这一段留在记忆里。", "等到换季，你手里有一段别人没有的记录。"],
+        fit: ["{audience}，以及想踩准时令走一趟的人。", "愿意按当季准备、不介意天气变化的人。"],
+        reasons: ["{D}落在{seasonWord}窗口内，时令是这场的核心价值。", "限{limit}{limitUnit}，保证当季队伍不拥挤。"],
+      },
+      quotes: ["时令不等人，路也不会一直等。", "一年只有一段时间，值得为它腾出一天。", "赶在换季之前，把这一程走完。"],
+    },
+    lifestyle: {
+      label: "生活方式", verb: "过成", focus: "日常",
+      titles: ["把{dayWord}过成{P}的样子", "{P}{D}：另一种过法", "在{P}，换一种节奏生活"],
+      leads: ["如果{dayWord}可以不用通勤和会议开头，它会是什么样？{D}的{P}是一种回答。",
+              "{D}把生活搬到{P}：走路、吃饭、聊天，节奏比平时慢一档。"],
+      paras: {
+        why: ["户外不是假期特供，它可以是一种常规的过法。", "把{D}交给{P}，是给日常换一个参照。"],
+        experience: ["{difficultyWord}的强度不会打乱生活，反而让第二天更清醒。", "在{envLabel}里走{dayWord}，身体会重新记住什么是舒展。"],
+        route: ["{startTime}出发，{endTime}回到集合点，不影响第二天的安排。", "全程约{distWord}，属于可以放进常规日程的强度。"],
+        gain: ["带回去的是一种可以重复的生活节奏。", "把户外从「偶尔」变成「可以安排」。",],
+        fit: ["{audience}，以及想把户外变成日常的人。", "工作日节奏紧、周末想换一种过法的人。"],
+        reasons: ["单日行程，前后不占额外时间。", "限{limit}{limitUnit}，把体验控制在舒服的规模。"],
+      },
+      quotes: ["把日子过成户外，比把户外当假期更耐用。", "生活方式不需要远行，需要一天。", "重复得起来，才算生活方式。"],
+    },
+  };
+  function angleVoice(angle) { return EDITORIAL_ANGLE_VOICE[angle] || EDITORIAL_ANGLE_VOICE.scenery; }
+  /* 事实填充：{P} 地点 / {D} 日期 / {seasonWord} 季节 / 其余为可选事实，缺省时整句降级为中性表述。
+     只做字符串替换，不引入任何未确认信息。 */
+  function fillFrames(frames, f) {
+    const one = (tpl) => String(tpl || "").replace(/\{(\w+)\}/g, function (_, k) {
+      const v = (f && f[k] != null) ? String(f[k]) : "";
+      if (k === "P") return v || "这条路线";
+      if (k === "D") return v || "这一天";
+      if (k === "seasonWord") return v || "当季";
+      if (k === "distWord" || k === "eleWord") return v ? v : "";
+      return v;
+    }).replace(/\s{2,}/g, " ").replace(/，\s*，/g, "，").replace(/。\s*。/g, "。").trim();
+    return (frames || []).map(one).filter(Boolean);
+  }
+  /* 主生成：由「风格(角度+密度) × 事实」组合出完整内容包 */
+  function angleEditorialPack(a, variant, dna) {
+    a = a || {}; variant = variant || {}; dna = dna || {};
+    const angle = variant.angle || "scenery";
+    const V = angleVoice(angle);
+    const f = editorialFacts(a, dna);
+    const dens = (typeof EDITORIAL_DENSITY !== "undefined" && EDITORIAL_DENSITY[variant.density]) || EDITORIAL_DENSITY.magazine;
+    const takes = (arr, n) => fillFrames(arr, f).slice(0, n);
+    // 标题：按角度写出，缺地点时自动降级；同一风格下 titleIdx 轮换，避免连点同一风格永远同一句
+    const titles = fillFrames(V.titles, f);
+    const leads = fillFrames(V.leads, f);
+    const quotes = fillFrames(V.quotes, f);
+    const paras = {};
+    Object.keys(V.paras || {}).forEach(function (k) { paras[k] = fillFrames(V.paras[k], f); });
+    // 副标题：角度 label + 事实骨架，不含任何未确认画面
+    const subtitle = [V.label, f.dateShort ? f.dateShort : "", f.distWord ? f.distWord : "", f.difficultyWord ? f.difficultyWord + "强度" : ""]
+      .filter(Boolean).join(" · ");
+    // 图片叙事策略（风格轴决定，但不改 sec.imgCount 这一 P0-12 契约）
+    const ps = EDITORIAL_STYLE_PHOTO[variant.style] || { name: "标准", galleryBias: 1, perSectionBias: 1 };
+    return {
+      angle: angle, angleLabel: V.label,
+      styleId: variant.style || "", layoutId: variant.layout || "", density: variant.density || "magazine",
+      createdAt: Date.now(),
+      title: titles[0] || (f.P + (f.dateShort ? f.dateShort : "")),
+      titleAlts: titles.slice(),
+      subtitle: subtitle,
+      lead: leads.length ? leads.join("\n") : "",
+      paras: paras,
+      pullQuote: quotes[0] || "",
+      pullQuoteAlts: quotes.slice(),
+      photoStrategy: { name: ps.name, galleryBias: ps.galleryBias, perSectionBias: ps.perSectionBias },
+      factsFingerprint: editorialFactsFingerprint(a),
+      dnaFactFingerprint: dnaFactFingerprint(a),
+    };
+  }
+  /* 事实指纹：事实一变，旧内容包自动作废（防止换了日期/价格还沿用旧文案） */
+  function editorialFactsFingerprint(a) {
+    a = a || {};
+    return [a.place, a.date, a.dateMD, a.price, a.distance, a.elevation, a.difficulty, a.days, a.limit, a.limitUnit,
+      a.meeting, a.meetTime, a.returnTime, a.title,
+      (a.itineraryDays || []).map(function (d) { return (d.label || "") + "|" + (d.items || []).map(function (i) { return (i.time || "") + (i.text || ""); }).join(","); }).join(";"),
+      (a.feeInclude || []).join(","), (a.feeExclude || []).join(","),
+      (a.gear || []).map(function (g) { return g && g.name; }).join(","),
+      [a.includeLeader ? "领队" : "", a.includeInsurance ? "保险" : "", a.includeTransport ? "交通" : "", a.includeMeal ? "餐食" : ""].join("/"),
+    ].map(function (v) { return String(v == null ? "" : v); }).join("~");
+  }
+  function dnaFactFingerprint(a) {
+    const d = (a && a.activityDNA) || null;
+    if (!d) return "";
+    return [(d.groundedScenes || []).join(","), d.environment || "", d.season || "", d.activityForm || ""].join("~");
+  }
+  /* 取当前有效的内容包：角度匹配 + 两条事实指纹都匹配才认（否则视为过期，渲染层回退旧路径） */
+  function editorialStylePackOf(a) {
+    const p = a && a.editorialStylePack;
+    if (!p || !p.angle) return null;
+    if (p.factsFingerprint !== editorialFactsFingerprint(a)) return null;
+    if (p.dnaFactFingerprint !== dnaFactFingerprint(a)) return null;
+    const variant = (typeof editorialVariantOf === "function") ? editorialVariantOf(a) : null;
+    if (variant && p.angle !== variant.angle) return null;   // 角度不一致 → 换版式不该复用（角度由风格决定）
+    return p;
+  }
+  /* P0-C：换风格 —— 真正重生成内容，并做「连续重复降权」 */
+  function regenStyleContent(a, opts) {
+    if (!a) return null;
+    opts = opts || {};
+    const curStyle = (typeof editorialStyleOf === "function") ? editorialStyleOf(a) : { id: "" };
+    const curLayout = (typeof editorialLayoutOf === "function") ? editorialLayoutOf(a) : { id: "" };
+    const hist = Array.isArray(a._styleHistory) ? a._styleHistory.slice() : [];
+    const recent = hist.slice(-2).map(function (h) { return h && h.contentAngle; }).filter(Boolean);
+    // 选下一个风格：逐个尝试，跳过「近两次已用过的角度」（连续重复降权）
+    let next = null, tried = 0, prevId = curStyle.id;
+    while (tried < EDITORIAL_STYLES.length) {
+      const cand = (typeof pickEditorialStyle === "function") ? pickEditorialStyle(prevId) : null;
+      if (!cand) break;
+      tried++;
+      prevId = cand.id;
+      if (recent.indexOf(cand.angle) < 0 || tried >= EDITORIAL_STYLES.length) { next = cand; break; }
+    }
+    next = next || (typeof pickEditorialStyle === "function" ? pickEditorialStyle(curStyle.id) : curStyle);
+    // 冻结事实 → 只写 style 轴；事实字段一概不碰
+    a.editorialStyleId = next.id;
+    const dna = (typeof buildActivityDNA === "function") ? buildActivityDNA(a, a.photos) : null;
+    const variant = { angle: next.angle, structure: curLayout.structure, img: curLayout.img, density: next.density, layout: curLayout.id, style: next.id, typo: curLayout.typo, family: next.family };
+    const pack = angleEditorialPack(a, variant, dna || {});
+    a.editorialStylePack = pack;
+    a._styleHistory = hist.concat([{ contentAngle: next.angle, styleId: next.id, layoutId: curLayout.id, createdAt: Date.now() }]).slice(-12);
+    // 同步重生成后置的图片策略（不改 sec.imgCount / imgKind）
+    return pack;
+  }
   function angleLeadOf(angle, a, fb) {
     const A = EDITORIAL_ANGLES[angle] || EDITORIAL_ANGLES.scenery;
     const fbk = fb || {};
@@ -5008,6 +5439,13 @@ function applyVisionBatch(map) {
     const dna = (typeof activityDNAOf === "function") ? activityDNAOf(a) : null;
     const dn = photoDayNight(a.photos);
     const fb = (typeof dnaCopyFor === "function") ? dnaCopyFor(dna || {}) : {};
+    /* P0-C：换风格生成的内容包优先 —— 有包用包（正文本就是这次风格重生成的产物），
+       无包回退旧路径。事实章节（行程/费用/装备）永远来自 canonical 字段，不受内容包影响。 */
+    const pk = (typeof editorialStylePackOf === "function") ? editorialStylePackOf(a) : null;
+    const pkPick = (key, v, f) => {
+      const pl = (pk && pk.paras && pk.paras[key]) || null;
+      return (pl && pl.length) ? pl.slice() : pick(v, f);
+    };
     const theme = (dna && dna.mainTheme) || a.storyPurpose || a.editorialTitle || a.title || "这一程";
     const sig = (dna && dna.sceneSignature) || "";
     const angles = (dna && dna.copyAngles) || [];
@@ -5027,8 +5465,8 @@ function applyVisionBatch(map) {
       byGroup[group].push({ group: group, key: key, kind: kind, heading: heads[key] || baseHeading || theme, paras: list, imgCount: ic.count, imgKind: ic.kind, angle: vAngle, density: vDens, typo: vTypo, family: vFamily });
     };
 
-    make("why", "why", "scenic", st.whyGo || "为什么值得去", pick(a.whyGo, fb.whyGo));
-    make("experience", "experience", "experience", st.experience || "来了会体验什么", pick(a.experience, fb.experience));
+    make("why", "why", "scenic", st.whyGo || "为什么值得去", pkPick("why", a.whyGo, fb.whyGo));
+    make("experience", "experience", "experience", st.experience || "来了会体验什么", pkPick("experience", a.experience, fb.experience));
 
     // 行程：多日每天一节，统一归到 route 组（保持内部顺序）
     const days = a.itineraryDays || [];
@@ -5053,8 +5491,8 @@ function applyVisionBatch(map) {
       }
     }
 
-    make("gain", "gain", "people", st.gain || "参加完能得到什么", pick(a.gain, fb.gain));
-    make("fit", "fit", "people", "适合谁", pick(a.fitFor, fb.fitFor || (a.targetAudience ? a.targetAudience + "，都能找到自己的步频。" : "")));
+    make("gain", "gain", "people", st.gain || "参加完能得到什么", pkPick("gain", a.gain, fb.gain));
+    make("fit", "fit", "people", "适合谁", pkPick("fit", a.fitFor, fb.fitFor || (a.targetAudience ? a.targetAudience + "，都能找到自己的步频。" : "")));
 
     // Case 4：昼夜节奏 —— 白天+夜晚素材齐备时，注入「入夜」章节（kind=night），
     //   排序位于 route 之后、gain 之前，长页自然呈现 白天→夜晚 的情绪弧。
@@ -5067,7 +5505,9 @@ function applyVisionBatch(map) {
 
     const sp = (a.sellingPoints || []).filter((s) => s && (s.title || s.desc));
     if (sp.length) make("reasons", "reasons", "info", "这场活动的几个理由",
-      sp.slice(0, 6).map((s) => ((s.title ? s.title : "") + (s.title && s.desc ? "：" : "") + (s.desc || "")).trim()).filter(Boolean));
+      (pk && pk.paras && pk.paras.reasons && pk.paras.reasons.length)
+        ? pk.paras.reasons.slice(0, 6)
+        : sp.slice(0, 6).map((s) => ((s.title ? s.title : "") + (s.title && s.desc ? "：" : "") + (s.desc || "")).trim()).filter(Boolean));
 
     const bodyParas = (a.body || []).map((p) => String(p || "").trim()).filter(Boolean);
     if (bodyParas.length) {
@@ -5827,10 +6267,197 @@ function typeProfile(a) {
   return { kind: "hike", tone: "真诚、自然、不浮夸", themeA: "走得动的山，才装得下周末的好心情", scenic: "行走其中才懂的山水与季节变化", experience: "呼吸、流汗、和朋友边走边聊的节奏", participation: "一次身体舒展与精神放空的周末充电" };
 }
 
+/* ===== P0-D（v193）CTA 也属于 Fact System =====
+   CTA 必须基于真实 signupMethod；名额紧迫感必须来自 capacity - confirmedSignups 的计算。
+   禁止无依据的「名额有限 / 最后几个 / 手慢无 / 先到先得 / 名额疯抢 / 马上满员 / 私信我 / 群里接龙 / 评论区扣1」。 */
+function confirmedSignupCount(a) {
+  if (!a) return 0;
+  const list = (typeof state !== "undefined" && state && Array.isArray(state.signups)) ? state.signups : [];
+  const mine = list.filter(function (x) { return x && a.id != null && x.activityId === a.id; });
+  if (mine.length) return mine.reduce(function (n, x) { return n + (+(x.adults || 1)) + (+(x.children || 0)); }, 0);
+  const n = Math.max(0, +((a && a.signups) || 0));
+  return isNaN(n) ? 0 : n;
+}
+function confirmedCTAOf(a) {
+  a = a || {};
+  const capacity = (a.limit != null && +a.limit > 0) ? +a.limit : null;
+  const signed = confirmedSignupCount(a);
+  const remaining = (capacity != null) ? Math.max(0, capacity - signed) : null;
+  const methods = Array.isArray(a.signupMethod) ? a.signupMethod.slice() : [];
+  const deadline = a.signupDeadline || a.enrollDeadline || null;
+  return {
+    signupMethod: methods,
+    capacity: capacity,
+    confirmedSignups: signed,
+    remainingSlots: remaining,
+    deadline: deadline,
+    urgencyConfirmed: !!a.urgencyConfirmed,
+    hasData: (capacity != null) || signed > 0,
+    fillRatio: (capacity && capacity > 0) ? (signed / capacity) : null
+  };
+}
+/* 紧迫感只能来自计算：>50% 不强调；20%-50%「报名进行中」；<=20%「剩余名额不多」；
+   只有明确剩余 ≤3 个时才允许写具体数字。没有 capacity 数据一律不说名额。 */
+function urgencyTextOf(cta) {
+  if (!cta || cta.remainingSlots == null || !cta.capacity) return "";
+  if (cta.remainingSlots === 0) return "名额已满。";
+  if (cta.remainingSlots <= 3) return "剩余 " + cta.remainingSlots + " 个名额。";
+  const r = cta.remainingSlots / cta.capacity;
+  if (r <= 0.2) return "剩余名额不多。";
+  if (r <= 0.5) return "报名进行中。";
+  return ""; // > 50%：不强调
+}
+/* 报名方式必须有来源；没有配置任何渠道时只给中性表述。 */
+function ctaShortOf(a) {
+  const c = confirmedCTAOf(a);
+  const m = c.signupMethod;
+  const parts = [];
+  if (m.indexOf("page") >= 0) parts.push("点击本页报名");
+  if (m.indexOf("wechat") >= 0) parts.push("添加客服微信咨询报名");
+  if (m.indexOf("group") >= 0) parts.push("群内接龙");
+  if (m.indexOf("phone") >= 0) parts.push("电话报名");
+  if (!parts.length) return "查看活动详情与报名信息";
+  return parts.join(" / ");
+}
 function ctaText(a) {
+  a = a || {};
+  const c = confirmedCTAOf(a);
   const when = a.dateMD || a.date || "近期";
-  const price = a.price != null ? "¥" + a.price + "/" + (a.limitUnit || "人") : "详询";
-  return `报名方式：私信 / 群里接龙，或直接在本页提交报名。${when} 出发，名额${a.limit ? a.limit + (a.limitUnit || "人") + "，" : ""}先到先得。`;
+  const capLine = c.capacity ? (c.capacity + (a.limitUnit || "人") + "名额") : "";
+  const urg = urgencyTextOf(c);
+  return "报名方式：" + ctaShortOf(a) + "。" + when + " 出发" + (capLine ? "，" + capLine : "") + "。" + urg;
+}
+/* ===== P0-B（v193）Safe Crop：统一 CropPolicy =====
+   图片渲染优先级固定，不可被任何「版式美观 / 容器填满」需求推翻：
+     人物·主体完整 > 图片语义正确 > 图片质量 > 版式美观 > 容器填满
+   绝不为了「没有留白」而把人裁掉。 */
+function cropPolicyOf(src) {
+  const m = (typeof photoMeta === "function") ? photoMeta(src) : null;
+  const intel = (typeof pagePhotoIntel === "function") ? pagePhotoIntel() : null;
+  const p = (intel && Array.isArray(intel.analysis)) ? intel.analysis.filter(function (x) { return x.src === src; })[0] : null;
+  let crop = null;
+  if (p) {
+    crop = (intel.cropSafety && intel.cropSafety.byId && intel.cropSafety.byId[p.imageId]) ||
+      ((typeof evaluateCropSafety === "function") ? evaluateCropSafety(p) : null);
+  }
+  /* 风险等级优先级：① 真实视觉模型 crop_risk（光写回 PHOTO_FOCUS_CACHE 也生效）
+                    ② 页面级 intel 里 evaluateCropSafety 的判定（其内部同样以模型优先）
+                    ③ 无数据 → low（等价旧 cover 行为）
+     ★ 之所以要有 ①：页面级 intel 需要先跑 buildPhotoIntelligence；单张真实结果写回后
+       若没跑过整页分析，旧实现会退回 low，把模型判定的 high 风险丢掉。 */
+  const modelRisk = (m && m.crop_risk) ? String(m.crop_risk) : ((p && p.cropRisk) ? String(p.cropRisk) : "");
+  const localLevel = (crop && crop.level) ? String(crop.level) : "";
+  const riskLevel = (["low", "medium", "high"].indexOf(modelRisk) >= 0) ? modelRisk
+    : ((["low", "medium", "high"].indexOf(localLevel) >= 0) ? localLevel : "low");
+  const realAspect = (m && m.ratio) ? Number(m.ratio) : ((p && p.ratio) ? Number(p.ratio) : null);
+  const fp = (m && m.focal_point) ? m.focal_point : ((p && p.focal) ? p.focal : null);
+  const focalPoint = fp ? { x: +fp.x, y: +fp.y } : { x: 0.5, y: 0.45 };
+  const cropSubjects = (crop && Array.isArray(crop.subjects)) ? crop.subjects : [];
+  /* subjects 可能有两种形态：启发式的字符串数组（["人物"]）或真实模型的 [{name,bbox}]。
+     两种都要能取到名字与 bbox —— 否则真实模型的 bbox 到不了 Safe Crop。 */
+  const metaSubjectsRaw = (m && Array.isArray(m.subjects)) ? m.subjects : [];
+  const metaSubjectNames = metaSubjectsRaw.map(function (x) {
+    return (x && typeof x === "object") ? String(x.name || x.label || "").trim() : String(x == null ? "" : x).trim();
+  }).filter(Boolean);
+  const metaBoxes = metaSubjectsRaw.map(function (x) {
+    if (!x || typeof x !== "object") return null;
+    const b = x.bbox || x.box || null;
+    return (b && typeof b === "object") ? b : null;
+  }).filter(Boolean);
+  const subjects = cropSubjects.length ? cropSubjects : metaSubjectNames;   // 只证明「图里有什么」，不等于活动事实
+  let subjectBoxes = (m && Array.isArray(m.subjectBoxes) && m.subjectBoxes.length) ? m.subjectBoxes.slice() : metaBoxes;
+  if (!subjectBoxes.length && crop && Array.isArray(crop.subjectBoxes)) subjectBoxes = crop.subjectBoxes.slice();
+  const safeCropBox = (m && m.safeCropBox) ? m.safeCropBox : ((crop && crop.safeCropBox) ? crop.safeCropBox : null);
+  const allowCrop = (riskLevel !== "high");
+  const mode = (riskLevel === "high") ? "aspect_preserved" : (riskLevel === "medium" ? "safe_cover" : "cover");
+  const reason = [];
+  if (crop && crop.reasons) crop.reasons.forEach(function (r) { reason.push(r); });
+  if (riskLevel === "high") reason.push("高风险：人物/主体完整性优先于容器填满，最终渲染不得改回 cover");
+  if (riskLevel === "medium") reason.push("中风险：允许裁切，但须按 focalPoint / safeCropBox 调整 object-position");
+  return {
+    src: src, mode: mode, riskLevel: riskLevel, allowCrop: allowCrop,
+    focalPoint: focalPoint, subjectBoxes: subjectBoxes, protectedSubjects: subjects,
+    safeCropBox: safeCropBox, reason: reason, realAspect: realAspect
+  };
+}
+
+/* P0-B：目标裁剪区域能否完整包含主体 bbox？不能 → 禁止裁切（文档 §七）。 */
+function cropFitsSubjects(policy, containerAspect) {
+  if (!policy) return true;
+  if (!policy.allowCrop) return false;
+  if (!policy.realAspect || !containerAspect) return true;
+  const boxes = policy.subjectBoxes || [];
+  if (!boxes.length) return true;
+  const pr = policy.realAspect, ca = containerAspect;
+  // cover 裁切后被保留的画面比例窗口（居中对齐时）
+  const keepW = (pr / ca >= 1) ? (ca / pr) : 1;
+  const keepH = (pr / ca >= 1) ? 1 : (pr / ca);
+  const x0 = 0.5 - keepW / 2, y0 = 0.5 - keepH / 2;
+  return boxes.every(function (b) {
+    const bx = (b && b.bbox) ? b.bbox : b;
+    if (!bx) return true;
+    const x = +bx.x || 0, y = +bx.y || 0, w = +bx.width || 0, h = +bx.height || 0;
+    return (x >= x0 - 0.002) && (y >= y0 - 0.002) && (x + w <= x0 + keepW + 0.002) && (y + h <= y0 + keepH + 0.002);
+  });
+}
+/* medium → safe_cover：按 focalPoint / safeCropBox 计算 object-position（把主体留在可见区） */
+function safePosOf(policy) {
+  if (!policy) return "50% 45%";
+  const box = policy.safeCropBox;
+  if (box && typeof box === "object" && box.x != null && box.width != null) {
+    const cx = (+box.x + (+box.width) / 2), cy = (+box.y + (+box.height) / 2);
+    return Math.max(0, Math.min(100, Math.round(cx * 100))) + "% " + Math.max(0, Math.min(100, Math.round(cy * 100))) + "%";
+  }
+  const f = policy.focalPoint || { x: 0.5, y: 0.45 };
+  const cl = function (v) { return Math.max(0, Math.min(100, Math.round((+v || 0) * 100))); };
+  return cl(f.x) + "% " + cl(f.y) + "%";
+}
+/* P0-B：渲染层唯一入口 —— 所有 <img> 的 object-fit / object-position 都应由它决定，
+   以保证「安全层判不裁」不会被渲染层因为容器比例擅自改回 cover。 */
+function cropRenderOf(src) {
+  const policy = cropPolicyOf(src);
+  let contain = (typeof pagePhotoContain === "function") ? pagePhotoContain(src) : false;
+  if (policy.riskLevel === "high") contain = true; // ★ 最高优先级，任何情况不得翻回 cover
+  const mode = contain ? "aspect_preserved" : (policy.mode === "safe_cover" ? "safe_cover" : "cover");
+  const pos = (mode === "safe_cover") ? safePosOf(policy) : ((typeof smartPos === "function") ? smartPos(src) : "50% 45%");
+  return { policy: policy, contain: contain, mode: mode, pos: pos, risk: policy.riskLevel, style: "object-position:" + pos + ";object-fit:" + (contain ? "contain" : "cover") };
+}
+/* P0-B：渲染结果审计 —— 找出「高风险图却被 cover 渲染」的违规（供验收与自查） */
+function cropRenderViolations(html) {
+  const out = [];
+  const re = /data-crop-risk="high"[^>]*|data-crop-mode="(cover|safe_cover)"[^>]*/g;
+  const tagRe = /<(figure|div)[^>]*data-crop-mode="(cover|safe_cover)"[^>]*data-crop-risk="high"[^>]*>/g;
+  let m;
+  while ((m = tagRe.exec(String(html || "")))) out.push(m[0].slice(0, 120));
+  const tagRe2 = /<(figure|div)[^>]*data-crop-risk="high"[^>]*data-crop-mode="(cover|safe_cover)"[^>]*>/g;
+  while ((m = tagRe2.exec(String(html || "")))) out.push(m[0].slice(0, 120));
+  return out;
+}
+/* P0-D：Fallback 定位 = 「AI 不可用时，生成一份朴素但 100% 安全的信息内容」。
+   优先级：准确 > 完整 > 可读 > 漂亮 > 营销感。 */
+/* P0-D：下一期信息受控 —— 没有已确认的下一场活动时，不得预告「下一期正在安排 / 群里接龙占位」。 */
+function nextActivityOf(a) {
+  const list = (typeof state !== "undefined" && state && state.activities) || [];
+  const id = a && a.id;
+  const cands = list.filter(function (x) {
+    if (!x || x.id === id) return false;
+    return x.status !== "ended";
+  });
+  return cands[0] || null;
+}
+/* P0-D：未确认实际参与情况时，不得默认「感谢每一位到场的朋友」 */
+function recapParticipationConfirmed(a) {
+  const d = (a && a.actualActivityData) || null;
+  if (!d) return false;
+  if (+(d.actualParticipants) > 0) return true;
+  if (Array.isArray(d.participants) && d.participants.length) return true;
+  if (d.attendanceConfirmed === true) return true;
+  return false;
+}
+function recapThanksLine(a) {
+  return recapParticipationConfirmed(a)
+    ? "谢谢这次一起出发的朋友。"
+    : "本次活动已经结束，以下为本次活动的现场记录。";
 }
 
 /* ---------- 事实护栏：creativeContext 只给表达方向，禁止写成现场事实 ---------- */
@@ -6470,7 +7097,7 @@ function sectionBody(h, a, m) {
     else if (f.audience) parts.push("面向 " + f.audience);
     if (f.difficulty) parts.push("强度" + f.difficulty + "，报名前请确认与自身情况匹配");
     if (f.leader) parts.push("本场由 " + f.leader + " 带队");
-    return `<p>${parts.length ? parts.join("；") + "。" : "具体是否适合你，请结合强度、时间与自身情况判断，或私信咨询。"}</p>`;
+    return `<p>${parts.length ? parts.join("；") + "。" : "具体是否适合你，请结合强度、时间与自身情况判断，或向发布方咨询。"}</p>`;
   }
   if (/值得|为什么|去|亮点|看点/.test(T)) {
     const parts = [];
@@ -6483,7 +7110,7 @@ function sectionBody(h, a, m) {
   if (/得到|收获|意义|价值|陪伴|成长/.test(T)) {
     return `<p>报名后可在群里获取集合、时间与行程提醒；活动信息以发布页为准。</p>`;
   }
-  if (/预告|下一期|集结/.test(T)) return `咱们还会继续进山，下一期路线正在安排，留意群里接龙就能占位。`;
+  if (/预告|下一期|集结/.test(T)) return "更多活动信息可关注机构后续发布。";
   return `<p>${(f.place ? "在" + f.place + "的" : "") + (f.date || "近期") + "这场活动，信息以发布页为准。"}</p>`;
 }
 
@@ -6524,24 +7151,24 @@ function fallbackRecruitCopy(a, m, dir) {
         "✅ 活动信息",
         xhsInfo.join("\n"),
         "",
-        "信息以发布页为准，想一起的评论区扣 1 或私信报名～",
+        "信息以发布页为准。" + ctaShortOf(a) + "。" + urgencyTextOf(confirmedCTAOf(a)),
       ].join("\n"),
       coverText: `${f.place || "山里"}·${publishSeason(a) || ""}`,
       hashtags: tags(a),
       imageOrder: ["cover", "scenic", "people", "action", "detail"],
     },
     moments: {
-      warm: `${dir.hook ? dir.hook + " " : ""}周末有空的不妨看过来🌿 ${f.place ? "在" + f.place + "的" : ""}${f.season || ""}局又开了，${f.date || ""} 出发。信息都在发布页，想一起的私我占位～`,
-      formal: `【招募】${f.activityName || "本周活动"} · ${f.date || "近期"} 出发\n${summary}\n名额有限，想一起的接龙或私信我留位～`,
-      last: `⏰ 最后几个名额！${f.activityName || "本周活动"} ${f.date || ""} 出发。信息见发布页，想来的抓紧私信，手慢无～`,
+      warm: `${dir.hook ? dir.hook + " " : ""}${f.place ? "在" + f.place + "的" : ""}${f.season || ""}这一场已开放报名，${f.date || ""} 出发。${ctaShortOf(a)}。${urgencyTextOf(confirmedCTAOf(a))}`,
+      formal: `【招募】${f.activityName || "本周活动"} · ${f.date || "近期"} 出发\n${summary}\n${ctaShortOf(a)}。${urgencyTextOf(confirmedCTAOf(a))}`,
+      last: `【提醒】${f.activityName || "本周活动"} ${f.date || ""} 出发。${urgencyTextOf(confirmedCTAOf(a)) || "活动信息以发布页为准。"}`,
     },
     wechat: {
-      recruit: `各位群友好👋 ${f.activityName || "本周活动"} 开始招募啦：\n🗓 时间：${f.date || "近期"}\n📍 地点：${f.place || "集合点群内发"}\n💰 ${f.price != null ? "费用：¥" + f.price + "/" + (f.limitUnit || "人") : "费用详询"}${f.difficulty ? "\n🔥 强度：" + f.difficulty : ""}\n\n信息以发布页为准，名额有限，想一起的直接接龙或私信我，我帮你留位～`,
-      brief: `【一句话】${f.activityName || "活动"} ${f.date || ""} 出发｜名额有限，戳我报名👇`,
+      recruit: `各位群友好👋 ${f.activityName || "本周活动"} 开始招募啦：\n🗓 时间：${f.date || "近期"}\n📍 地点：${f.place || "集合点群内发"}\n💰 ${f.price != null ? "费用：¥" + f.price + "/" + (f.limitUnit || "人") : "费用详询"}${f.difficulty ? "\n🔥 强度：" + f.difficulty : ""}\n\n${ctaShortOf(a)}。${urgencyTextOf(confirmedCTAOf(a))}`,
+      brief: `【一句话】${f.activityName || "活动"} ${f.date || ""} 出发｜${ctaShortOf(a)}`,
     },
     voice: {
-      s30: `大家好，这周末咱们去${f.place || "山里"}，主题是${angle}。${f.price != null ? "费用" + f.price + "一人" : "费用详询"}${f.difficulty ? "，强度" + f.difficulty : ""}。想一起的朋友私信我报名哈。`,
-      s60: `大家好，给大伙说个周末的活动。咱们${f.date || "这周末"}去${f.place || "山里"}，这场活动的主题是${angle}。${f.price != null ? "费用" + f.price + "一人" : "费用详询"}${f.includedServices && f.includedServices.length ? "，含" + f.includedServices.join("、") : ""}${f.difficulty ? "，强度" + f.difficulty : ""}。名额不多，想一起的朋友现在就可以私信我报名。`,
+      s30: `大家好，这周末咱们去${f.place || "山里"}，主题是${angle}。${f.price != null ? "费用" + f.price + "一人" : "费用详询"}${f.difficulty ? "，强度" + f.difficulty : ""}。${ctaShortOf(a)}。${urgencyTextOf(confirmedCTAOf(a))}`,
+      s60: `大家好，给大伙说个周末的活动。咱们${f.date || "这周末"}去${f.place || "山里"}，这场活动的主题是${angle}。${f.price != null ? "费用" + f.price + "一人" : "费用详询"}${f.includedServices && f.includedServices.length ? "，含" + f.includedServices.join("、") : ""}${f.difficulty ? "，强度" + f.difficulty : ""}。${ctaShortOf(a)}。${urgencyTextOf(confirmedCTAOf(a))}`,
     },
     poster: {
       title: f.activityName || "户外活动",
@@ -6553,7 +7180,7 @@ function fallbackRecruitCopy(a, m, dir) {
       ].slice(0, 2),
       time: f.date || "近期",
       price: f.price != null ? "¥" + f.price + " 起/" + (f.limitUnit || "人") : "详询",
-      cta: "扫码 / 私信报名",
+      cta: ctaShortOf(a),
     },
   };
 }
@@ -6631,8 +7258,8 @@ function fallbackRecapCopy(a, m, dir, photos, notes, type, actual) {
       hashtags: tags(a).concat(["活动回顾"]),
       imageOrder: ["cover", "people", "team", "scenic", "action"],
     },
-    moments: `【活动回顾】${f.activityName || "本周活动"}已结束。${notesTxt ? notesTxt : "感谢每一位到场的朋友。"}${nextText(a)}`,
-    wechat: `各位群友，${f.activityName || "本次活动"}已经结束。\n\n${notesTxt ? "现场记录：" + notesTxt + "\n\n" : ""}感谢每一位参与的朋友。${nextText(a)}`,
+    moments: `【活动回顾】${f.activityName || "本周活动"}已结束。${notesTxt ? notesTxt : recapThanksLine(a)}${nextText(a)}`,
+    wechat: `各位群友，${f.activityName || "本次活动"}已经结束。\n\n${notesTxt ? "现场记录：" + notesTxt + "\n\n" : ""}${recapThanksLine(a)}${nextText(a)}`,
     next: nextText(a),
   };
 }
@@ -7152,7 +7779,7 @@ function fitText(a, m) {
   else if (f.audience) parts.push("面向 " + f.audience);
   if (f.difficulty) parts.push("强度" + f.difficulty + "，报名前请确认与自身情况匹配");
   if (f.leader) parts.push("本场由 " + f.leader + " 带队");
-  return parts.length ? parts.join("；") + "。" : "具体是否适合你，请结合强度、时间与自身情况判断，或私信咨询。";
+  return parts.length ? parts.join("；") + "。" : "具体是否适合你，请结合强度、时间与自身情况判断，或向发布方咨询。";
 }
 function infoRows(a) {
   const rows = [];
@@ -7203,7 +7830,13 @@ function recapType(a, photos) {
   return "户外体验型";
 }
 function nextText(a) {
-  return `咱们还会继续进山，下一期路线正在安排，留意群里接龙就能占位。`;
+  const next = nextActivityOf(a);
+  if (next) {
+    const when = next.dateMD || next.date || "";
+    const place = next.place || next.title || "下一场活动";
+    return "下一场：" + place + (when ? "（" + when + "）" : "") + "，活动信息以发布页为准。";
+  }
+  return "更多活动信息可关注机构后续发布。";
 }
 
 /* ================= 渲染：AI 宣发中心 ================= */
@@ -7348,6 +7981,7 @@ function photoReviewPanel(xf) {
       }).join("")}
       ${intel.cropSafety.highRiskIds.length ? `<span class="xpr-chip warn">${intel.cropSafety.highRiskIds.length} 张不宜大图（已按原比例保护）</span>` : ""}
       <span class="xpr-chip ${intel.simulated ? "" : "ok"}">${intel.simulated ? "规则推断（模拟分析）" : "真实视觉识别"}</span>
+      <span class="xpr-chip" data-role="vision-intel" title="${esc((typeof visionIntelDetail === "function") ? visionIntelDetail(photos) : "")}">${esc((typeof visionIntelLabel === "function") ? visionIntelLabel(photos) : (intel.simulated ? "图片智能：基础分析" : "图片智能：视觉识别"))}</span>
     </div>
     <div class="xpr-vision">
       ${(typeof visionAvailable === "function" && visionAvailable())
@@ -7574,11 +8208,15 @@ function regenCta() {
   const seed = bumpSeed(xf);
   const when = f.date || "近期";
   const price = f.price != null ? "¥" + f.price + "/" + (f.limitUnit || "人") : "详询";
+  /* P0-D：结尾话术同样受事实约束 —— 不出现「先到先得 / 名额有限 / 群里接龙占位」 */
+  const ctaTarget = xf._a || {};
+  const ctaShort = ctaShortOf(ctaTarget);
+  const ctaUrg = urgencyTextOf(confirmedCTAOf(ctaTarget));
   const opts = xf.scenario === "recap"
-    ? ["下一期正在安排，留意群里接龙就能占位。", "想去的先加群，路线一确定就发通知。", "老地方见，下一程继续一起走。"]
-    : [`${when} 出发，${price}${f.limit ? "，限 " + f.limit + (f.limitUnit || "人") : ""}，先到先得。`,
-      `名额有限，私信或群里接龙占位，${when} 见。`,
-      `${price}，含已确认服务；报名从本页提交即可。`];
+    ? ["更多活动信息可关注机构后续发布。", "后续活动安排以机构发布为准。", "本次活动记录到此，感谢阅读。"]
+    : [`${when} 出发，${price}。${ctaShort}。${ctaUrg}`,
+      `${ctaShort}。${when} 见。`,
+      `${price}，含已确认服务。${ctaShort}。`];
   const pick = opts[seed % opts.length];
   if (xf.scenario === "recap") xf.out.gzh.next = pick; else xf.out.gzh.cta = pick;
   toast("已换一版结尾");
@@ -7636,7 +8274,7 @@ function generateSectionCopy(h, m, a, seed) {
     opts.push(`${f.ageRange ? "适合 " + f.ageRange + "。" : ""}${m.targetAudience || "想换口气的人"}会喜欢这种踏实感。`);
     opts.push(`带走的不是照片，是一个能反复回想的周末。`);
   } else if (/预告|下一期|集结/.test(H)) {
-    opts.push(`下一程还在排，群里接龙就能占位。`);
+    opts.push(`更多活动信息可关注机构后续发布。`);
   } else {
     return "";
   }

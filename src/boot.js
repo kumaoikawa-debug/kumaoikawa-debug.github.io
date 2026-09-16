@@ -1,7 +1,7 @@
 /* ---------------- 版本自检：自动刷新，绕过边缘/浏览器缓存 (v126+) ---------------- */
 (function () {
   try {
-    var APP_VER = 192; // 与 version.json + HTML ?v= 同步，每次发版 +1 // 与 version.json + HTML ?v= 同步，每次发版 +1
+    var APP_VER = 193; // 与 version.json + HTML ?v= 同步，每次发版 +1
     function checkVer() {
       if (sessionStorage.getItem("__clubos_ver_reloaded") === "skip") return;
       fetch("version.json?_=" + Date.now(), { cache: "no-store" })
@@ -27,6 +27,29 @@
     setInterval(checkVer, 60000);
   } catch (e) {}
 })();
+
+  /* ---------------- v193 模块完整性自检（P0-5） ----------------
+     防止出现「UI 有入口 / 有按钮，但函数不存在 → 点击运行时报错」。
+     清单与自检函数定义在 core.js（可被冒烟脚本断言），这里只负责启动时跑一次：
+     缺失 → console.error；本地开发环境额外在页面底部显示 Module Missing 横幅。 */
+  (function () {
+    var missing = (typeof checkRequiredModules === "function") ? checkRequiredModules() : [];
+    window.__clubosMissingModules = missing;
+    missing.forEach(function (m) { console.error("[ClubOS module missing]", m); });
+    if (!missing.length) return;
+    var host = location.hostname, proto = location.protocol;
+    var isDev = proto === "file:" || host === "localhost" || host === "127.0.0.1" || host === "" || host === "0.0.0.0";
+    if (!isDev) return;
+    try {
+      var box = document.createElement("div");
+      box.id = "moduleMissingBanner";
+      box.setAttribute("data-role", "module-missing");
+      box.style.cssText = "position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#8a2f22;color:#fff;" +
+        "font:12px/1.7 -apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif;padding:8px 12px;white-space:pre-wrap";
+      box.textContent = "Module Missing:\n" + missing.join("\n");
+      document.body.appendChild(box);
+    } catch (e) {}
+  })();
 
   /* ---------------- init ---------------- */
   // 所有依赖就绪后再加载状态（避免 TDZ）

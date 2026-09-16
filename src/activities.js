@@ -78,18 +78,38 @@
     if (r > 0) return Math.max(0.62, Math.min(2.6, r));
     return 1.36; // 分析未完成前先按中性横构图渲染，避免竖图被先拉成横条再跳变
   }
+  /* P0-B：该图是否必须原比例展示（高风险 / 竖图含主体 / 计算层要 aspect_preserved） */
+  function figContain(src) {
+    if (!src) return false;
+    if (typeof cropPolicyOf === "function") {
+      const p = cropPolicyOf(src);
+      if (p && (p.riskLevel === "high" || p.mode === "aspect_preserved")) return true;
+    }
+    return (typeof pagePhotoContain === "function") ? pagePhotoContain(src) : false;
+  }
+  /* P0-B 渲染优先级（不可被「版式美观 / 容器填满」推翻）：
+       人物·主体完整 > 图片语义正确 > 图片质量 > 版式美观 > 容器填满
+     ★ 旧实现在这里把 contain 又翻回 cover（`if (contain && (!exact||clamped)) contain=false`），
+       于是刚在计算层判定的「高风险必须原比例」在渲染层被静默推翻 —— 裁切保护等于失效。
+       现在：① high → 无条件 contain；② 需要原比例时不 clamp 比例（容器比例 = 图片真实比例，
+       所以不存在露色带问题，也就不需要靠 cover 去「填满」）；③ medium → safe_cover + object-position。 */
   function xhFig(a, i, cap) {
     const src = (a.photos || [])[i];
     if (!src) return "";
     const m = (typeof photoMeta === "function") ? photoMeta(src) : null;
-    const exact = !!(m && m.ratio);
-    const ar = figAspect(src);
-    const clamped = !!(exact && Math.abs(ar - Number(m.ratio)) > 0.001); // 极端长图比例被收敛，容器已不等于原图比例
-    let contain = (typeof pagePhotoContain === "function") ? pagePhotoContain(src) : false; // P0-11 安全裁切：含人物/高风险图宁可留白也不裁坏主体
-    // 只有「容器比例 === 图片真实比例」时才允许 contain：否则必然露出留白色块 → 改用 cover 满幅
-    if (contain && (!exact || clamped)) contain = false;
+    const real = (m && m.ratio) ? Number(m.ratio) : 0;
+    const policy = (typeof cropPolicyOf === "function") ? cropPolicyOf(src) : null;
+    const risk = (policy && policy.riskLevel) || "low";
+    let contain = figContain(src);
+    if (risk === "high") contain = true;   // ★ 最高优先级，不得翻回 cover（双重保险）
+    // 比例：需要原比例（contain）时不得 clamp —— 容器比例直接等于真实比例，既不裁切也不露色带
+    let ar = figAspect(src);
+    if (contain && real) ar = real;
+    const pos = (contain) ? "50% 45%"
+      : ((policy && policy.mode === "safe_cover") ? safePosOf(policy) : smartPos(src));
     const shape = ar < 0.95 ? "tall" : (ar > 1.32 ? "wide" : "square");
-    return `<figure class="xh-ed-fig s-${shape}${contain ? " ph-safe" : ""}" style="--ar:${ar}" data-ar-auto><img src="${esc(src)}" alt="" loading="lazy" style="object-position:${smartPos(src)};object-fit:${contain ? "contain" : "cover"}">${cap ? `<figcaption>${esc(cap)}</figcaption>` : ""}</figure>`;
+    const mode = contain ? "aspect_preserved" : ((policy && policy.mode === "safe_cover") ? "safe_cover" : "cover");
+    return `<figure class="xh-ed-fig s-${shape}${contain ? " ph-safe" : ""}" style="--ar:${ar}" data-ar-auto data-crop-mode="${mode}" data-crop-risk="${risk}"><img src="${esc(src)}" alt="" loading="lazy" style="object-position:${pos};object-fit:${contain ? "contain" : "cover"}">${cap ? `<figcaption>${esc(cap)}</figcaption>` : ""}</figure>`;
   }
   /* v192：结尾「现场影像」图廊的照片上限——保证照片驱动，但不做无限照片墙 */
   function galleryMaxFor(n) { return (n || 0) >= 16 ? 9 : ((n || 0) >= 9 ? 6 : 4); }
@@ -109,7 +129,10 @@
     const priceTxt = a.price ? `¥${a.price}<small>/${esc(a.limitUnit)}</small>` : "详询";
     const eyebrow = [a.type, a.place, (dna && dna.season)].filter(Boolean).join(" · ");
     const theme = (dna && dna.mainTheme) || a.storyPurpose || a.editorialTitle || a.title || "";
-    const sub = a.posterTagline || a.hook || "";
+    /* P0-C：换风格生成的内容包优先决定 标题 / 副标题 / 导语 / 金句 —— 事实字段完全不参与重写 */
+    const spack = (typeof editorialStylePackOf === "function") ? editorialStylePackOf(a) : null;
+    const heroTitle = (spack && spack.title) ? spack.title : a.title;
+    const sub = (spack && spack.subtitle) ? spack.subtitle : (a.posterTagline || a.hook || "");
     const outline = (typeof buildEditorialOutline === "function") ? buildEditorialOutline(a, variant) : [];
     const caps = a.photoCaptions || [];
     const usedSet = new Set([coverIdx]);
@@ -119,8 +142,13 @@
        旧逻辑是「照片 ≥8 才预留末尾 3 张给图廊」，叠加封面后 8 张图只剩 4 张可分，
        被前两个章节（每节 2 张）吃光 → 后 6 节全无图，整页退化成纯文字。 */
     const planImgCfg = (typeof EDITORIAL_IMG !== "undefined" && EDITORIAL_IMG[variant.img]) || { secCount: 2 };
+    /* P0-C：风格的「图片叙事策略」调整节奏 —— 只动每节配图预算与结尾图廊规模，
+       绝不改写 sec.imgCount / imgKind（P0-12 契约），也不动容器比例（v190 契约）。 */
+    const psBias = (spack && spack.photoStrategy) || null;
+    const planMaxPer = Math.max(1, Math.round((planImgCfg.secCount || 2) * ((psBias && psBias.perSectionBias) || 1)));
+    const planGalMax = Math.max(1, Math.round(galleryMaxFor(photos.length) * ((psBias && psBias.galleryBias) || 1)));
     const photoPlan = (typeof planEditorialPhotoCaps === "function")
-      ? planEditorialPhotoCaps(photos.length, outline, coverIdx, planImgCfg.secCount, galleryMaxFor(photos.length))
+      ? planEditorialPhotoCaps(photos.length, outline, coverIdx, planMaxPer, planGalMax)
       : { caps: {}, reserveN: 0, pool: [] };
     const reserveIdx = photoPlan.pool.slice(Math.max(0, photoPlan.pool.length - photoPlan.reserveN));
     reserveIdx.forEach((i) => usedSet.add(i));
@@ -133,7 +161,8 @@
     if (a.limit) kvs.push([a.limit, a.limitUnit || "人"]);
     const kvHtml = kvs.length ? `<div class="xh-ed-kvs">${kvs.map(([v, k]) => `<div class="xh-ed-kv"><b>${esc(String(v))}</b><span>${esc(k)}</span></div>`).join("")}</div>` : "";
 
-    const leadParas = String(a.intro || "").split(/\n+/).map((s) => s.trim()).filter(Boolean);
+    const leadSrc = (spack && spack.lead) ? spack.lead : (a.intro || "");
+    const leadParas = String(leadSrc).split(/\n+/).map((s) => s.trim()).filter(Boolean);
     const leadHtml = leadParas.length ? `<div class="xh-ed-lead">${leadParas.map((p) => `<p>${esc(p)}</p>`).join("")}</div>` : "";
 
     // 图文故事：每节 = 编号 + 标题 + 图片匹配/组合 + 每段文案（取图数量/图种由变体 img 结构决定）
@@ -142,16 +171,19 @@
       const fcls = idxs.length === 1 ? "one" : (idxs.length === 2 ? "two" : (idxs.length >= 3 ? "three" : ""));
       const kindCls = sec.imgKind ? " figs-" + sec.imgKind : "";
       let figs = "";
-      if (idxs.length === 1) figs = `<div class="xh-ed-figs one${kindCls}">${xhFig(a, idxs[0], nextCap())}</div>`;
-      else if (idxs.length === 2) figs = `<div class="xh-ed-figs two${kindCls}">${idxs.map((i) => xhFig(a, i, nextCap())).join("")}</div>`;
-      else if (idxs.length >= 3) figs = `<div class="xh-ed-figs three${kindCls}">${idxs.slice(0, 3).map((i) => xhFig(a, i, nextCap())).join("")}</div>`;
+      // P0-B：整组都是「原比例」时补一个 orig 类 —— 用不对称原比例排版，而不是硬裁成统一格子
+      const origCls = (idxs.length && idxs.every((i) => figContain((a.photos || [])[i]))) ? " orig" : "";
+      if (idxs.length === 1) figs = `<div class="xh-ed-figs one${kindCls}${origCls}">${xhFig(a, idxs[0], nextCap())}</div>`;
+      else if (idxs.length === 2) figs = `<div class="xh-ed-figs two${kindCls}${origCls}">${idxs.map((i) => xhFig(a, i, nextCap())).join("")}</div>`;
+      else if (idxs.length >= 3) figs = `<div class="xh-ed-figs three${kindCls}${origCls}">${idxs.slice(0, 3).map((i) => xhFig(a, i, nextCap())).join("")}</div>`;
       const kindLabel = (typeof EDITORIAL_KIND_LABEL !== "undefined" && EDITORIAL_KIND_LABEL[sec.kind]) || "STORY";
       return `<section class="xh-ed-sec" data-sec="${esc(sec.key)}" data-angle="${esc(sec.angle || variant.angle)}"><div class="xh-ed-num">${String(sec.num).padStart(2, "0")} / ${kindLabel}</div><h2 class="xh-ed-h">${esc(sec.heading)}</h2>${figs}<div class="xh-ed-paras">${sec.paras.map((p) => `<p>${esc(p)}</p>`).join("")}</div></section>`;
     }).join("\n");
 
     // P0-12：金句是否出现由「文案密度」决定（画册/纪实克制，杂志/转化强调）
     const dens = (typeof EDITORIAL_DENSITY !== "undefined" && EDITORIAL_DENSITY[variant.density]) || null;
-    const quoteHtml = (dens && dens.quote && a.pullQuote) ? `<section class="xh-ed-quote"><div class="xh-ed-quote-mark">${ICON("quote")}</div><p>${esc(a.pullQuote)}</p></section>` : "";
+    const quoteText = (spack && spack.pullQuote) ? spack.pullQuote : a.pullQuote;
+    const quoteHtml = (dens && dens.quote && quoteText) ? `<section class="xh-ed-quote"><div class="xh-ed-quote-mark">${ICON("quote")}</div><p>${esc(quoteText)}</p></section>` : "";
 
     // 决策信息
     const metaRows = [
@@ -237,18 +269,26 @@
 
     // P0-12：Hero 形态（整幅 / 带幅）由变体 img 结构决定
     const imgCfg = (typeof EDITORIAL_IMG !== "undefined" && EDITORIAL_IMG[variant.img]) || { hero: "full" };
-    const heroCls = imgCfg.hero === "band" ? " band" : "";
+    /* P0-B 第六点：Layout 主动适配竖图/人物图 —— 封面若为高风险（含人物/主体靠边）或竖图，
+       则「降 FullBleed」：Hero 不再用 cover 横裁（那会切头脚），改为原比例(AspectPreserved)展示，
+       并垫一层同图模糊底图，避免原比例两侧留白显脏。普通横图风景仍走满幅 FullBleed。 */
+    const coverPolicy = (typeof cropPolicyOf === "function" && coverSrc) ? cropPolicyOf(coverSrc) : null;
+    const coverKeep = !!(coverPolicy && (coverPolicy.riskLevel === "high" || coverPolicy.mode === "aspect_preserved"
+      || (coverPolicy.realAspect && coverPolicy.realAspect < 0.95)));
+    const heroCls = (imgCfg.hero === "band" ? " band" : "") + (coverKeep ? " keep" : "");
+    const heroBackdrop = (coverKeep && coverSrc) ? `<div class="xh-ed-hero-backdrop" style="background-image:url('${coverSrc}')"></div>` : "";
     return `
       <div class="activity-page xh-ed typo-${esc(layout.typo)} tone-${esc(style.family)}${ac.warm ? " warm-tone" : ""}">
       <div class="ps-topbar">${psLogo()}</div>
       ${showInlineDetailChrome() ? detailModeSwitch() : ""}
       ${showInlineDetailChrome() ? editorialVariantSwitch(a) : ""}
       <header class="xh-ed-hero${heroCls}" ${coverSrc ? `style="background-image:url('${coverSrc}')"` : `style="background:${ac.grad}"`}>
+        ${heroBackdrop}
         <div class="xh-ed-hero-mask"></div>
         ${!coverSrc ? `<div class="xh-ed-hero-empty">${isAdminMode() ? "待上传主视觉" : "活动图片待机构补充"}</div>` : ""}
         <div class="xh-ed-hero-txt">
           <div class="xh-ed-eyebrow">${esc(eyebrow || "OUTDOOR")}</div>
-          <h1 class="xh-ed-title">${esc(a.title)}</h1>
+          <h1 class="xh-ed-title">${esc(heroTitle)}</h1>
           ${sub ? `<p class="xh-ed-sub">${esc(sub)}</p>` : ""}
           <div class="xh-ed-pill">${ICON("calendar")} ${esc(a.date || a.dateMD || "日期待定")}<span class="xh-ed-pill-div"></span>${ICON("map-pin")} ${esc(a.meeting || "集合点待定")}</div>
         </div>
@@ -786,12 +826,17 @@
   function fallbackShareCopy(a, ch) {
     const name = a.title || "活动";
     const when = a.dateText || a.dateMD || a.date || "待定";
+    /* P0-D（v193）：分享文案同样受事实系统约束 ——
+       CTA 必须来自真实 signupMethod，紧迫感必须来自 capacity - confirmedSignups 的计算，
+       不出现「名额有限 / 还有少量名额 / 私聊 / 群里接龙 / 私信我报名」这类无依据话术。 */
+    const cta = (typeof ctaShortOf === "function") ? ctaShortOf(a) : "查看活动详情与报名信息";
+    const urg = (typeof urgencyTextOf === "function" && typeof confirmedCTAOf === "function") ? urgencyTextOf(confirmedCTAOf(a)) : "";
     const base = {
-      wechat: `【${name}】${when} 出发，名额有限，欢迎报名参加～ 详情私聊或群里接龙。`,
-      moments: `周末就去 ${name} 啦 🌿 还有少量名额，想一起的快来私信我。`,
-      xhs: `#户外 #周末去哪儿 ${name} 招募中｜${when} 出发，详情私聊或群里接龙报名～`,
-      gzh: `${name} 将于 ${when} 出发。本文介绍线路亮点、装备与注意事项，欢迎阅读并报名。`,
-      voice: `大家好，这周末咱们去 ${name}，现在还有名额，想一起的朋友私信我报名哈。`
+      wechat: `【${name}】${when} 出发。${cta}。${urg}`,
+      moments: `${name}｜${when} 出发。${cta}。${urg}`,
+      xhs: `#户外 #周末去哪儿 ${name}｜${when} 出发。${cta}。${urg}`,
+      gzh: `${name} 将于 ${when} 出发。本文介绍线路亮点、装备与注意事项，欢迎阅读。`,
+      voice: `大家好，这周末咱们去 ${name}。${cta}。${urg}`
     };
     return base[ch] || name;
   }

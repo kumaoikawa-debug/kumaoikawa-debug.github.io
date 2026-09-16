@@ -241,17 +241,20 @@
         break;
       }
       case "regenStyle": {
-        // P0-13：换风格——只推进 editorialStyleId（角度/密度/Family/章节表达），守住 confirmedFacts
-        const target = viewingActivity();
-        const cur = (target && target.editorialStyleId) || (state.draft && state.draft.editorialStyleId) || "";
-        const next = pickEditorialStyle(cur);
-        if (target) target.editorialStyleId = next.id;
-        if (state.draft) state.draft.editorialStyleId = next.id;
+        /* P0-C：换风格 = 真正重生成内容，不是只换 CSS。
+           冻结：confirmedFacts / actualActivityData / DNA 事实层 / Photo Intelligence。
+           重生成：内容角度 → 主主题 → 标题 → 副标题 → 导语 → 章节标题与正文 →
+                   金句 → 图片叙事策略 → Editorial Direction → LayoutPlan。 */
+        const target = viewingActivity() || (state.draft ? state.draft : null);
+        let pack = null;
+        if (target && typeof regenStyleContent === "function") pack = regenStyleContent(target);
+        if (state.draft && state.draft !== target && typeof regenStyleContent === "function") pack = regenStyleContent(state.draft);
         saveState();
         if (showDetailLikeView()) showView(state.view, state.params);
         else refreshPreview();
-        const angLabel = (typeof EDITORIAL_ANGLES !== "undefined" && EDITORIAL_ANGLES[next.angle]) ? EDITORIAL_ANGLES[next.angle].label : next.angle;
-        toast("已换风格：" + angLabel + " · " + next.density);
+        const angLabel = (pack && pack.angleLabel) || ((typeof EDITORIAL_ANGLES !== "undefined" && EDITORIAL_ANGLES[pack && pack.angle]) ? EDITORIAL_ANGLES[pack.angle].label : "新风格");
+        const psName = (pack && pack.photoStrategy && pack.photoStrategy.name) || "";
+        toast("已重生成风格：" + angLabel + (psName ? " · " + psName : ""));
         break;
       }
       case "operatorFromActivity": {
