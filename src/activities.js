@@ -564,7 +564,19 @@
       ${chip(false, "regenStyle", "", "sparkles", "换风格", "重生成角度 / 标题 / 节奏 / 图片策略，守住已确认事实")}
     </div>
 
-    <div class="ap-phone">${wrapPhone(renderActivityPhone(a), false)}</div>`;
+    <div class="ap-phone">${wrapPhone(renderActivityPhone(a), false)}</div>
+
+    <div class="section-head" style="margin-top:26px">
+      <div class="section-title">出发前准备</div>
+      <div class="section-sub">领队离线包 · 安全执行资料 · 保险 · 风险协议 · 退改转让 · 客户召回</div>
+    </div>
+    ${(typeof renderPrepSummary === "function") ? renderPrepSummary(a) : ""}
+
+    <div class="section-head">
+      <div class="section-title">经营数据</div>
+      <div class="section-sub">收入自动从报名读取，成本一句话录入 —— ClubOS 不做报销、审批与发票</div>
+    </div>
+    ${(typeof renderEconCostPanel === "function") ? renderEconCostPanel(a) : ""}`;
   }
 
   /* ---------------- backend shell ---------------- */
@@ -590,6 +602,7 @@
         ${navItem("membershipAdmin", "会员与积分", "crown", active)}
         <div class="nav-group-label">商业增长</div>
         ${navItem("mallConsole", "商城收益", "shopping-bag", active)}
+        ${navItem("economics", "经营分析", "wallet", active)}
         ${navItem("analytics", "运营分析", "bar-chart", active)}
         <div class="nav-group-label">系统</div>
         ${navItem("settings", "设置", "settings", active)}

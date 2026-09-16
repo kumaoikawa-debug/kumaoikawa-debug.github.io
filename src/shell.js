@@ -3,7 +3,7 @@
     state.view = view; state.params = params || {};
     const app = $("#app");
     if (view === "login") { app.innerHTML = renderLogin(); return; }
-    const backend = ["dashboard", "create", "advice", "editor", "factConfirm", "list", "activityPage", "customers", "operator", "mallConsole", "settings", "decorate", "analytics", "signups", "membership", "ai", "brand", "plans", "memberMarketing", "membershipAdmin"];
+    const backend = ["dashboard", "create", "advice", "editor", "factConfirm", "list", "activityPage", "prep", "economics", "customers", "operator", "mallConsole", "settings", "decorate", "analytics", "signups", "membership", "ai", "brand", "plans", "memberMarketing", "membershipAdmin"];
     if (backend.includes(view)) {
       let content = "";
       if (view === "dashboard") content = renderDashboard();
@@ -13,6 +13,8 @@
       else if (view === "editor") content = renderEditor();
       else if (view === "list") content = renderList();
       else if (view === "activityPage") content = renderActivityPage(); // §七：创建后的默认落点 = 活动详情
+      else if (view === "prep") content = renderPrep(getActivity((params || {}).id)); // 出发前准备（离线包/安全/保险/协议/退改/召回）
+      else if (view === "economics") content = renderEconomics(); // AI 经营分析（不是财务报表）
       else if (view === "customers") content = renderCustomers();
       else if (view === "operator") content = renderFabu();
       else if (view === "mallConsole") { state.mallCtx = "console"; content = renderClubMallConsole(); }
@@ -22,7 +24,7 @@
       else if (view === "signups") content = renderSignups();
       else if (view === "membership" || view === "membershipAdmin") content = renderMembershipAdmin();
       else if (view === "ai" || view === "brand" || view === "plans" || view === "memberMarketing") content = renderSettings();
-      app.innerHTML = renderShell(content, view === "activityPage" ? "list" : view);
+      app.innerHTML = renderShell(content, (view === "activityPage" || view === "prep") ? "list" : view);
       if (view === "editor") bindEditorExtras();
       // 进入编辑器即按地点联网自动搜索风景图（仅一次、且仅当已有地点且无图时），供「为什么值得去」配图
       if (view === "editor" && state.draft && state.draft.place && !state.draft.placePhotos && !state.draft._autoPhoto) {
@@ -312,6 +314,23 @@
       case "finishPublish": { closePublishSuccess(); break; }
       case "openFront": { const mm = document.querySelector(".modal-mask"); if (mm) mm.remove(); if (d.id) showView("detail", { id: d.id }); break; }
       case "openActivityPage": { const mm = document.querySelector(".modal-mask"); if (mm) mm.remove(); if (d.id) showView("activityPage", { id: d.id }); break; }
+      case "openPrep": { if (d.id) showView("prep", { id: d.id }); break; }
+      /* ---- v191 AI 经营分析 ---- */
+      case "econAsk": {
+        const q0 = (document.getElementById("econAskInput") || {}).value || state._econAskQ || "";
+        state._econAskQ = q0; state._econAsk = econAnswer(q0);
+        showView("economics"); break;
+      }
+      case "econAskChip": { state._econAskQ = d.q || String(el.textContent || "").trim(); state._econAsk = econAnswer(state._econAskQ); showView("economics"); break; }
+      case "econToggleProduct": { state.econProductId = (state.econProductId === d.pid) ? "" : d.pid; showView("economics"); break; }
+      case "econToggleCost": { state._econOpenCost = !state._econOpenCost; showView(state.view === "economics" ? "economics" : "activityPage", state.params); break; }
+      case "econEditActivity": {
+        const a1 = getActivity(d.aid);
+        if (!a1) break;
+        state.econProductId = a1.activityProductId || "";
+        state._econOpenCost = true;
+        showView("activityPage", { id: a1.id }); break;
+      }
       case "openFrontHome": showView("frontHome"); break;
       case "focusSearch": { const inp = $("#frontSearchInput"); if (inp) { inp.focus(); toast("输入关键词，AI 将推荐相关活动"); } break; }
       case "edit": { const a = getActivity(d.id); if (a) { state.draft = JSON.parse(JSON.stringify(a)); showView("editor"); } break; }
