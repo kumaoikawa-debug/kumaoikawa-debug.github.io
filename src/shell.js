@@ -1,3 +1,30 @@
+  /* v195：详情页吸顶 Tab 的滚动联动高亮（滚动容器可能是 .phone-screen，故用 root:null + rootMargin） */
+  function initEditorialTabs() {
+    try {
+      if (typeof document === "undefined" || typeof IntersectionObserver === "undefined") return;
+      const tabs = document.getElementById("xhTabs");
+      if (!tabs || typeof tabs.querySelectorAll !== "function") return;
+      const links = Array.prototype.slice.call(tabs.querySelectorAll("[data-target]"));
+      if (!links.length) return;
+      const w = (typeof window !== "undefined") ? window : null;
+      if (w && w.__xhTabObs) { try { w.__xhTabObs.disconnect(); } catch (e) {} w.__xhTabObs = null; }
+      const obs = new IntersectionObserver(function (ents) {
+        ents.forEach(function (en) {
+          if (!en.isIntersecting || !en.target || !en.target.id) return;
+          const sel = "#" + en.target.id;
+          links.forEach(function (l) { l.classList.toggle("on", l.dataset.target === sel); });
+        });
+      }, { rootMargin: "-96px 0px -58% 0px", threshold: 0 });
+      links.forEach(function (l) {
+        if (typeof document.querySelector !== "function") return;
+        const t = document.querySelector(l.dataset.target);
+        if (t) obs.observe(t);
+      });
+      if (w) w.__xhTabObs = obs;
+      links[0].classList.add("on");
+    } catch (e) {}
+  }
+
   function showView(view, params) {
     if (state.view && state.view !== view) backStack.push(state.view);
     state.view = view; state.params = params || {};
@@ -47,11 +74,12 @@
       if (view === "factConfirm") bindConfirmExtras();
       if (view === "create") bindCreateExtras();
       updateBrandColor();
+      initEditorialTabs();
       return;
     }
     // frontend
     if (view === "frontHome") { app.innerHTML = renderFrontHome(); initBentoScroll(); initHeroCarousel(); }
-    else if (view === "detail") app.innerHTML = wrapPhone(renderActivityPhone(getActivity(params.id)), true);
+    else if (view === "detail") { app.innerHTML = wrapPhone(renderActivityPhone(getActivity(params.id)), true); initEditorialTabs(); }
     else if (view === "signup") app.innerHTML = renderSignupPage(params.id);
     else if (view === "success") app.innerHTML = renderSuccess(params.id, params.signupId);
     else if (view === "mySignups") app.innerHTML = renderMySignups();
@@ -255,6 +283,35 @@
         const angLabel = (pack && pack.angleLabel) || ((typeof EDITORIAL_ANGLES !== "undefined" && EDITORIAL_ANGLES[pack && pack.angle]) ? EDITORIAL_ANGLES[pack.angle].label : "新风格");
         const psName = (pack && pack.photoStrategy && pack.photoStrategy.name) || "";
         toast("已重生成风格：" + angLabel + (psName ? " · " + psName : ""));
+        break;
+      }
+
+
+      case "clToggle": {
+        // v195 出行清单：勾选状态按活动持久化；同步刷新「已勾 / 总数」进度
+        const clItem = el;
+        const clKey = clItem.dataset.key, clStore = clItem.dataset.store;
+        if (!clKey || !clStore) break;
+        let clD = {};
+        try { if (typeof localStorage !== "undefined" && localStorage) clD = JSON.parse(localStorage.getItem(clStore) || "{}") || {}; } catch (e) { clD = {}; }
+        clD[clKey] = !clD[clKey];
+        try { if (typeof localStorage !== "undefined" && localStorage) localStorage.setItem(clStore, JSON.stringify(clD)); } catch (e) {}
+        clItem.classList.toggle("cl-done", !!clD[clKey]);
+        const clProg = document.getElementById("clProg");
+        if (clProg && typeof document.querySelectorAll === "function") {
+          const clAll = document.querySelectorAll("#ed-prep .cl-item");
+          let clN = 0;
+          for (let i = 0; i < clAll.length; i++) { if (clAll[i].classList && clAll[i].classList.contains("cl-done")) clN++; }
+          clProg.textContent = clN + "/" + clAll.length;
+        }
+        break;
+      }
+      case "edTab": {
+        // v195 吸顶导航：平滑滚动到区块
+        const edT = el.dataset.target;
+        if (!edT || typeof document.querySelector !== "function") break;
+        const edNode = document.querySelector(edT);
+        if (edNode && edNode.scrollIntoView) { try { edNode.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e) { edNode.scrollIntoView(); } }
         break;
       }
       case "operatorFromActivity": {
@@ -2907,6 +2964,29 @@
     const sel = e.target.closest("[data-action]");
     if (sel && sel.tagName === "SELECT") handleClick(sel.dataset.action, sel);
   });
+
+  /* v195 图文详情页图片灯箱：点图放大，点遮罩或关闭按钮收起（只绑一次） */
+  (function () {
+    if (typeof document === "undefined" || !document.addEventListener) return;
+    if (typeof window !== "undefined") { if (window.__xhLbBound) return; window.__xhLbBound = true; }
+    document.addEventListener("click", function (e) {
+      try {
+        const t = e.target;
+        if (!t || !t.closest) return;
+        const lb = document.getElementById("xhLightbox");
+        if (!lb) return;
+        const lbImg = document.getElementById("xhLightboxImg");
+        const hit = t.closest(".xh-ed-fig img, .xh-ed-gallery .ph img");
+        if (hit && lbImg) {
+          lbImg.src = hit.currentSrc || hit.src || "";
+          lb.classList.add("on");
+          if (e.preventDefault) e.preventDefault();
+          return;
+        }
+        if (t === lb || t.classList.contains("lb-close")) lb.classList.remove("on");
+      } catch (err) {}
+    });
+  })();
   document.addEventListener("input", (e) => {
     const mallSearchEl = e.target.closest("#mallSearchInput");
     if (mallSearchEl) {

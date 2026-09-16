@@ -5238,6 +5238,82 @@ body{
 .xh-ed-org p { font-size: 12.5px; line-height: 1.8; color: var(--muted); margin: 0 0 8px; }
 .xh-ed-org-meta { font-size: 11.5px; color: var(--muted); }
 
+/* ============================================================
+   v195 活动详情页重构：行程骨架 + 杂志视觉（组合方案）
+   全部为「新增规则」：不改 .xh-ed-fig / .photo-layout 既有比例与安全裁切（v190 / P0-11）
+   ============================================================ */
+
+/* ---------- 1. 吸顶区段导航（.activity-page 的前置兄弟节点，避免其 overflow:hidden 破坏 sticky）---------- */
+.xh-ed-tabs { position: sticky; top: 0; z-index: 30; display: flex; gap: 2px; overflow-x: auto;
+  background: var(--surface); border-bottom: 1px solid var(--line); padding: 0 8px;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.xh-ed-tabs::-webkit-scrollbar { display: none; }
+.xh-ed-tab { flex: 0 0 auto; padding: 12px 12px; font-size: 13px; font-weight: 600; color: var(--muted);
+  background: transparent; border: 0; border-bottom: 2px solid transparent; cursor: pointer;
+  white-space: nowrap; font-family: inherit; }
+.xh-ed-tab.on { color: var(--brand); border-bottom-color: var(--brand); }
+/* 锚点滚动时为吸顶条留出高度，避免标题被盖住 */
+#ed-story, #ed-itin, #ed-fee, #ed-prep, #ed-cta { scroll-margin-top: 54px; }
+
+/* ---------- 2. DAY 时间轴卡片化（ns0116 风格）：保留既有 .tl-item 内容与 --page-* 配色 ---------- */
+.xh-ed .xh-ed-day { border-left: 0; padding-left: 0; margin: 14px 0; background: var(--surface);
+  border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+.xh-ed .xh-ed-day-h { display: flex; align-items: baseline; gap: 8px; margin-bottom: 0;
+  padding: 11px 14px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
+.xh-ed .xh-ed-day-h span { margin-right: 0; }
+.xh-ed .xh-ed-day .timeline { position: relative; padding: 12px 14px 12px 30px; }
+.xh-ed .xh-ed-day .timeline::before { content: ""; position: absolute; left: 11px; top: 22px; bottom: 22px;
+  width: 2px; background: var(--line); border-radius: 2px; }
+.xh-ed .xh-ed-day .tl-item { padding: 7px 0; }
+.xh-ed .xh-ed-day .tl-item::before { left: -23px; top: 12px; width: 10px; height: 10px; border: 0;
+  background: var(--brand-700, #2F5D50); box-shadow: 0 0 0 3px var(--surface); }
+
+/* ---------- 3. 出行前清单（localStorage 持久化勾选）---------- */
+.xh-ed-checklist { margin: 24px 0 0; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 16px; overflow: hidden; }
+.xh-ed-checklist > summary { list-style: none; cursor: pointer; padding: 14px 16px;
+  display: flex; align-items: center; gap: 10px; }
+.xh-ed-checklist > summary::-webkit-details-marker { display: none; }
+.xh-ed-checklist .cl-ct { font-weight: 700; font-size: 15px; color: var(--ink); }
+.xh-ed-checklist .cl-prog { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--brand-700, #2F5D50); }
+.xh-ed-checklist .cl-chev { color: var(--muted); font-size: 12px; transition: transform .2s; }
+.xh-ed-checklist[open] .cl-chev { transform: rotate(180deg); }
+.xh-ed-checklist .cl-items { padding: 2px 16px 14px; }
+.xh-ed-checklist .cl-item { display: flex; align-items: center; gap: 11px; padding: 9px 0;
+  border-top: 1px solid var(--line); cursor: pointer; }
+.xh-ed-checklist .cl-item:first-child { border-top: 0; }
+.xh-ed-checklist .cl-box { width: 20px; height: 20px; border-radius: 6px; border: 2px solid var(--line);
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: center; color: transparent;
+  font-size: 12px; line-height: 1; box-sizing: border-box; transition: background .15s, border-color .15s; }
+.xh-ed-checklist .cl-item.cl-done .cl-box { background: var(--brand-700, #2F5D50);
+  border-color: var(--brand-700, #2F5D50); color: #fff; }
+.xh-ed-checklist .cl-txt { font-size: 14px; color: var(--ink); }
+.xh-ed-checklist .cl-item.cl-done .cl-txt { color: var(--muted); text-decoration: line-through; }
+
+/* ---------- 4. 图片灯箱（点图放大；fixed 不受 overflow:hidden 裁剪）---------- */
+.xh-ed-lightbox { position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.92);
+  display: none; align-items: center; justify-content: center; }
+.xh-ed-lightbox.on { display: flex; }
+.xh-ed-lightbox img { max-width: 94%; max-height: 88%; object-fit: contain; border-radius: 8px; }
+.xh-ed-lightbox .lb-close { position: absolute; top: 14px; right: 16px; width: 40px; height: 40px;
+  border: 0; border-radius: 50%; background: rgba(255,255,255,.14); color: #fff;
+  font-size: 22px; line-height: 1; cursor: pointer; }
+.xh-ed-fig img, .xh-ed-gallery .ph img { cursor: zoom-in; }
+
+/* ---------- 5. 主题换肤（按活动类型/季节，作用域仅限 .xh-ed 子树）---------- */
+.xh-ed.ed-theme-forest { --brand: #2F6B4F; --brand-700: #235240; --surface: #FFFDF9; --surface-2: #F1EDE4;
+  --line: #E3DDD0; --line-2: #EDE8DD; --bg: #F7F5F0; }
+.xh-ed.ed-theme-snow { --brand: #2F6AA5; --brand-700: #21507F; --surface: #FFFFFF; --surface-2: #EEF3F8;
+  --line: #DDE7EF; --line-2: #E8EFF5; --bg: #F4F7FA; }
+.xh-ed.ed-theme-island { --brand: #178A86; --brand-700: #0F6864; --surface: #FFFFFF; --surface-2: #E7F3F1;
+  --line: #D6EAE6; --line-2: #E2F0ED; --bg: #F2F8F7; }
+.xh-ed.ed-theme-desert { --brand: #B8632E; --brand-700: #8E4A20; --surface: #FFFDF8; --surface-2: #F3E9DC;
+  --line: #ECDFCE; --line-2: #F1E7D9; --bg: #FAF4EC; }
+.xh-ed-tabs.ed-theme-forest { --brand: #2F6B4F; --surface: #FFFDF9; --line: #E3DDD0; }
+.xh-ed-tabs.ed-theme-snow { --brand: #2F6AA5; --surface: #FFFFFF; --line: #DDE7EF; }
+.xh-ed-tabs.ed-theme-island { --brand: #178A86; --surface: #FFFFFF; --line: #D6EAE6; }
+.xh-ed-tabs.ed-theme-desert { --brand: #B8632E; --surface: #FFFDF8; --line: #ECDFCE; }
+
 /* ===== P0-10 Photo Layout Intelligence（6 种版式，按数量+横竖比例自动选） ===== */
 .photo-layout { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; }
 .photo-layout .ly { display: grid; gap: 8px; }

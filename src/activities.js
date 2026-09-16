@@ -113,6 +113,47 @@
   }
   /* v192：结尾「现场影像」图廊的照片上限——保证照片驱动，但不做无限照片墙 */
   function galleryMaxFor(n) { return (n || 0) >= 16 ? 9 : ((n || 0) >= 9 ? 6 : 4); }
+  /* ===== v195：详情页「行程骨架 + 杂志视觉」新增能力（纯新增，不改既有契约）===== */
+
+  /* 按活动类型/季节/地点推导主题（对应户外场景换肤） */
+  function edThemeOf(a) {
+    a = a || {};
+    var blob = String(a.type || "") + " " + String(a.season || "") + " " + String(a.place || "");
+    blob = blob.toLowerCase();
+    if (/(雪|冰川|冬|snow|ice|glacier)/.test(blob)) return "snow";
+    if (/(海岛|溯溪|溪|水上|桨板|浆板|皮划艇|潜水|岛|island|river|water)/.test(blob)) return "island";
+    if (/(沙漠|峡谷|丹霞|戈壁|desert|canyon|gobi)/.test(blob)) return "desert";
+    return "forest";
+  }
+
+  /* 出行前清单：按活动类型给差异化条目（基础 5 条 + 场景补充，最多 8 条） */
+  function editorialPrepItems(a) {
+    a = a || {};
+    var t = String(a.type || "") + " " + String(a.season || "");
+    var out = [
+      { key: "id",    label: "身份证 / 证件（报名后请确认）" },
+      { key: "power", label: "充电宝 + 手机防水袋" },
+      { key: "med",   label: "个人常用药 + 创可贴" },
+      { key: "bag",   label: "舒适双肩背包（20-30L）" },
+      { key: "rain",  label: "轻便雨具" }
+    ];
+    if (/(徒步|登山|高海拔|雪|爬山|穿越|重装)/.test(t)) {
+      out.push({ key: "warm",  label: "保暖层（羽绒 / 抓绒）+ 防风外壳" });
+      out.push({ key: "shoe",  label: "中高帮防水徒步鞋（已磨合）" });
+      out.push({ key: "head",  label: "头灯 + 备用电池" });
+      out.push({ key: "water", label: "保温水壶 + 高能量路餐" });
+      if (/(雪|高海拔|冰川)/.test(t)) out.push({ key: "glass", label: "雪镜 / 墨镜（垭口反光强）" });
+    } else if (/(溯溪|溪|水上|桨板|浆板|皮划艇|潜水|海岛)/.test(t)) {
+      out.push({ key: "quick",    label: "速干衣裤 + 备用衣物" });
+      out.push({ key: "aquashoe", label: "溯溪鞋 / 防滑凉鞋" });
+      out.push({ key: "dry",      label: "防水袋（保护电子设备）" });
+    } else if (/(骑行|公路|山地)/.test(t)) {
+      out.push({ key: "helmet", label: "头盔 + 骑行手套" });
+      out.push({ key: "repair", label: "便携补胎工具" });
+    }
+    return out.slice(0, 8);
+  }
+
   function renderActivityEditorial(a) {
     if (!a) return "";
     if (typeof setPagePhotoIntel === "function") setPagePhotoIntel(a);
@@ -199,7 +240,7 @@
     const metaHtml = `<div class="decision-meta">${metaRows.map((r) => `<div class="dm-item"><span class="dm-ic">${ICON(r[0])}</span><div class="dm-t"><span class="dm-k">${r[1]}</span><span class="dm-v">${esc(String(r[2]))}</span></div></div>`).join("")}</div>`;
 
     const fee = a.feeInclude || [];
-    const feeHtml = `<div class="dsec"><div class="dsec-h"><h3>费用说明</h3></div><div class="fee-card"><div class="fee-hero"><div class="fee-hero-l"><span class="fee-hero-k">活动价格</span><b class="fee-hero-v">${a.price ? "¥" + a.price : "详询"}</b>${a.price ? `<span class="fee-hero-u">/ ${esc(a.limitUnit)}</span>` : ""}</div></div>`
+    const feeHtml = `<div class="dsec" id="ed-fee"><div class="dsec-h"><h3>费用说明</h3></div><div class="fee-card"><div class="fee-hero"><div class="fee-hero-l"><span class="fee-hero-k">活动价格</span><b class="fee-hero-v">${a.price ? "¥" + a.price : "详询"}</b>${a.price ? `<span class="fee-hero-u">/ ${esc(a.limitUnit)}</span>` : ""}</div></div>`
       + (fee.length ? `<div class="fee-sec"><div class="fee-sec-h"><span class="fee-sec-ic ok">${ICON("check")}</span>费用包含</div><div class="fee-grid">${fee.map((f) => `<div class="fee-cell"><span class="fee-cell-ic">${ICON("check")}</span><span>${esc(f)}</span></div>`).join("")}</div></div>` : "")
       + ((a.feeExclude || []).length ? `<div class="fee-sec"><div class="fee-sec-h"><span class="fee-sec-ic no">${ICON("x")}</span>费用不含</div><div class="fee-grid">${a.feeExclude.map((f) => `<div class="fee-cell fee-cell-no"><span class="fee-cell-ic no">${ICON("x")}</span><span>${esc(f)}</span></div>`).join("")}</div></div>` : "")
       + `</div></div>`;
@@ -208,7 +249,7 @@
     const itinContent = (typeof itinContentHtml === "function") ? itinContentHtml(a) : "";
     // P0-9：行程每段按内容语义匹配到的图（桨板→水上段、餐食→午餐段、夜景→结尾段），渲染到对应 DAY 旁
     const itinPhotos = (typeof pageItineraryPhotos === "function") ? pageItineraryPhotos(a) : null;
-    const itinHtml = days.length ? `<div class="dsec"><div class="dsec-h"><h3>详细行程</h3></div>${itinContent}<div class="itin-timeline-wrap">${days.map((d, i) => {
+    const itinHtml = days.length ? `<div class="dsec"><div class="dsec-h"><h3>详细行程</h3></div>${itinContent}<div class="itin-timeline-wrap" id="ed-itin">${days.map((d, i) => {
       const dayNo = i + 1;
       const dp = (itinPhotos && itinPhotos.byDay && itinPhotos.byDay[dayNo]) ? itinPhotos.byDay[dayNo] : [];
       const dpHtml = dp.length ? `<div class="itin-day-photos">${dp.slice(0, 2).map((p) => { const c = (typeof pagePhotoContain === "function") ? pagePhotoContain(p.src) : false; return `<div class="itin-day-photo${c ? " ph-safe" : ""}" data-ar-auto><img data-smart-img src="${p.src}" alt="" style="object-fit:${c ? "contain" : "cover"}"></div>`; }).join("")}</div>` : "";
@@ -244,7 +285,19 @@
     // P0-12：CTA 主题文案由「内容角度」驱动；转化型密度额外强调行动
     const ctaTheme = (typeof EDITORIAL_ANGLES !== "undefined" && EDITORIAL_ANGLES[variant.angle]) ? EDITORIAL_ANGLES[variant.angle].cta : theme;
     const ctaEmphasis = (dens && dens.cta) ? " emphasis" : "";
-    const ctaHtml = `<section class="xh-ed-cta${ctaEmphasis}"><div class="xh-ed-cta-theme">${esc(ctaTheme)}</div><div class="xh-ed-cta-price">${priceTxt}</div><button class="btn btn-primary btn-block" data-action="openSignup" data-id="${a.id}">${ICON("check")} 立即报名</button><div class="tiny muted">${a.days > 1 ? a.days + " 天行程" : "单日行程"} · ${a.limit ? "限 " + a.limit + esc(a.limitUnit) : "名额不限"}</div></section>`;
+    const ctaHtml = `<section class="xh-ed-cta${ctaEmphasis}" id="ed-cta"><div class="xh-ed-cta-theme">${esc(ctaTheme)}</div><div class="xh-ed-cta-price">${priceTxt}</div><button class="btn btn-primary btn-block" data-action="openSignup" data-id="${a.id}">${ICON("check")} 立即报名</button><div class="tiny muted">${a.days > 1 ? a.days + " 天行程" : "单日行程"} · ${a.limit ? "限 " + a.limit + esc(a.limitUnit) : "名额不限"}</div></section>`;
+    /* v195：出行前清单（勾选状态按活动 id 持久化到 localStorage） */
+    const prepKey = "clubos_prep_" + (a.id || "x");
+    var prepDone = {};
+    try { if (typeof localStorage !== "undefined" && localStorage) prepDone = JSON.parse(localStorage.getItem(prepKey) || "{}") || {}; } catch (e) { prepDone = {}; }
+    const prepItemsAll = editorialPrepItems(a);
+    const prepN = prepItemsAll.filter(function (it) { return !!prepDone[it.key]; }).length;
+    const prepItemsHtml = prepItemsAll.map(function (it) {
+      return '<div class="cl-item' + (prepDone[it.key] ? " cl-done" : "") + '" data-action="clToggle" data-key="' + esc(it.key) + '" data-store="' + esc(prepKey) + '"><span class="cl-box">✓</span><span class="cl-txt">' + esc(it.label) + '</span></div>';
+    }).join("");
+    const prepHtml = '<details class="xh-ed-checklist" id="ed-prep" open>'
+      + '<summary><span class="cl-ct">出行前清单</span><span class="cl-prog" id="clProg">' + prepN + '/' + prepItemsAll.length + '</span><span class="cl-chev">▾</span></summary>'
+      + '<div class="cl-items">' + prepItemsHtml + '</div></details>';
 
     // P0-10 Photo Layout Intelligence：按素材数量 + 横竖比例自动选版式（同一套模板不硬塞所有组合）
     // 取「筛选后待展示图」中未被封面/章节占用的部分，按数量分级 + 横竖主导自动排成 6 种版式
@@ -280,7 +333,14 @@
     const heroCls = (imgCfg.hero === "band" ? " band" : "") + (coverKeep ? " keep" : "");
     const heroBackdrop = (coverKeep && coverSrc) ? `<div class="xh-ed-hero-backdrop" style="background-image:url('${coverSrc}')"></div>` : "";
     return `
-      <div class="activity-page xh-ed typo-${esc(layout.typo)} tone-${esc(style.family)}${ac.warm ? " warm-tone" : ""}">
+      <nav class="xh-ed-tabs ed-theme-${edThemeOf(a)}" id="xhTabs" aria-label="页面导航">
+        <button type="button" class="xh-ed-tab" data-action="edTab" data-target="#ed-story">图文故事</button>
+        <button type="button" class="xh-ed-tab" data-action="edTab" data-target="#ed-itin">详细行程</button>
+        <button type="button" class="xh-ed-tab" data-action="edTab" data-target="#ed-fee">费用说明</button>
+        <button type="button" class="xh-ed-tab" data-action="edTab" data-target="#ed-prep">出行清单</button>
+        <button type="button" class="xh-ed-tab" data-action="edTab" data-target="#ed-cta">报名</button>
+      </nav>
+      <div class="activity-page xh-ed typo-${esc(layout.typo)} tone-${esc(style.family)}${ac.warm ? " warm-tone" : ""} ed-theme-${edThemeOf(a)}">
       <div class="ps-topbar">${psLogo()}</div>
       ${showInlineDetailChrome() ? detailModeSwitch() : ""}
       ${showInlineDetailChrome() ? editorialVariantSwitch(a) : ""}
@@ -295,20 +355,22 @@
           <div class="xh-ed-pill">${ICON("calendar")} ${esc(a.date || a.dateMD || "日期待定")}<span class="xh-ed-pill-div"></span>${ICON("map-pin")} ${esc(a.meeting || "集合点待定")}</div>
         </div>
       </header>
-      <div class="xh-ed-body">
+      <div class="xh-ed-body" id="ed-story">
         ${kvHtml}
         ${leadHtml}
         ${secHtml}
         ${quoteHtml}
         ${galleryHtml}
         ${decisionHtml}
+        ${prepHtml}
         ${ctaHtml}
         ${orgHtml}
       </div>
       <div class="bottom-bar">
         <div class="price">${priceTxt}</div>
         <div class="bottom-actions"><button class="btn btn-ghost btn-sm" data-action="contactOrg">${ICON("message")} 咨询</button><button class="btn btn-primary" data-action="openSignup" data-id="${a.id}">立即报名</button></div>
-      </div></div>`;
+      </div></div>
+      <div class="xh-ed-lightbox" id="xhLightbox" role="dialog" aria-label="查看大图"><button class="lb-close" type="button" aria-label="关闭">×</button><img id="xhLightboxImg" src="" alt=""></div>`;
   }
 
   function renderActivityPhone(a) {
