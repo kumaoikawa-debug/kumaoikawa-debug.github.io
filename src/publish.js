@@ -4952,7 +4952,7 @@ function applyVisionBatch(map) {
   };
   const EDITORIAL_DENSITY = {
     album:       { maxPara: 1, trunc: 90,  quote: false, cta: false },
-    magazine:    { maxPara: 2, trunc: 170, quote: true,  cta: false },
+    magazine:    { maxPara: 2, trunc: 200, quote: true,  cta: false },
     conversion:  { maxPara: 2, trunc: 150, quote: true,  cta: true },
     documentary: { maxPara: 99, trunc: 0,  quote: false, cta: false },
   };
@@ -5183,11 +5183,11 @@ function applyVisionBatch(map) {
       leads: ["{P}这条路，风景不是背景，是主线。{D}出发，不赶点，把脚步交给山水。",
               "从集合点出发走完{P}。{distWord}{eleWord}，一路都在换视野。"],
       paras: {
-        why: ["去{P}，不是为了打卡，是为了把被楼宇切碎的视野重新接起来。", "这条路的价值在视野：走一段，就换一幅。"],
-        experience: ["{difficultyWord}的强度配得上{dayWord}的路程，走完不会觉得赶。", "沿线以{envLabel}为主，节奏由自己和队伍一起决定。"],
+        why: ["去{P}，不是为了打卡，是为了把被楼宇切碎的视野重新接起来。", "这条路的价值在视野：走一段，就换一幅。", "风景不挑人，第一次来也能在转弯处遇见惊喜。"],
+        experience: ["{difficultyWord}的强度配得上{dayWord}的路程，走完不会觉得赶。", "沿线以{envLabel}为主，节奏由自己和队伍一起决定。", "不赶时间，才有余力留意脚边的植物和远处的轮廓。"],
         route: ["按行程走：{startTime}集合出发，{endTime}回到集合点。", "全程约{distWord}，沿途依据实际路况调整休息点。"],
-        gain: ["带走的不是照片数量，是一整天连续的视野。", "把{D}这一天的节奏完整地还给自己。"],
-        fit: ["{audience}，以及想安安静静看一天风景的人。", "有基础体力、愿意按自己步频走的人都能跟上。"],
+        gain: ["带走的不是照片数量，是一整天连续的视野。", "把{D}这一天的节奏完整地还给自己。", "回到城里，眼睛还留着山线的弧度。"],
+        fit: ["{audience}，以及想安安静静看一天风景的人。", "有基础体力、愿意按自己步频走的人都能跟上。", "一个人来也行，队伍里总有同频的人。"],
         reasons: ["路线成熟、节奏可控，领队随队，把注意力留给风景。", "人数控制在{limit}{limitUnit}内，队形不散。"],
       },
       quotes: ["风景不在终点，在每一段转弯之后。", "把{D}交给一条有视野的路。", "走完才知道，视野是需要一步步换来的。"],
@@ -5198,11 +5198,11 @@ function applyVisionBatch(map) {
       leads: ["{D}这天没有闹钟，只有{P}。走多快、停多久，自己说了算。",
               "去{P}不是为了完成清单，是为了把节奏调回来。{distWord}，走成自己的样子。"],
       paras: {
-        why: ["城市里的时间被切得很碎，{P}能把它重新连成一条线。", "离开固定安排{dayWord}，节奏自然会慢下来。"],
-        experience: ["不设打卡点，累了就停。{difficultyWord}的强度刚好留出喘息的余地。", "在{envLabel}里走，注意力从屏幕移回脚下。"],
+        why: ["城市里的时间被切得很碎，{P}能把它重新连成一条线。", "离开固定安排{dayWord}，节奏自然会慢下来。", "把{P}当成一次不给日程表留位置的练习。"],
+        experience: ["不设打卡点，累了就停。{difficultyWord}的强度刚好留出喘息的余地。", "在{envLabel}里走，注意力从屏幕移回脚下。", "走到哪算哪，反而比按计划更记得清楚。"],
         route: ["{startTime}出发，{endTime}回到集合点，中间的时间归自己安排。", "全程约{distWord}，不赶路，按队伍状态调整。"],
-        gain: ["一天结束时，手里多出来的是一点松弛。", "把被日程表占据的注意力要回来。"],
-        fit: ["{audience}，以及最近想喘口气的人。", "不喜欢被行程推着走、愿意自己掌握节奏的人。"],
+        gain: ["一天结束时，手里多出来的是一点松弛。", "把被日程表占据的注意力要回来。", "这种松弛会渗进接下来的一周。"],
+        fit: ["{audience}，以及最近想喘口气的人。", "不喜欢被行程推着走、愿意自己掌握节奏的人。", "哪怕只是想独自安静半天，也合适。"],
         reasons: ["不设硬性打卡点，把时间还给参与者。", "限{limit}{limitUnit}，小队伍更好照顾各自的节奏。"],
       },
       quotes: ["真正的休息，是把时间从表格里拿回来。", "走慢一点，才听得见自己的节奏。", "把{D}还给不做计划的自己。"],
@@ -5213,11 +5213,11 @@ function applyVisionBatch(map) {
       leads: ["{D}这条线不轻松：{distWord}{eleWord}，{difficultyWord}的强度。走完它，答案自己出现。",
               "{P}不是散步的路线。{distWord}走下来，需要的是节奏和坚持，而不是冲动。"],
       paras: {
-        why: ["难度是这条线的一部分：{difficultyWord}的强度，才配得上走完之后的踏实。", "选择{P}，是想用{dayWord}换一个明确的完成感。"],
-        experience: ["前段爬升集中，中后段趋于稳定，身体会经历一个明确的临界点。", "{eleWord}的落差带来真实的体力消耗，也带来真实的消耗感。"],
+        why: ["难度是这条线的一部分：{difficultyWord}的强度，才配得上走完之后的踏实。", "选择{P}，是想用{dayWord}换一个明确的完成感。", "不是每条线都值得用力，这条算一条。"],
+        experience: ["前段爬升集中，中后段趋于稳定，身体会经历一个明确的临界点。", "{eleWord}的落差带来真实的体力消耗，也带来真实的消耗感。", "临界点之后，腿会找到自己的节奏。"],
         route: ["{startTime}集合出发，{endTime}回到集合点，中途按体力设休息点。", "全程约{distWord}，{difficultyWord}；领队控速，禁止超越前队。"],
-        gain: ["得到的是一个自己能确认的完成度。", "把{dayWord}的体力完整地用在该用的地方。"],
-        fit: ["{audience}，以及有徒步基础、能接受{difficultyWord}强度的人。", "身体状态稳定、愿意按队伍节奏推进的人。"],
+        gain: ["得到的是一个自己能确认的完成度。", "把{dayWord}的体力完整地用在该用的地方。", "完成感比照片更经得住回头看。"],
+        fit: ["{audience}，以及有徒步基础、能接受{difficultyWord}强度的人。", "身体状态稳定、愿意按队伍节奏推进的人。", "没把握的人，可以先从更短的线练手。"],
         reasons: ["路线难度与队伍配比经过匹配，不硬拼。", "限{limit}{limitUnit}，保证领队能照顾到队尾。"],
       },
       quotes: ["难的部分，往往才是记得住的部分。", "不是征服高度，是完整经历一天。", "走到累，才知道自己还剩多少。"],
@@ -5228,11 +5228,11 @@ function applyVisionBatch(map) {
       leads: ["{D}带孩子去{P}。{distWord}的强度适合第一次走长线的小朋友，家长在旁，一起走完。",
               "把周末交给{P}：孩子在前面探路，大人跟在后面，{dayWord}就这样过。"],
       paras: {
-        why: ["带孩子来{P}，是想让他知道路是要自己走完的。", "{difficultyWord}的路线对孩子友好，成就感来得刚刚好。"],
-        experience: ["孩子会经历从兴奋到疲惫再到坚持的完整过程，这比说教有用。", "一路上大人小孩同速前进，节奏由队伍里最慢的人决定。"],
+        why: ["带孩子来{P}，是想让他知道路是要自己走完的。", "{difficultyWord}的路线对孩子友好，成就感来得刚刚好。", "山里的第一课，是不着急。"],
+        experience: ["孩子会经历从兴奋到疲惫再到坚持的完整过程，这比说教有用。", "一路上大人小孩同速前进，节奏由队伍里最慢的人决定。", "他记住的不会是公里数，是某块石头和某阵风。"],
         route: ["{startTime}集合出发，{endTime}返回，途中的休息点按孩子状态调整。", "全程约{distWord}，留足玩耍与休息的时间。"],
-        gain: ["带回去的是一起完成一件事的记忆。", "孩子得到一次自己走完的经验，家长得到一天不被打扰的相处。"],
-        fit: ["{audience}，以及愿意陪孩子慢慢走的家庭。", "孩子能独立走完短程、家长愿意全程陪同的家庭。"],
+        gain: ["带回去的是一起完成一件事的记忆。", "孩子得到一次自己走完的经验，家长得到一天不被打扰的相处。", "这段路会成为以后提起就笑的素材。"],
+        fit: ["{audience}，以及愿意陪孩子慢慢走的家庭。", "孩子能独立走完短程、家长愿意全程陪同的家庭。", "二胎或朋友结伴也很好，孩子有伴更敢走。"],
         reasons: ["路线难度对亲子友好，不设置硬性挑战段。", "限{limit}{limitUnit}，保证每家的孩子都在视野内。"],
       },
       quotes: ["第一次走完全程，是他自己挣来的。", "陪他走的路，比替他走的路长。", "一起走完，才算一起出发。"],
@@ -5243,11 +5243,11 @@ function applyVisionBatch(map) {
       leads: ["{D}不做室内局，约在{P}。{distWord}边走边聊，比坐在桌前更容易说开。",
               "把聚会搬到{P}：一起出发、一起走完、一起吃个饭。"],
       paras: {
-        why: ["换掉会议室，{P}里并排走一段，话题自然就有了。", "一起走过一段路，比交换名片更容易记住彼此。"],
-        experience: ["队伍规模控制在{limit}{limitUnit}，不喧闹，也不至于冷场。", "{difficultyWord}的强度刚好：有点喘，但不影响说话。"],
+        why: ["换掉会议室，{P}里并排走一段，话题自然就有了。", "一起走过一段路，比交换名片更容易记住彼此。", "约人这件事，放在路上比放在群里容易得多。"],
+        experience: ["队伍规模控制在{limit}{limitUnit}，不喧闹，也不至于冷场。", "{difficultyWord}的强度刚好：有点喘，但不影响说话。", "边走边聊，尴尬会被风景接住。"],
         route: ["{startTime}集合，热身之后出发，{endTime}左右回到集合点。", "全程约{distWord}，中间设一次集体休息。"],
-        gain: ["多认识几个能一起走路的人。", "把{dayWord}的相处时间换成一段共同经历。"],
-        fit: ["{audience}，以及想找人一起出去走走的你。", "愿意和陌生人并排走一段路、聊几句的人。"],
+        gain: ["多认识几个能一起走路的人。", "把{dayWord}的相处时间换成一段共同经历。", "说不定下次的活动，就是这趟认识的谁发起的。"],
+        fit: ["{audience}，以及想找人一起出去走走的你。", "愿意和陌生人并排走一段路、聊几句的人。", "社恐也没关系，走路时沉默也很自然。"],
         reasons: ["小队伍制，限{limit}{limitUnit}，保证每个人都插得上话。", "路线强度适中，注意力可以留给同伴。"],
       },
       quotes: ["并排走过一段路，比并排坐一天更有用。", "同频的人，是在路上遇到的。", "聚会不必有桌子，有路就够了。"],
@@ -5258,11 +5258,11 @@ function applyVisionBatch(map) {
       leads: ["{seasonWord}的{P}，一年只有这一段时间。{D}出发，把这一季收进脚步里。",
               "{D}去{P}。{seasonWord}的时令不等人，{distWord}走完，正好赶上这一季。"],
       paras: {
-        why: ["{seasonWord}有明确的窗口期，错过就要等一年。", "选在{D}，是为了赶上{P}这一季才成立的状态。"],
-        experience: ["{seasonWord}的体感与其它季节不同，出发前按当季准备衣物更稳妥。", "{difficultyWord}的强度配{seasonWord}的天气，节奏需要按当季调整。"],
+        why: ["{seasonWord}有明确的窗口期，错过就要等一年。", "选在{D}，是为了赶上{P}这一季才成立的状态。", "时令不等人，这一季的{P}只属于现在。"],
+        experience: ["{seasonWord}的体感与其它季节不同，出发前按当季准备衣物更稳妥。", "{difficultyWord}的强度配{seasonWord}的天气，节奏需要按当季调整。", "当季的光线和颜色，过完这阵就调不回来了。"],
         route: ["{startTime}集合出发，{endTime}返回，预留应对当季日照的时间。", "全程约{distWord}，按当季路况安排休息。"],
-        gain: ["把{seasonWord}的这一段留在记忆里。", "等到换季，你手里有一段别人没有的记录。"],
-        fit: ["{audience}，以及想踩准时令走一趟的人。", "愿意按当季准备、不介意天气变化的人。"],
+        gain: ["把{seasonWord}的这一段留在记忆里。", "等到换季，你手里有一段别人没有的记录。", "错过今年，要等下一次轮回。"],
+        fit: ["{audience}，以及想踩准时令走一趟的人。", "愿意按当季准备、不介意天气变化的人。", "想拍到当季样子的人，这趟最值。"],
         reasons: ["{D}落在{seasonWord}窗口内，时令是这场的核心价值。", "限{limit}{limitUnit}，保证当季队伍不拥挤。"],
       },
       quotes: ["时令不等人，路也不会一直等。", "一年只有一段时间，值得为它腾出一天。", "赶在换季之前，把这一程走完。"],
@@ -5273,11 +5273,11 @@ function applyVisionBatch(map) {
       leads: ["如果{dayWord}可以不用通勤和会议开头，它会是什么样？{D}的{P}是一种回答。",
               "{D}把生活搬到{P}：走路、吃饭、聊天，节奏比平时慢一档。"],
       paras: {
-        why: ["户外不是假期特供，它可以是一种常规的过法。", "把{D}交给{P}，是给日常换一个参照。"],
-        experience: ["{difficultyWord}的强度不会打乱生活，反而让第二天更清醒。", "在{envLabel}里走{dayWord}，身体会重新记住什么是舒展。"],
+        why: ["户外不是假期特供，它可以是一种常规的过法。", "把{D}交给{P}，是给日常换一个参照。", "不必等长假，一个周末就够重启一次。"],
+        experience: ["{difficultyWord}的强度不会打乱生活，反而让第二天更清醒。", "在{envLabel}里走{dayWord}，身体会重新记住什么是舒展。", "走完回来，周一没那么难熬了。"],
         route: ["{startTime}出发，{endTime}回到集合点，不影响第二天的安排。", "全程约{distWord}，属于可以放进常规日程的强度。"],
-        gain: ["带回去的是一种可以重复的生活节奏。", "把户外从「偶尔」变成「可以安排」。",],
-        fit: ["{audience}，以及想把户外变成日常的人。", "工作日节奏紧、周末想换一种过法的人。"],
+        gain: ["带回去的是一种可以重复的生活节奏。", "把户外从「偶尔」变成「可以安排」。", "这种节奏攒多了，就成了生活方式。"],
+        fit: ["{audience}，以及想把户外变成日常的人。", "工作日节奏紧、周末想换一种过法的人。", "独行或约朋友都行，关键是走出去。"],
         reasons: ["单日行程，前后不占额外时间。", "限{limit}{limitUnit}，把体验控制在舒服的规模。"],
       },
       quotes: ["把日子过成户外，比把户外当假期更耐用。", "生活方式不需要远行，需要一天。", "重复得起来，才算生活方式。"],
@@ -5351,12 +5351,32 @@ function applyVisionBatch(map) {
   /* 取当前有效的内容包：角度匹配 + 两条事实指纹都匹配才认（否则视为过期，渲染层回退旧路径） */
   function editorialStylePackOf(a) {
     const p = a && a.editorialStylePack;
-    if (!p || !p.angle) return null;
-    if (p.factsFingerprint !== editorialFactsFingerprint(a)) return null;
-    if (p.dnaFactFingerprint !== dnaFactFingerprint(a)) return null;
-    const variant = (typeof editorialVariantOf === "function") ? editorialVariantOf(a) : null;
-    if (variant && p.angle !== variant.angle) return null;   // 角度不一致 → 换版式不该复用（角度由风格决定）
-    return p;
+    if (p && p.angle) {
+      if (p.factsFingerprint !== editorialFactsFingerprint(a)) return null;
+      if (p.dnaFactFingerprint !== dnaFactFingerprint(a)) return null;
+      const variant = (typeof editorialVariantOf === "function") ? editorialVariantOf(a) : null;
+      if (variant && p.angle !== variant.angle) return null;   // 角度不一致 → 换版式不该复用（角度由风格决定）
+      return p;
+    }
+    /* 懒生成：未显式「换过风格」的活动（§七 一键生成 / 历史活动 / 导入活动），
+       按当前自动选定的风格直接产出角度化文案包，让默认图文页也是「角度驱动」，
+       而不是千篇一律的 canonical 副本（修复「所有文案都一样 / 跟原来一样」）。
+       只「按当前风格产出」、不旋转风格——旋转由 regenStyleContent 负责。 */
+    if (a && typeof angleEditorialPack === "function") {
+      try {
+        const dna = (typeof buildActivityDNA === "function") ? buildActivityDNA(a, a.photos) : {};
+        const L = (typeof editorialLayoutOf === "function") ? editorialLayoutOf(a) : {};
+        const S = (typeof editorialStyleOf === "function") ? editorialStyleOf(a) : {};
+        if (S && S.angle) {
+          const v = { angle: S.angle, structure: L.structure, img: L.img, density: S.density, layout: L.id, style: S.id, typo: L.typo, family: S.family };
+          const np = angleEditorialPack(a, v, dna);
+          np._auto = true;   // 自动（未显式「换风格」）生成：hero 仍回退老板原标题 a.title，避免覆盖其原标题
+          a.editorialStylePack = np;
+          return np;
+        }
+      } catch (e) {}
+    }
+    return null;
   }
   /* P0-C：换风格 —— 真正重生成内容，并做「连续重复降权」 */
   function regenStyleContent(a, opts) {

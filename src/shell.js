@@ -1799,8 +1799,15 @@
     fa.photos = fa.photos || [];
     if (!fa._coverManual && fa.photos.length && typeof bestCoverIndex === "function") fa.coverIndex = bestCoverIndex(fa);
     // 4) 图文详情页的版式与风格自动选定（纯本地，保证一定有页可看）
-    if (!fa.editorialLayoutId && typeof pickEditorialLayout === "function") fa.editorialLayoutId = pickEditorialLayout("").id;
-    if (!fa.editorialStyleId && typeof pickEditorialStyle === "function") fa.editorialStyleId = pickEditorialStyle("").id;
+    //    优先按「活动事实 / 照片画像」自动选（不同活动 → 不同角度 / 版式，
+    //    修复「所有文案都一样 / 跟原来一样」：原来写死 pickEditorial*("") 即永远 STYLES[0]，
+    //    每个活动都是同一个风景角度、同一套标题模板）。autoEditorialPick 返回 null
+    //    （无照片 / 无明确信号，如普通休闲徒步）时，退回确定性首选项，保证一定有页。
+    const _autoPick = (typeof autoEditorialPick === "function") ? autoEditorialPick(fa) : null;
+    if (!fa.editorialLayoutId && _autoPick && _autoPick.layout) fa.editorialLayoutId = _autoPick.layout;
+    else if (!fa.editorialLayoutId && typeof pickEditorialLayout === "function") fa.editorialLayoutId = pickEditorialLayout("").id;
+    if (!fa.editorialStyleId && _autoPick && _autoPick.style) fa.editorialStyleId = _autoPick.style;
+    else if (!fa.editorialStyleId && typeof pickEditorialStyle === "function") fa.editorialStyleId = pickEditorialStyle("").id;
     // 5) 落库 + 直接进「活动详情」工作区
     fa.status = fa.status || "draft";
     if (fa.pinned) fa.pinnedAt = Date.now();

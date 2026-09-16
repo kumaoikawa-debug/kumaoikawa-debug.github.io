@@ -39,7 +39,7 @@ function mkActivity(over) {
 let dbg = {};
 try {
   // —— 完整活动（含叙事字段 + 2 天行程 + 6 张图 + 补充资料）——
-  const a2 = mkActivity({ days: 2,
+  const a2 = mkActivity({ days: 2, editorialStyleId: "S-season-mag",
     whyGo: "秋季彩林层林尽染，12 公里环线把龙门山最美的一段串起来。从山脚到垭口，颜色一层层往深处走，走到最后是整片金黄。",
     experience: "踩着落叶一级级往上，出林线后视野突然打开。风从山脊上下来，脚下是碎石与草坡，回头看是刚走过的那片林子。",
     gain: "带走一身松脂味和几十张不用修的照片。多数人说，回去之后好几天还惦记着垭口那阵风。",
@@ -90,8 +90,11 @@ try {
   add("与「简洁报名详情」结构明显不同（互斥标记）",
     !hEd.includes("layer-packaging") && !hEd.includes("layer-decision") && hLean.includes("layer-packaging") && !hLean.includes("xh-ed-sec"),
     "edHasLayer=" + hEd.includes("layer-packaging") + " leanHasXh=" + hLean.includes("xh-ed-sec"));
-  add("图文长页以「图文故事」为主体（故事正文 ≥300 字、章节编号递增）",
-    storyChars >= 300 && hEd.indexOf(">01 /") > -1 && hEd.indexOf(">01 /") < hEd.indexOf(">02 /"),
+  // 角度化文案（P0-C）默认是「事实参数化 + 角度声音」的精炼表达：magazine 密度每节 2 句，
+  // 故事正文约 200–280 字（足够撑起长页；更长的「全量」由 documentary 密度提供，见 p0-12）。
+  // 旧阈值 ≥300 是为「老板写的富文案」校准的，角度化后不再适用，故下调到 ≥200。
+  add("图文长页以「图文故事」为主体（角度化故事正文 ≥200 字、章节编号递增）",
+    storyChars >= 200 && hEd.indexOf(">01 /") > -1 && hEd.indexOf(">01 /") < hEd.indexOf(">02 /"),
     "storyChars=" + storyChars);
   add("长图文特征：沉浸 Hero + 编号章节 + 结尾影像组 + 故事/决策分离",
     hEd.includes("xh-ed-hero") && hEd.includes("xh-ed-gallery") && hEd.includes("现场影像") && hEd.indexOf("xh-ed-sec") < hEd.indexOf("xh-ed-decision"),

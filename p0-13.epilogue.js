@@ -69,11 +69,12 @@ check(headOf(oS0, "why") !== headOf(oS1, "why"), "换风格 标题变化",
 var chars = function (out) { return out.reduce(function (n, s) { return n + s.paras.join("").length; }, 0); };
 check(chars(oS0) !== chars(oS1), "换风格 文案节奏(密度)变化", "chars=" + chars(oS0) + "/" + chars(oS1));
 
-// 5) 换风格保留事实：源 whyGo 片段在两版 why 节均出现（confirmedFacts 守住）
-var factTok = mkAct().whyGo[0].slice(0, 8);
+// 5) 换风格保留事实：确认的「地点」事实在两版 why 节均出现（P0-A 事实边界：
+//    角度化重生成只换角度/标题/表达，确认的地点/日期等事实必须原样保留，不能丢）
+var factTok = mkAct().place;
 var whyS0 = (paraMap(oS0)["why"] || ""), whyS1 = (paraMap(oS1)["why"] || "");
-check(whyS0.indexOf(factTok) >= 0 && whyS1.indexOf(factTok) >= 0, "换风格 事实保留",
-  "token='" + factTok + "' in S0=" + (whyS0.indexOf(factTok) >= 0) + " S1=" + (whyS1.indexOf(factTok) >= 0));
+check(whyS0.indexOf(factTok) >= 0 && whyS1.indexOf(factTok) >= 0, "换风格 事实保留(地点)",
+  "place='" + factTok + "' in S0=" + (whyS0.indexOf(factTok) >= 0) + " S1=" + (whyS1.indexOf(factTok) >= 0));
 check((typeof confirmedFacts === "function" ? confirmedFacts(mkAct()).length : 0) >= 0, "confirmedFacts 可用", "");
 
 // 6) 旧 editorialVariantId 兼容：解析出 (layout, style) 且默认兜底 v-scenery-mag

@@ -131,7 +131,9 @@
     const theme = (dna && dna.mainTheme) || a.storyPurpose || a.editorialTitle || a.title || "";
     /* P0-C：换风格生成的内容包优先决定 标题 / 副标题 / 导语 / 金句 —— 事实字段完全不参与重写 */
     const spack = (typeof editorialStylePackOf === "function") ? editorialStylePackOf(a) : null;
-    const heroTitle = (spack && spack.title) ? spack.title : a.title;
+    // 未显式「换风格」（自动生成包，spack._auto）时，hero 仍用老板原标题 a.title；
+    // 只有换风格后的包（无 _auto）才用角度标题 —— 尊重老板原标题，避免一键生成就覆盖掉活动名。
+    const heroTitle = (spack && !spack._auto && spack.title) ? spack.title : a.title;
     const sub = (spack && spack.subtitle) ? spack.subtitle : (a.posterTagline || a.hook || "");
     const outline = (typeof buildEditorialOutline === "function") ? buildEditorialOutline(a, variant) : [];
     const caps = a.photoCaptions || [];
