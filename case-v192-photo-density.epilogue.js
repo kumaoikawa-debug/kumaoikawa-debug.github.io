@@ -32,8 +32,10 @@ function mk(n, extra) {
 function secFigCounts(html) {
   const parts = String(html).split('class="xh-ed-sec').slice(1);
   return parts.map((p) => {
-    const isGallery = /gallery/.test(p.slice(0, 60));
-    return { gallery: isGallery, figs: count(p, /class="xh-ed-fig /g) };
+    // v196：#ed-reviews 也是 .xh-ed-sec（杂志风区段），但它不是「正文章节」，
+    // 必须一并排除，否则会被当成一个「0 图的正文节」而误判照片驱动失效。
+    const notStory = /(gallery|reviews)/.test(p.slice(0, 60));
+    return { gallery: notStory, figs: count(p, /class="xh-ed-fig /g) };
   }).filter((x) => !x.gallery);
 }
 

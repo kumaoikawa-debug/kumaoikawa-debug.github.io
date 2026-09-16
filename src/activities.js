@@ -49,14 +49,19 @@
   function showInlineDetailChrome() {
     return !(typeof state !== "undefined" && state && state.view === "activityPage");
   }
-  function detailModeSwitch() {
-    const m = detailModeOf();
-    return `<div class="detail-mode-switch">`
-      + `<button type="button" class="dms-chip ${m === "lean" ? "on" : ""}" data-action="setDetailMode" data-mode="lean">${ICON("layout")} 简洁报名</button>`
-      + `<button type="button" class="dms-chip ${m === "editorial" ? "on" : ""}" data-action="setDetailMode" data-mode="editorial">${ICON("sparkles")} 图文长页</button>`
-      + `</div>`;
+  /* v196：评价录入入口的可见性开关 —— 只有后台（CLUBOS_MODE=admin）能录入，前台发布页只读。
+     刻意放在【顶层】而不是 renderActivityEditorial 内部：契约测试需要替换它来覆盖
+     「有 / 无录入入口」两个分支，嵌套函数声明在脚本作用域外不可见。 */
+  function edCanEditReviews() {
+    return (typeof isAdminMode === "function") ? isAdminMode() : false;
   }
-  function editorialVariantSwitch(a) {
+  /* v196：详情页模式切换已下线 —— 「简洁报名 / 图文长页」二选一对老板只是噪音，
+     详情页统一为图文长页（state.detailMode 默认 editorial）。
+     动作 setDetailMode / regenLayout 仍保留在 shell.js，供内部与历史链接使用。 */
+  /* v196：老板视角「换版式 / 换风格」两个按钮分不清（哪个动文案、哪个不动没人记得）→
+     收敛成一个「换一种排版」，内部走 regenStyle（角度+标题+节奏+图片策略+版式一起重生成，
+     立场不变：守住已确认事实）。摘要独立成函数，供页内切换条与后台工作区共用。 */
+  function editorialVariantSummary(a) {
     a = a || {};
     const L = (typeof editorialLayoutOf === "function") ? editorialLayoutOf(a) : { id: "L-mosaic-story", structure: "story", img: "hero-mosaic", typo: "serif" };
     const S = (typeof editorialStyleOf === "function") ? editorialStyleOf(a) : { id: "S-scenery-mag", angle: "scenery", density: "magazine", family: "magazine" };
@@ -64,10 +69,12 @@
     const densLabel = { magazine: "杂志型", album: "画册型", documentary: "纪实型", conversion: "转化型" }[S.density] || S.density;
     const imgLabel = (typeof EDITORIAL_IMG !== "undefined" && EDITORIAL_IMG[L.img] && EDITORIAL_IMG[L.img].hero === "band") ? "小图带" : "大图Hero";
     const structLabel = { story: "叙事序", experience: "体验序", route: "行程序", value: "价值序", social: "社交序" }[L.structure] || L.structure;
+    return imgLabel + "·" + structLabel + " ｜ " + ang + "·" + densLabel;
+  }
+  function editorialVariantSwitch(a) {
     return `<div class="detail-mode-switch editorial-variant-switch">`
-      + `<button type="button" class="dms-chip" data-action="regenLayout" title="只换图片组合/布局/留白/字体，文案与事实不变">${ICON("layout")} 换版式</button>`
-      + `<button type="button" class="dms-chip" data-action="regenStyle" title="重生成角度/标题/节奏/图片策略/版式，守住已确认事实">${ICON("sparkles")} 换风格</button>`
-      + `<span class="dms-cur">${esc(imgLabel)}·${esc(structLabel)} ｜ ${esc(ang)}·${esc(densLabel)}</span>`
+      + `<button type="button" class="dms-chip" data-action="regenStyle" title="重生成角度 / 标题 / 节奏 / 图片策略 / 版式，守住已确认事实">${ICON("sparkles")} 换一种排版</button>`
+      + `<span class="dms-cur">${esc(editorialVariantSummary(a))}</span>`
       + `</div>`;
   }
   /* v190 图片比例自适应：容器宽高比跟随「图片真实比例」，竖图/横图/方图各得其形。
@@ -275,10 +282,10 @@
     if (servicesConfirmed && a.includeTransport) guaran.push("交通接驳");
     if (servicesConfirmed && a.includeMeal) guaran.push("餐食");
     const servicesHtml = guaran.length ? `<div class="dsec"><div class="dsec-h"><h3>已确认服务</h3></div><div class="service-chips">${guaran.map((g) => `<div class="service-chip"><span class="sc-ic">${ICON(guaranIcons[g] || "check")}</span><span>${esc(g)}</span></div>`).join("")}</div></div>` : "";
+    /* v196：往期评价已提升为独立区段 #ed-reviews（见下方 reviewsHtml），此处不再重复挂一次 */
     const extraHtml = ((typeof blockVideo === "function") ? blockVideo(a) : "")
       + servicesHtml
-      + ((typeof blockLeader === "function") ? blockLeader(a) : "")
-      + ((typeof blockReviews === "function") ? blockReviews(a) : "");
+      + ((typeof blockLeader === "function") ? blockLeader(a) : "");
 
     const decisionHtml = `<section class="xh-ed-decision" id="xhDecision"><div class="xh-ed-decision-h"><span class="xh-ed-decision-kicker">DECISION</span><h2>报名信息</h2></div>${metaHtml}${(typeof departuresBlockHtml === "function") ? departuresBlockHtml(a) : ""}${itinHtml}${feeHtml}${gearHtml}${suitHtml}${notesHtml}${extraHtml}</section>`;
 
@@ -298,6 +305,49 @@
     const prepHtml = '<details class="xh-ed-checklist" id="ed-prep" open>'
       + '<summary><span class="cl-ct">出行前清单</span><span class="cl-prog" id="clProg">' + prepN + '/' + prepItemsAll.length + '</span><span class="cl-chev">▾</span></summary>'
       + '<div class="cl-items">' + prepItemsHtml + '</div></details>';
+
+    /* v196：活动评价 —— 此前 blockReviews 被埋在「报名信息」里，且无数据时整体隐藏，
+       老板的感觉就是「这个页面没有评价」。现提升为带目录入口的独立区段：
+       有 a.reviews 就渲染均分/星级/条目；没有就如实说「还没有评价」并给录入入口。
+       ⚠️ 非虚构硬约定：绝不自动生成任何评价，数据只能来自老板录入或真实参与者。 */
+    const rvToday = (function () {
+      try {
+        const d = new Date();
+        return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+      } catch (e) { return ""; }
+    })();
+    const rvStars = function (n) {
+      const k = Math.max(0, Math.min(5, Math.round(+n || 5)));
+      return "★★★★★".slice(0, k) + "☆☆☆☆☆".slice(0, 5 - k);
+    };
+    const rvItems = (a.reviews || [])
+      .map(function (r, i) { return { r: r, i: i }; })
+      .filter(function (x) { return x.r && (x.r.text || x.r.name); });
+    const rvAvg = rvItems.length ? (rvItems.reduce(function (s, x) { return s + (+x.r.stars || 5); }, 0) / rvItems.length) : 0;
+    const rvAdmin = edCanEditReviews()
+      ? `<div class="xh-ed-rv-form">`
+        + `<div class="xh-ed-rv-fr">`
+        + `<input id="edRvName" placeholder="昵称（可留空）" />`
+        + `<select id="edRvStars"><option value="5">★★★★★</option><option value="4">★★★★</option><option value="3">★★★</option><option value="2">★★</option><option value="1">★</option></select>`
+        + `<input id="edRvDate" type="date" value="${rvToday}" />`
+        + `</div>`
+        + `<textarea id="edRvText" placeholder="写下这位参与者的真实评价（活动后的原话最好）"></textarea>`
+        + `<div class="xh-ed-rv-fa"><button type="button" class="btn btn-primary btn-sm" data-action="edReviewSave" data-id="${esc(a.id)}">${ICON("check")} 保存评价</button></div>`
+        + `</div>`
+      : "";
+    const rvBody = rvItems.length
+      ? `<div class="xh-ed-rv-sum"><b>${rvAvg.toFixed(1)}</b><span>${rvStars(rvAvg)}</span><em>${rvItems.length} 条真实评价</em></div>`
+        + `<div class="xh-ed-rv-list">`
+        + rvItems.slice(0, 12).map(function (x) {
+            return `<div class="xh-ed-rv">`
+              + `<div class="xh-ed-rv-h"><span class="xh-ed-rv-n">${esc(x.r.name || "匿名用户")}</span><span class="xh-ed-rv-s">${rvStars(x.r.stars)}</span><span class="xh-ed-rv-d">${esc(x.r.date || "")}</span></div>`
+              + `<p>${esc(x.r.text || "")}</p>`
+              + (edCanEditReviews() ? `<button type="button" class="xh-ed-rv-del" data-action="edReviewDel" data-idx="${x.i}" title="删除这条评价">${ICON("trash")}</button>` : "")
+              + `</div>`;
+          }).join("")
+        + `</div>`
+      : `<div class="xh-ed-rv-empty">${ICON("message")}<div><b>还没有评价</b><p>活动结束后的参与者评价会展示在这里。你也可以先在下面录入往期活动的真实评价 —— 平台不会替你编造任何评价。</p></div></div>`;
+    const reviewsHtml = `<section class="xh-ed-sec xh-ed-reviews" id="ed-reviews" data-sec="reviews"><div class="xh-ed-num">${String(outline.length + 2).padStart(2, "0")} / REVIEWS</div><h2 class="xh-ed-h">活动评价</h2>${rvBody}${rvAdmin}</section>`;
 
     // P0-10 Photo Layout Intelligence：按素材数量 + 横竖比例自动选版式（同一套模板不硬塞所有组合）
     // 取「筛选后待展示图」中未被封面/章节占用的部分，按数量分级 + 横竖主导自动排成 6 种版式
@@ -332,17 +382,24 @@
       || (coverPolicy.realAspect && coverPolicy.realAspect < 0.95)));
     const heroCls = (imgCfg.hero === "band" ? " band" : "") + (coverKeep ? " keep" : "");
     const heroBackdrop = (coverKeep && coverSrc) ? `<div class="xh-ed-hero-backdrop" style="background-image:url('${coverSrc}')"></div>` : "";
+    const edTheme = edThemeOf(a);
+    /* v196：顶部吸顶 Tab 下线。老板反馈「放顶部不对、体验不好」——它压住 Hero、
+       第 5 项「报名」在小屏被裁掉、且与页面暖色底割裂（贴在 .activity-page 之外）。
+       改为「底部阅读栏 + 目录抽屉」：不占顶部、拇指可达、六段全部看得见。 */
+    const edTocList = [
+      ["#ed-story", "图文故事", "活动缘起 · 现场故事"],
+      ["#ed-itin", "详细行程", "逐日时间轴"],
+      ["#ed-fee", "费用说明", "包含 · 不含"],
+      ["#ed-prep", "出行清单", "装备与准备"],
+      ["#ed-reviews", "活动评价", "参与者怎么说"],
+      ["#ed-cta", "报名", "名额与价格"],
+    ];
+    const edTocHtml = edTocList.map(function (it, i) {
+      return `<button type="button" class="xh-ed-toc-item" data-action="edTocGo" data-target="${it[0]}"><i>${String(i + 1).padStart(2, "0")}</i><b>${it[1]}</b><span>${it[2]}</span></button>`;
+    }).join("");
     return `
-      <nav class="xh-ed-tabs ed-theme-${edThemeOf(a)}" id="xhTabs" aria-label="页面导航">
-        <button type="button" class="xh-ed-tab" data-action="edTab" data-target="#ed-story">图文故事</button>
-        <button type="button" class="xh-ed-tab" data-action="edTab" data-target="#ed-itin">详细行程</button>
-        <button type="button" class="xh-ed-tab" data-action="edTab" data-target="#ed-fee">费用说明</button>
-        <button type="button" class="xh-ed-tab" data-action="edTab" data-target="#ed-prep">出行清单</button>
-        <button type="button" class="xh-ed-tab" data-action="edTab" data-target="#ed-cta">报名</button>
-      </nav>
-      <div class="activity-page xh-ed typo-${esc(layout.typo)} tone-${esc(style.family)}${ac.warm ? " warm-tone" : ""} ed-theme-${edThemeOf(a)}">
+      <div class="activity-page xh-ed typo-${esc(layout.typo)} tone-${esc(style.family)}${ac.warm ? " warm-tone" : ""} ed-theme-${edTheme}">
       <div class="ps-topbar">${psLogo()}</div>
-      ${showInlineDetailChrome() ? detailModeSwitch() : ""}
       ${showInlineDetailChrome() ? editorialVariantSwitch(a) : ""}
       <header class="xh-ed-hero${heroCls}" ${coverSrc ? `style="background-image:url('${coverSrc}')"` : `style="background:${ac.grad}"`}>
         ${heroBackdrop}
@@ -363,13 +420,24 @@
         ${galleryHtml}
         ${decisionHtml}
         ${prepHtml}
+        ${reviewsHtml}
         ${ctaHtml}
         ${orgHtml}
       </div>
-      <div class="bottom-bar">
-        <div class="price">${priceTxt}</div>
-        <div class="bottom-actions"><button class="btn btn-ghost btn-sm" data-action="contactOrg">${ICON("message")} 咨询</button><button class="btn btn-primary" data-action="openSignup" data-id="${a.id}">立即报名</button></div>
-      </div></div>
+      </div>
+      <div class="xh-ed-dock ed-theme-${edTheme}" id="xhDock" role="toolbar" aria-label="阅读工具">
+        <button type="button" class="xh-ed-dock-toc" data-action="edToc" aria-expanded="false" aria-controls="xhToc">${ICON("list")}<span id="xhDockCur">目录</span></button>
+        <div class="xh-ed-dock-price">${priceTxt}</div>
+        <button type="button" class="xh-ed-dock-ask" data-action="contactOrg">${ICON("message")} 咨询</button>
+        <button type="button" class="btn btn-primary btn-sm xh-ed-dock-cta" data-action="openSignup" data-id="${a.id}">立即报名</button>
+      </div>
+      <div class="xh-ed-toc-root ed-theme-${edTheme}" id="xhTocRoot">
+        <div class="xh-ed-toc-mask" data-action="edTocClose"></div>
+        <div class="xh-ed-toc" id="xhToc" role="dialog" aria-label="页面目录">
+          <div class="xh-ed-toc-h"><b>目录</b><button type="button" class="xh-ed-toc-x" data-action="edTocClose" aria-label="关闭">${ICON("x")}</button></div>
+          <div class="xh-ed-toc-list">${edTocHtml}</div>
+        </div>
+      </div>
       <div class="xh-ed-lightbox" id="xhLightbox" role="dialog" aria-label="查看大图"><button class="lb-close" type="button" aria-label="关闭">×</button><img id="xhLightboxImg" src="" alt=""></div>`;
   }
 
@@ -539,7 +607,6 @@
     return `
       <div class="activity-page composition-${composition}">
       <div class="ps-topbar">${psLogo()}</div>
-      ${detailModeSwitch()}
       <div class="cover type-${a.pageStyle} composition-${composition}" style="${hasPhoto ? "" : `background:${ac.grad}`}">
         ${hasPhoto ? `<img class="cover-img" data-smart-img src="${coverSrc}" alt="${esc(a.place || a.type)}活动主视觉" style="object-position:${smartPos(coverSrc)}">` : `<div class="cover-pattern"></div><div class="cover-missing">${isAdminMode() ? "待上传主视觉" : "活动图片待机构补充"}</div>`}
         <div class="scrim"></div>
@@ -666,11 +733,8 @@
 
     <div class="ap-switch">
       <span class="ap-switch-l">${ICON("layout")} 活动详情页</span>
-      ${chip(mode === "lean", "setDetailMode", "lean", "layout", "简洁报名", "固定结构的报名详情页")}
-      ${chip(mode === "editorial", "setDetailMode", "editorial", "sparkles", "图文长页", "杂志式长图文，更适合传播")}
-      <span class="ap-switch-sep"></span>
-      ${chip(false, "regenLayout", "", "layout", "换版式", "只换图片组合 / 布局 / 留白 / 字体，文案与事实不变")}
-      ${chip(false, "regenStyle", "", "sparkles", "换风格", "重生成角度 / 标题 / 节奏 / 图片策略，守住已确认事实")}
+      ${chip(false, "regenStyle", "", "sparkles", "换一种排版", "重生成角度 / 标题 / 节奏 / 图片策略 / 版式，守住已确认事实")}
+      <span class="dms-cur">${esc(editorialVariantSummary(a))}</span>
     </div>
 
     <div class="ap-phone">${wrapPhone(renderActivityPhone(a), false)}</div>

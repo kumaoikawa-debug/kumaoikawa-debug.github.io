@@ -11,6 +11,10 @@
 
 // 夹具会跳过 boot.js，必须自行初始化全局 state
 state = (typeof initState === "function") ? initState() : (typeof loadState === "function" ? loadState() : state);
+/* v196 契约变更：详情页默认输出已从「简洁报名详情」改为「图文长页」（模式二选一已下线）。
+   本夹具测的是【双层详情页 layer-packaging/layer-decision】，属于 lean 输出，
+   因此必须显式选择 —— 依赖全局默认值的写法在 v196 之后会全部落空。 */
+state.detailMode = "lean";
 
 const checks = [];
 const add = (name, pass, detail) => checks.push({ name, pass: !!pass, detail: detail || "" });

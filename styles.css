@@ -5243,17 +5243,80 @@ body{
    全部为「新增规则」：不改 .xh-ed-fig / .photo-layout 既有比例与安全裁切（v190 / P0-11）
    ============================================================ */
 
-/* ---------- 1. 吸顶区段导航（.activity-page 的前置兄弟节点，避免其 overflow:hidden 破坏 sticky）---------- */
-.xh-ed-tabs { position: sticky; top: 0; z-index: 30; display: flex; gap: 2px; overflow-x: auto;
-  background: var(--surface); border-bottom: 1px solid var(--line); padding: 0 8px;
-  scrollbar-width: none; -webkit-overflow-scrolling: touch; }
-.xh-ed-tabs::-webkit-scrollbar { display: none; }
-.xh-ed-tab { flex: 0 0 auto; padding: 12px 12px; font-size: 13px; font-weight: 600; color: var(--muted);
-  background: transparent; border: 0; border-bottom: 2px solid transparent; cursor: pointer;
-  white-space: nowrap; font-family: inherit; }
-.xh-ed-tab.on { color: var(--brand); border-bottom-color: var(--brand); }
-/* 锚点滚动时为吸顶条留出高度，避免标题被盖住 */
-#ed-story, #ed-itin, #ed-fee, #ed-prep, #ed-cta { scroll-margin-top: 54px; }
+/* ---------- 1. 底部阅读栏 + 目录抽屉（v196 替代顶部吸顶 Tab）----------
+   为什么必须放在 .activity-page【之后】作为兄弟节点：
+   .activity-page{overflow:hidden} 会让它成为「最近滚动容器且自身不滚动」，内部 position:sticky 全部静默失效。
+   顶部方案被否的原因：压住 Hero、第 5 项「报名」在小屏被裁、且贴在暖色页面之外视觉割裂。 */
+.xh-ed-dock { position: sticky; bottom: 0; z-index: 40; display: flex; align-items: center; gap: 9px;
+  padding: 9px 12px calc(9px + env(safe-area-inset-bottom, 0px));
+  background: color-mix(in srgb, var(--surface, #FFFDF9) 93%, transparent);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  border-top: 1px solid var(--line, #E3DDD0); }
+.xh-ed-dock-toc { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; max-width: 124px;
+  height: 34px; padding: 0 11px; border: 1px solid var(--line, #E3DDD0); border-radius: 99px;
+  background: var(--surface, #FFFDF9); color: var(--ink); font-size: 12.5px; font-weight: 700;
+  font-family: inherit; cursor: pointer; }
+.xh-ed-dock-toc svg { width: 14px; height: 14px; flex: 0 0 auto; color: var(--brand, #2F6B4F); }
+.xh-ed-dock-toc span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.xh-ed-dock-price { flex: 1 1 auto; min-width: 0; font-family: var(--display); font-weight: 800;
+  font-size: 17px; color: var(--ink); white-space: nowrap; }
+.xh-ed-dock-price small { font-size: 11px; color: var(--muted); font-weight: 600; }
+.xh-ed-dock-ask { flex: 0 0 auto; height: 34px; padding: 0 6px; border: 0; background: transparent;
+  color: var(--ink-2, #5C574C); font-size: 12.5px; font-weight: 600; font-family: inherit; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 4px; }
+.xh-ed-dock-ask svg { width: 14px; height: 14px; }
+.xh-ed-dock-cta { flex: 0 0 auto; min-height: 34px; }
+/* 目录抽屉：内联 top/height 由 JS 按滚动容器可视区写入（absolute 子元素会随内容滚动，不能靠 inset:0） */
+.xh-ed-toc-root { position: absolute; left: 0; right: 0; top: 0; height: 720px; z-index: 60; display: none; }
+.xh-ed-toc-root.on { display: block; }
+.xh-ed-toc-mask { position: absolute; inset: 0; background: rgba(20, 18, 14, .42); }
+.xh-ed-toc { position: absolute; left: 0; right: 0; bottom: 0; max-height: 80%; overflow-y: auto;
+  background: var(--surface, #FFFDF9); border-radius: 18px 18px 0 0;
+  padding: 4px 0 calc(10px + env(safe-area-inset-bottom, 0px));
+  box-shadow: 0 -18px 40px -20px rgba(35, 33, 27, .5); animation: xhTocUp .22s ease; }
+@keyframes xhTocUp { from { transform: translateY(16px); opacity: .5; } to { transform: none; opacity: 1; } }
+.xh-ed-toc-h { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px 6px; }
+.xh-ed-toc-h b { font-size: 12px; letter-spacing: .1em; color: var(--muted); font-weight: 700; }
+.xh-ed-toc-x { width: 30px; height: 30px; border: 0; border-radius: 50%; background: var(--surface-2, #F1EDE4);
+  color: var(--ink-2, #5C574C); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.xh-ed-toc-x svg { width: 14px; height: 14px; }
+.xh-ed-toc-item { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  padding: 11px 16px; border: 0; background: transparent; font-family: inherit; cursor: pointer;
+  border-left: 3px solid transparent; }
+.xh-ed-toc-item i { font-style: normal; font-size: 11px; font-weight: 800; letter-spacing: .06em;
+  color: var(--brand, #2F6B4F); width: 20px; flex: 0 0 auto; }
+.xh-ed-toc-item b { font-size: 14px; font-weight: 700; color: var(--ink); }
+.xh-ed-toc-item span { margin-left: auto; font-size: 11.5px; color: var(--muted); }
+.xh-ed-toc-item.on { background: var(--surface-2, #F1EDE4); border-left-color: var(--brand, #2F6B4F); }
+/* 锚点落点：底部阅读栏在下方，只需一点点上边距避免标题贴边 */
+#ed-story, #ed-itin, #ed-fee, #ed-prep, #ed-reviews, #ed-cta { scroll-margin-top: 14px; }
+
+/* ---------- 1b. 活动评价（v196：从「报名信息」里提出来，独立成段）---------- */
+.xh-ed-reviews .xh-ed-rv-sum { display: flex; align-items: baseline; gap: 10px; padding: 10px 0 2px; }
+.xh-ed-reviews .xh-ed-rv-sum b { font-family: var(--display); font-size: 30px; line-height: 1; color: var(--brand-700, #235240); }
+.xh-ed-reviews .xh-ed-rv-sum span { color: #E0A93B; font-size: 13px; letter-spacing: .04em; }
+.xh-ed-reviews .xh-ed-rv-sum em { font-style: normal; font-size: 12px; color: var(--muted); }
+.xh-ed-rv { position: relative; padding: 13px 0; border-top: 1px solid var(--line); }
+.xh-ed-rv-h { display: flex; align-items: baseline; gap: 9px; margin-bottom: 5px; padding-right: 24px; }
+.xh-ed-rv-n { font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.xh-ed-rv-s { color: #E0A93B; font-size: 12px; letter-spacing: .03em; }
+.xh-ed-rv-d { margin-left: auto; font-size: 11px; color: var(--muted); }
+.xh-ed-rv p { margin: 0; font-size: 14px; line-height: 1.78; color: var(--ink-2); }
+.xh-ed-rv-del { position: absolute; top: 13px; right: 0; border: 0; background: transparent; color: var(--muted); cursor: pointer; padding: 2px; }
+.xh-ed-rv-del svg { width: 14px; height: 14px; }
+.xh-ed-rv-empty { display: flex; gap: 11px; align-items: flex-start; background: var(--surface-2, #F1EDE4); border-radius: 14px; padding: 14px 15px; }
+.xh-ed-rv-empty svg { width: 18px; height: 18px; color: var(--brand, #2F6B4F); flex: 0 0 auto; margin-top: 2px; }
+.xh-ed-rv-empty b { font-size: 13.5px; color: var(--ink); }
+.xh-ed-rv-empty p { margin: 4px 0 0; font-size: 12.5px; line-height: 1.7; color: var(--muted); }
+.xh-ed-rv-form { margin-top: 14px; background: var(--surface-2, #F1EDE4); border-radius: 14px; padding: 13px 14px; }
+.xh-ed-rv-fr { display: flex; gap: 8px; margin-bottom: 8px; }
+.xh-ed-rv-fr input, .xh-ed-rv-form select, .xh-ed-rv-form textarea { font-family: inherit; font-size: 12.5px;
+  border: 1px solid var(--line, #E3DDD0); border-radius: 9px; padding: 7px 9px; background: var(--surface, #fff);
+  color: var(--ink); box-sizing: border-box; }
+.xh-ed-rv-fr input#edRvName { flex: 1 1 auto; min-width: 0; }
+.xh-ed-rv-fr input#edRvDate { flex: 0 0 122px; }
+.xh-ed-rv-form textarea { width: 100%; min-height: 62px; resize: vertical; }
+.xh-ed-rv-fa { display: flex; justify-content: flex-end; margin-top: 9px; }
 
 /* ---------- 2. DAY 时间轴卡片化（ns0116 风格）：保留既有 .tl-item 内容与 --page-* 配色 ---------- */
 .xh-ed .xh-ed-day { border-left: 0; padding-left: 0; margin: 14px 0; background: var(--surface);
@@ -5300,19 +5363,17 @@ body{
   font-size: 22px; line-height: 1; cursor: pointer; }
 .xh-ed-fig img, .xh-ed-gallery .ph img { cursor: zoom-in; }
 
-/* ---------- 5. 主题换肤（按活动类型/季节，作用域仅限 .xh-ed 子树）---------- */
-.xh-ed.ed-theme-forest { --brand: #2F6B4F; --brand-700: #235240; --surface: #FFFDF9; --surface-2: #F1EDE4;
+/* ---------- 5. 主题换肤（按活动类型/季节）----------
+   v196：改为「带 .ed-theme-* 即生效」，不再要求 .xh-ed 前缀 —— 因为底部阅读栏与目录抽屉
+   是 .activity-page 的兄弟节点，拿不到 .xh-ed 子树作用域，否则会出现「页面换肤了、阅读栏没换」的断层。 */
+.ed-theme-forest { --brand: #2F6B4F; --brand-700: #235240; --surface: #FFFDF9; --surface-2: #F1EDE4;
   --line: #E3DDD0; --line-2: #EDE8DD; --bg: #F7F5F0; }
-.xh-ed.ed-theme-snow { --brand: #2F6AA5; --brand-700: #21507F; --surface: #FFFFFF; --surface-2: #EEF3F8;
+.ed-theme-snow { --brand: #2F6AA5; --brand-700: #21507F; --surface: #FFFFFF; --surface-2: #EEF3F8;
   --line: #DDE7EF; --line-2: #E8EFF5; --bg: #F4F7FA; }
-.xh-ed.ed-theme-island { --brand: #178A86; --brand-700: #0F6864; --surface: #FFFFFF; --surface-2: #E7F3F1;
+.ed-theme-island { --brand: #178A86; --brand-700: #0F6864; --surface: #FFFFFF; --surface-2: #E7F3F1;
   --line: #D6EAE6; --line-2: #E2F0ED; --bg: #F2F8F7; }
-.xh-ed.ed-theme-desert { --brand: #B8632E; --brand-700: #8E4A20; --surface: #FFFDF8; --surface-2: #F3E9DC;
+.ed-theme-desert { --brand: #B8632E; --brand-700: #8E4A20; --surface: #FFFDF8; --surface-2: #F3E9DC;
   --line: #ECDFCE; --line-2: #F1E7D9; --bg: #FAF4EC; }
-.xh-ed-tabs.ed-theme-forest { --brand: #2F6B4F; --surface: #FFFDF9; --line: #E3DDD0; }
-.xh-ed-tabs.ed-theme-snow { --brand: #2F6AA5; --surface: #FFFFFF; --line: #DDE7EF; }
-.xh-ed-tabs.ed-theme-island { --brand: #178A86; --surface: #FFFFFF; --line: #D6EAE6; }
-.xh-ed-tabs.ed-theme-desert { --brand: #B8632E; --surface: #FFFDF8; --line: #ECDFCE; }
 
 /* ===== P0-10 Photo Layout Intelligence（6 种版式，按数量+横竖比例自动选） ===== */
 .photo-layout { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; }

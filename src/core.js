@@ -327,7 +327,7 @@
         });
         (s.signups || []).forEach((x) => { x.idType = x.idType || ""; x.idNumber = x.idNumber || ""; x.custom = x.custom || {}; });
         s.plan = "club"; // V2.0 单一俱乐部版，强制统一
-        s.detailMode = (s.detailMode === "editorial") ? "editorial" : "lean"; // P0-4 详情页输出模式（简洁报名 / 图文长页）
+        s.detailMode = "editorial"; // v196：详情页统一为图文长页（「简洁报名 / 图文长页」二选一已下线，不再暴露给老板）
         s.clubStatus = s.clubStatus || "approved";
         s.clubInfo = s.clubInfo || {};
         s.points = s.points || 0;
@@ -532,7 +532,7 @@
         { id: uid(), activityId: b.id, departureId: b.departures[0].id, name: "赵女士", phone: "133****1111", adults: 1, children: 0, note: "", paid: false, createdAt: Date.now() - 86400000 * 0.8 },
       ],
       view: "login", params: {},
-      detailMode: "lean",
+      detailMode: "editorial", // v196：种子态也统一为图文长页（mode 二选一已下线）
       customerTab: "list",
       customerSearch: "",
       customerMemberFilter: "all",

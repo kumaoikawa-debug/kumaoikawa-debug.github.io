@@ -101,8 +101,10 @@ try {
     "gallery=" + hEd.includes("xh-ed-gallery") + " sep=" + (hEd.indexOf("xh-ed-sec") < hEd.indexOf("xh-ed-decision")));
 
   add("无 Key 兜底：仅事实也能产出 ≥5 节长页", outlineFacts.length >= 5 && hFacts.includes("xh-ed-hero") && hFacts.includes("xh-ed-sec"), "factsSecs=" + outlineFacts.length);
-  add("模式切换 chip 存在（简洁报名 / 图文长页）",
-    hEd.includes('data-action="setDetailMode"') && hEd.includes('data-mode="editorial"') && hLean.includes('data-action="setDetailMode"'));
+  // v196 契约变更：详情页模式切换已下线（「简洁报名 / 图文长页」二选一对老板只是噪音），
+  // 统一为图文长页。断言改为「渲染输出不再出现 setDetailMode chip」，动作本身仍由下方接线用例守护。
+  add("模式切换 chip 已下线（详情页统一为图文长页）",
+    !hEd.includes('data-action="setDetailMode"') && !hLean.includes('data-action="setDetailMode"'));
 
   // 接线：点击 chip 应切换 state.detailMode 并落库（不抛错）
   try {

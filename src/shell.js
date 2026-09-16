@@ -1,27 +1,50 @@
-  /* v195：详情页吸顶 Tab 的滚动联动高亮（滚动容器可能是 .phone-screen，故用 root:null + rootMargin） */
-  function initEditorialTabs() {
+  /* v196：底部阅读栏的「当前区段」跟随滚动更新（顶部吸顶 Tab 已下线）。
+     滚动容器是 .phone-screen（id=previewScreen）；无 DOM / 无监听 / 无 getBoundingClientRect
+     的桩环境一律安全返回。每次 init 先摘掉旧监听，避免多视图切换后重复绑定。 */
+  function initEditorialToc() {
     try {
-      if (typeof document === "undefined" || typeof IntersectionObserver === "undefined") return;
-      const tabs = document.getElementById("xhTabs");
-      if (!tabs || typeof tabs.querySelectorAll !== "function") return;
-      const links = Array.prototype.slice.call(tabs.querySelectorAll("[data-target]"));
-      if (!links.length) return;
+      if (typeof document === "undefined") return;
+      const dock = document.getElementById("xhDock");
+      if (!dock) return;
+      const cur = document.getElementById("xhDockCur");
+      const labels = ["图文故事", "详细行程", "费用说明", "出行清单", "活动评价", "报名"];
+      const ids = ["ed-story", "ed-itin", "ed-fee", "ed-prep", "ed-reviews", "ed-cta"];
       const w = (typeof window !== "undefined") ? window : null;
-      if (w && w.__xhTabObs) { try { w.__xhTabObs.disconnect(); } catch (e) {} w.__xhTabObs = null; }
-      const obs = new IntersectionObserver(function (ents) {
-        ents.forEach(function (en) {
-          if (!en.isIntersecting || !en.target || !en.target.id) return;
-          const sel = "#" + en.target.id;
-          links.forEach(function (l) { l.classList.toggle("on", l.dataset.target === sel); });
-        });
-      }, { rootMargin: "-96px 0px -58% 0px", threshold: 0 });
-      links.forEach(function (l) {
-        if (typeof document.querySelector !== "function") return;
-        const t = document.querySelector(l.dataset.target);
-        if (t) obs.observe(t);
-      });
-      if (w) w.__xhTabObs = obs;
-      links[0].classList.add("on");
+      if (w && w.__xhTocScroll && w.__xhTocScrollHost && w.__xhTocScrollHost.removeEventListener) {
+        try { w.__xhTocScrollHost.removeEventListener("scroll", w.__xhTocScroll); } catch (e) {}
+      }
+      w && (w.__xhTocScroll = null, w.__xhTocScrollHost = null);
+      const sc = (typeof document.getElementById === "function") ? document.getElementById("previewScreen") : null;
+      const upd = function () {
+        let idx = 0;
+        try {
+          const host = sc || null;
+          const base = (host && host.getBoundingClientRect) ? host.getBoundingClientRect().top : 0;
+          const line = ((host && host.clientHeight) ? host.clientHeight : 720) * 0.45;
+          ids.forEach(function (id, i) {
+            if (typeof document.querySelector !== "function") return;
+            const el = document.querySelector("#" + id);
+            if (!el || typeof el.getBoundingClientRect !== "function") return;
+            if (el.getBoundingClientRect().top - base <= line) idx = i;
+          });
+        } catch (e) {}
+        if (cur && cur.textContent !== labels[idx]) cur.textContent = labels[idx];
+        if (dock.dataset) dock.dataset.cur = ids[idx];
+        try {
+          const items = (typeof document.querySelectorAll === "function") ? document.querySelectorAll("#xhToc .xh-ed-toc-item") : null;
+          if (items && items.length) {
+            for (let i = 0; i < items.length; i++) {
+              if (items[i] && items[i].classList && items[i].classList.toggle) items[i].classList.toggle("on", i === idx);
+            }
+          }
+        } catch (e) {}
+      };
+      const host = sc || w;
+      if (host && host.addEventListener) {
+        host.addEventListener("scroll", upd, { passive: true });
+        if (w) { w.__xhTocScroll = upd; w.__xhTocScrollHost = host; }
+      }
+      upd();
     } catch (e) {}
   }
 
@@ -74,12 +97,12 @@
       if (view === "factConfirm") bindConfirmExtras();
       if (view === "create") bindCreateExtras();
       updateBrandColor();
-      initEditorialTabs();
+      initEditorialToc();
       return;
     }
     // frontend
     if (view === "frontHome") { app.innerHTML = renderFrontHome(); initBentoScroll(); initHeroCarousel(); }
-    else if (view === "detail") { app.innerHTML = wrapPhone(renderActivityPhone(getActivity(params.id)), true); initEditorialTabs(); }
+    else if (view === "detail") { app.innerHTML = wrapPhone(renderActivityPhone(getActivity(params.id)), true); initEditorialToc(); }
     else if (view === "signup") app.innerHTML = renderSignupPage(params.id);
     else if (view === "success") app.innerHTML = renderSuccess(params.id, params.signupId);
     else if (view === "mySignups") app.innerHTML = renderMySignups();
@@ -181,7 +204,7 @@
   }
   function refreshPreview() {
     const sc = $("#previewScreen");
-    if (sc && state.draft) sc.innerHTML = renderActivityPhone(state.draft);
+    if (sc && state.draft) { sc.innerHTML = renderActivityPhone(state.draft); initEditorialToc(); }
   }
   function updateAgeTag(el) {
     const tag = el && el.closest(".field") && el.closest(".field").querySelector(".auto-tag");
@@ -306,12 +329,72 @@
         }
         break;
       }
-      case "edTab": {
-        // v195 吸顶导航：平滑滚动到区块
-        const edT = el.dataset.target;
+      case "edToc": {
+        /* v196 目录抽屉：.phone-screen 是滚动容器，其内部 absolute 元素会随内容一起滚，
+           所以必须按 scrollTop / clientHeight 把遮罩+抽屉钉在当前可视区，而不是靠 CSS inset。 */
+        const edRoot = (typeof document !== "undefined") ? document.getElementById("xhTocRoot") : null;
+        if (!edRoot || !edRoot.classList) break;
+        const edSc = (typeof document !== "undefined") ? document.getElementById("previewScreen") : null;
+        if (edSc && edSc.style) {
+          edRoot.style.top = ((+edSc.scrollTop) || 0) + "px";
+          edRoot.style.height = (edSc.clientHeight || 720) + "px";
+          edSc.style.overflowY = "hidden"; // 锁背景滚动，避免抽屉打开时定位漂移
+        }
+        edRoot.classList.add("on");
+        const edDock = (typeof document !== "undefined") ? document.getElementById("xhDock") : null;
+        if (edDock && edDock.setAttribute) edDock.setAttribute("aria-expanded", "true");
+        break;
+      }
+      case "edTocClose": {
+        const edR2 = (typeof document !== "undefined") ? document.getElementById("xhTocRoot") : null;
+        if (edR2 && edR2.classList) edR2.classList.remove("on");
+        const edS2 = (typeof document !== "undefined") ? document.getElementById("previewScreen") : null;
+        if (edS2 && edS2.style) edS2.style.overflowY = "";
+        const edD2 = (typeof document !== "undefined") ? document.getElementById("xhDock") : null;
+        if (edD2 && edD2.setAttribute) edD2.setAttribute("aria-expanded", "false");
+        break;
+      }
+      case "edTocGo": {
+        // 目录项：先收抽屉，再平滑滚动到区段（缺目标 / 缺 scrollIntoView 一律安全退出）
+        const edT = (el && el.dataset) ? el.dataset.target : "";
+        const edR3 = (typeof document !== "undefined") ? document.getElementById("xhTocRoot") : null;
+        if (edR3 && edR3.classList) edR3.classList.remove("on");
+        const edS3 = (typeof document !== "undefined") ? document.getElementById("previewScreen") : null;
+        if (edS3 && edS3.style) edS3.style.overflowY = "";
         if (!edT || typeof document.querySelector !== "function") break;
         const edNode = document.querySelector(edT);
         if (edNode && edNode.scrollIntoView) { try { edNode.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e) { edNode.scrollIntoView(); } }
+        break;
+      }
+      case "edReviewSave": {
+        /* v196 活动评价：只写老板录入的真实评价。
+           ⚠️ 非虚构硬约定：平台绝不自动生成/补齐任何评价内容。 */
+        const rvA = viewingActivity() || (state.draft ? state.draft : null);
+        if (!rvA) { toast("找不到这场活动"); break; }
+        const rvVal = function (id) {
+          const n = (typeof document !== "undefined") ? document.getElementById(id) : null;
+          return (n && typeof n.value === "string") ? n.value.trim() : "";
+        };
+        const rvText = rvVal("edRvText");
+        if (!rvText) { toast("请先填写评价内容"); break; }
+        const rvStarsN = Math.max(1, Math.min(5, parseInt(rvVal("edRvStars"), 10) || 5));
+        if (!Array.isArray(rvA.reviews)) rvA.reviews = [];
+        rvA.reviews.unshift({ name: rvVal("edRvName") || "匿名用户", stars: rvStarsN, text: rvText, date: rvVal("edRvDate") || "" });
+        if (typeof upsert === "function") upsert(rvA);
+        saveState();
+        if (showDetailLikeView()) showView(state.view, state.params); else refreshPreview();
+        toast("已保存 1 条真实评价");
+        break;
+      }
+      case "edReviewDel": {
+        const rvD = viewingActivity() || (state.draft ? state.draft : null);
+        const rvIdx = parseInt((el && el.dataset) ? el.dataset.idx : "", 10);
+        if (!rvD || !Array.isArray(rvD.reviews) || !(rvIdx >= 0) || rvIdx >= rvD.reviews.length) break;
+        rvD.reviews.splice(rvIdx, 1);
+        if (typeof upsert === "function") upsert(rvD);
+        saveState();
+        if (showDetailLikeView()) showView(state.view, state.params); else refreshPreview();
+        toast("已删除该条评价");
         break;
       }
       case "operatorFromActivity": {

@@ -94,7 +94,7 @@ const pageHtml = t(() => renderActivityPage());
 rec("§七-6 活动详情工作区渲染出图文长页（xh-ed）", has(pageHtml, "xh-ed"), typeof pageHtml === "string" ? pageHtml.length : pageHtml);
 rec("§七-6 详情页含本活动标题", has(pageHtml, "赵公山轻装徒步"));
 rec("§七-6 详情页含 AI 自动完成摘要（事实/选图/角色）", has(pageHtml, "ap-meta"));
-rec("§七-6 详情页提供换版式 / 换风格", has(pageHtml, "regenLayout") && has(pageHtml, "regenStyle"));
+rec("§七-6 详情页只留一个「换一种排版」（换版式入口已收敛）", has(pageHtml, "regenStyle") && !has(pageHtml, "regenLayout"));
 rec("§七-6 详情页提供确认发布出口", has(pageHtml, "confirmPublishPage"));
 rec("§七-6 宣发文案降级为可选按钮", has(pageHtml, "operatorFromActivity"));
 rec("§七-6 未手动指定封面（AI 自动选最佳封面）", !!lib && lib.coverIndex !== undefined && !lib._coverManual, lib && lib.coverIndex);
