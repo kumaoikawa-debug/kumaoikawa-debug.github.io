@@ -2282,6 +2282,164 @@ function applyVisionBatch(map) {
     refund:    { prompt: "退款规则？（可留空用默认）", kind: "text", placeholder: "可留空" },
   };
   const GAP_PRIORITY = ["route", "meeting", "meetTime", "services", "price", "date", "place", "difficulty", "itinerary", "age", "limit", "days", "leaderInfo", "contact", "refund"];
+  /* ===== v190 事实建议引擎：能推断的绝不让老板打字 =====
+     来源优先级：① 本次一句话已解析（raw）② 俱乐部历史活动同类型众数 ③ 品牌资料 ④ 活动常规默认
+     每条建议带 src/label，UI 必须如实展示来源；老板一键采用，也可改写。 */
+  const WEEKDAY_CN = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+  function factHistPool() {
+    const st = (typeof state !== "undefined" && state) ? state : null;
+    if (!st) return [];
+    const out = [];
+    (st.history || []).forEach((x) => { if (x && typeof x === "object") out.push(x); });
+    (st.activities || []).forEach((x) => { if (x && typeof x === "object") out.push(x); });
+    return out;
+  }
+  function sameKindHist(a) {
+    const pool = factHistPool().filter((x) => x && x.id !== (a && a.id));
+    if (!pool.length) return [];
+    const k = pool.filter((x) => x.type && a && a.type && x.type === a.type);
+    return k.length >= 2 ? k : pool;
+  }
+  function modeRaw(list) {
+    const m = new Map();
+    (list || []).forEach((v) => {
+      const t = String(v == null ? "" : v).trim();
+      if (!t || /^(待定|待确认|missing)/i.test(t)) return;
+      m.set(t, (m.get(t) || 0) + 1);
+    });
+    let best = "", n = 0;
+    m.forEach((c, v) => { if (c > n) { n = c; best = v; } });
+    return n >= 2 ? best : (n === 1 && m.size === 1 ? best : best);
+  }
+  function upcomingWeekday(off) {
+    const d = new Date();
+    d.setDate(d.getDate() + ((off - d.getDay() + 7) % 7));
+    return `${d.getMonth() + 1}月${d.getDate()}日`;
+  }
+  function suggestDateFromRaw(raw) {
+    const r = String(raw || "");
+    if (/国庆|十一/.test(r)) return "国庆期间（请填写具体日期）";
+    if (/本周|这周|周六|周日|周末/.test(r)) return /周日|周末/.test(r) ? upcomingWeekday(0) : upcomingWeekday(6);
+    const m = r.match(/(\d{1,2})\s*月\s*(\d{1,2})\s*日?/);
+    if (m) return `${+m[1]}月${+m[2]}日`;
+    return "";
+  }
+  const FACT_SUGGEST = {
+    date: (a) => {
+      const v = suggestDateFromRaw(a.raw);
+      if (v) return { value: v, src: "raw", label: "按你这句话里的时间" };
+      return { value: upcomingWeekday(6), src: "rule", label: "默认下一个周六（" + upcomingWeekday(6) + "，可改）" };
+    },
+    meetTime: (a) => {
+      const h = modeRaw(sameKindHist(a).map((x) => x.meetTime));
+      if (h) return { value: h, src: "history", label: "按你的历史活动" };
+      const early = /高海拔|登山|越野|骑行|挑战/.test(String(a.type || "") + String(a.raw || ""));
+      return { value: early ? "07:00" : "08:00", src: "rule", label: early ? "长线常规出发时间" : "一日活动常规出发时间" };
+    },
+    meeting: (a) => {
+      const h = modeRaw(sameKindHist(a).map((x) => x.meeting));
+      if (h) return { value: h, src: "history", label: "按你的历史活动" };
+      const bd = (typeof state !== "undefined" && state && state.brand) ? state.brand : null;
+      if (bd && bd.address) return { value: bd.address, src: "brand", label: "按你的门店地址" };
+      return { value: "", src: "", label: "需你定（点一下候选即可）", chips: ["市区地铁站 A 口", "俱乐部门店", "客户指定地点"] };
+    },
+    price: (a) => {
+      if (a.priceTBD) return { value: "待定", src: "raw", label: "你已标注价格待定" };
+      const nums = sameKindHist(a).map((x) => Number(x.price)).filter((n) => n > 0);
+      if (nums.length) {
+        const avg = Math.max(10, Math.round((nums.reduce((s, n) => s + n, 0) / nums.length) / 10) * 10);
+        return { value: String(avg), src: "history", label: `按你的历史均价 ¥${avg}` };
+      }
+      return { value: "", src: "", label: "需你定（点一下候选即可）", chips: ["80", "128", "198", "免费"] };
+    },
+    services: (a) => {
+      const h = modeRaw(sameKindHist(a).map((x) => ((x.feeInclude || []).length ? x.feeInclude.join("、") : "")));
+      if (h) return { value: h, src: "history", label: "按你的历史活动" };
+      return { value: "专业领队、户外保险", src: "rule", label: "一日活动常规配置（请核对）" };
+    },
+    route: (a) => {
+      const m = String(a.raw || "").match(/([\u4e00-\u9fa5A-Za-z]{2,10})\s*[—\-–~至到]\s*([\u4e00-\u9fa5A-Za-z]{2,10})/);
+      if (m) return { value: m[1] + "—" + m[2], src: "raw", label: "按你这句话里的路线" };
+      const cands = [];
+      sameKindHist(a).forEach((x) => { if (x.route && cands.indexOf(x.route) < 0) cands.push(x.route); });
+      if (cands.length) return { value: "", src: "", label: "选一条你走过的路线", chips: cands.slice(0, 3) };
+      return { value: "", src: "", label: "路线系统无法替你决定，写一句就行", chips: [] };
+    },
+    difficulty: (a) => {
+      const d = (typeof inferDifficulty === "function") ? inferDifficulty(a) : "";
+      if (d) return { value: d, src: "rule", label: "按路线/海拔推断" };
+      return { value: "", src: "", label: "", chips: ["轻松", "适中", "进阶", "挑战"] };
+    },
+    age: (a) => {
+      const h = modeRaw(sameKindHist(a).map((x) => x.ageRange));
+      if (h) return { value: h, src: "history", label: "按你的历史活动" };
+      if (typeof isFamilyActivity === "function" && isFamilyActivity(a)) return { value: "5-12岁（需家长陪同）", src: "rule", label: "亲子活动常规" };
+      return { value: "", src: "", label: "" };
+    },
+    limit: (a) => {
+      const h = modeRaw(sameKindHist(a).map((x) => x.limit));
+      if (h) return { value: h, src: "history", label: "按你的历史活动" };
+      return { value: "20", src: "rule", label: "小团常规上限" };
+    },
+    days: (a) => ({ value: String(Number(a.days) || 1), src: "rule", label: "按行程推断" }),
+    leaderInfo: (a) => {
+      const h = modeRaw(sameKindHist(a).map((x) => x.leaderName));
+      if (h) return { value: h, src: "history", label: "按你的历史活动" };
+      return { value: "", src: "", label: "" };
+    },
+    contact: (a) => {
+      const p = (typeof state !== "undefined" && state && state.brand && state.brand.phone) || "";
+      if (p) return { value: p, src: "brand", label: "按你的品牌资料" };
+      return { value: "", src: "", label: "" };
+    },
+    refund: (a) => {
+      const h = modeRaw(sameKindHist(a).map((x) => x.notes));
+      if (h) return { value: h, src: "history", label: "按你的历史活动" };
+      return { value: "", src: "", label: "" };
+    },
+  };
+  function factSuggestionFor(a, key) {
+    const f = FACT_SUGGEST[key];
+    if (!f || !a) return null;
+    try { return f(a) || null; } catch (e) { return null; }
+  }
+  function suggestGapValue(a, key) { const s = factSuggestionFor(a, key); return (s && s.value) ? s.value : ""; }
+  function keyFactValue(a, key) {
+    switch (key) {
+      case "date": return a.date || a.dateMD || "";
+      case "meetTime": return a.meetTime || "";
+      case "meeting": return a.meeting || "";
+      case "price": return a.price != null ? String(a.price) : "";
+      case "services": return (a.feeInclude || []).length ? a.feeInclude.join("、") : "";
+      case "route": return a.route || "";
+      case "difficulty": return a.difficulty || "";
+      case "age": return a.ageRange || "";
+      case "limit": return a.limit ? String(a.limit) : "";
+      case "days": return a.days ? String(a.days) : "";
+      case "leaderInfo": return a.leaderName || "";
+      case "contact": return a.contact || "";
+      case "refund": return a.notes || "";
+      default: return "";
+    }
+  }
+  /* 一键采用：把「有建议且尚未填写」的关键事实一次写回活动，老板零输入也能生成完整详情页 */
+  function applyAllSuggestions(a, onlyEmpty) {
+    const applied = [];
+    Object.keys(FACT_SUGGEST).forEach((k) => {
+      if (onlyEmpty && keyFactValue(a, k)) return;
+      const v = suggestGapValue(a, k);
+      if (v) { applyBossFact(a, k, v); applied.push(k); }
+    });
+    return applied;
+  }
+  function countActionableGaps(a) {
+    const gaps = detectKeyGaps(a);
+    return {
+      total: gaps.length,
+      suggested: gaps.filter((g) => g.suggest && g.suggest.value).length,
+      needOwner: gaps.filter((g) => !(g.suggest && g.suggest.value)).length,
+    };
+  }
   function detectKeyGaps(a) {
     const reg = factRegistry(a);
     const need = reg.filter((f) => {
@@ -2291,7 +2449,8 @@ function applyVisionBatch(map) {
     });
     return need.map((f) => {
       const m = GAP_META[f.key] || { prompt: "请补充：" + f.label, kind: "text", placeholder: f.label };
-      return { key: f.key, label: f.label, status: f.status, confidence: f.confidence, value: f.value || "", prompt: m.prompt, kind: m.kind, placeholder: m.placeholder, inputmode: m.inputmode };
+      const sg = factSuggestionFor(a, f.key);
+      return { key: f.key, label: f.label, status: f.status, confidence: f.confidence, value: f.value || "", prompt: m.prompt, kind: m.kind, placeholder: m.placeholder, inputmode: m.inputmode, suggest: sg || null };
     }).sort((x, y) => GAP_PRIORITY.indexOf(x.key) - GAP_PRIORITY.indexOf(y.key));
   }
   function isPublishBlocked(a) { const chk = runPublishCheck(a); return !chk.ok; }
@@ -3604,6 +3763,28 @@ function applyVisionBatch(map) {
   function focusValue(src) { return PHOTO_FOCUS_CACHE.get(src) || { x: 50, y: 45 }; }
   function updateSmartFocus(src, focus) {
     const pos = `${focus.x}% ${focus.y}%`;
+    // v190：分析完成后回填图片真实比例，让「原比例展示(contain)」的容器等比例贴合图片，左右不再出现留白色块
+    if (focus && focus.ratio) {
+      const ar = Math.max(0.62, Math.min(2.6, Number(focus.ratio) || 0));
+      document.querySelectorAll("figure.xh-ed-fig[data-ar-auto]").forEach((fig) => {
+        const im = fig.querySelector("img");
+        if (im && im.getAttribute("src") === src) {
+          fig.style.setProperty("--ar", ar);
+          fig.classList.remove("s-tall", "s-wide", "s-square");
+          fig.classList.add(ar < 0.95 ? "s-tall" : (ar > 1.32 ? "s-wide" : "s-square"));
+          // 极端长图比例被收敛后，容器不再等于原图比例 → 撤掉 contain，避免重新露出留白
+          if (Math.abs(ar - Number(focus.ratio)) > 0.001 && fig.classList.contains("ph-safe")) {
+            fig.classList.remove("ph-safe");
+            const im2 = fig.querySelector("img");
+            if (im2) im2.style.objectFit = "cover";
+          }
+        }
+      });
+      document.querySelectorAll(".itin-day-photo[data-ar-auto]").forEach((box) => {
+        const im = box.querySelector("img");
+        if (im && im.getAttribute("src") === src) box.style.setProperty("--ar", ar);
+      });
+    }
     document.querySelectorAll("img[data-smart-img]").forEach((img) => {
       if (img.getAttribute("src") === src) img.style.objectPosition = pos;
     });
@@ -3619,7 +3800,7 @@ function applyVisionBatch(map) {
   }
   function analyzeImageFocus(src) {
     // P0-6：fallback 也携带归一化信号字段（缺省中性值），tagPhoto 才能稳定识别
-    const fallback = () => ({ x: 50, y: 45, orientation: "landscape", quality_score: 0.6, category: "未分析", emotion: "真实", subjects: [], focal_point: { x: 0.5, y: 0.45 }, safe_text_area: "top-right", recommended_use: ["story"], duplicate_group: null, simulated: true,
+    const fallback = () => ({ x: 50, y: 45, ratio: 1.5, orientation: "landscape", quality_score: 0.6, category: "未分析", emotion: "真实", subjects: [], focal_point: { x: 0.5, y: 0.45 }, safe_text_area: "top-right", recommended_use: ["story"], duplicate_group: null, simulated: true,
       avgLum: 128, sat: 0.2, edge: 10, blueRatio: 0.1, warmRatio: 0.15, skinRatio: 0, people_count: 0, motionScore: 0, pHash: null });
     return new Promise((resolve) => {
       const img = new Image();
@@ -3741,6 +3922,7 @@ function applyVisionBatch(map) {
     } catch (e) { phLo = 0; phHi = 0; }
     return {
       x: fx, y: fy,
+      ratio: Math.round(ratio * 1000) / 1000,
       category, orientation, emotion, subjects,
       quality_score: Math.round(quality * 100) / 100,
       focal_point: { x: Math.round(fx) / 100, y: Math.round(fy) / 100 },

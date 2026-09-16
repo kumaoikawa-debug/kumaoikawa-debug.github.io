@@ -5164,15 +5164,18 @@ body{
 .xh-ed-figs.three { grid-template-columns: 1fr 1fr; }
 .xh-ed-figs.three .xh-ed-fig:first-child { grid-column: 1 / -1; }
 .xh-ed-fig { margin: 0; }
-.xh-ed-fig img { width: 100%; display: block; border-radius: 14px; background: var(--line-2); }
-.xh-ed-figs.one .xh-ed-fig img { height: 280px; }
-.xh-ed-figs.two .xh-ed-fig img { height: 190px; }
-.xh-ed-figs.three .xh-ed-fig:first-child img { height: 240px; }
-.xh-ed-figs.three .xh-ed-fig:not(:first-child) img { height: 150px; }
+.xh-ed-fig img { width: 100%; height: auto; aspect-ratio: var(--ar, 4 / 3); display: block; border-radius: 14px; background: var(--line-2); object-fit: cover; }
+/* v190：容器比例 = 图片真实比例（--ar 由渲染层/分析层回填），竖图不再被塞进扁容器、左右不再露米色留白 */
+.xh-ed-fig.ph-safe img { object-fit: contain; background: #f3f1ec; }
+.xh-ed-figs.one .xh-ed-fig img { max-height: 580px; }
+.xh-ed-figs.two .xh-ed-fig img { max-height: 470px; }
+.xh-ed-figs.three .xh-ed-fig:first-child img { max-height: 500px; }
+.xh-ed-figs.three .xh-ed-fig:not(:first-child) img { max-height: 380px; }
+.xh-ed-figs.one .xh-ed-fig.s-tall { max-width: 100%; }
 /* P0-12：小图版式——三联缩略图，照片更小更密，配合画册/转化型密度 */
 .xh-ed-figs.thumbs { grid-template-columns: repeat(3, 1fr); }
-.xh-ed-figs.thumbs .xh-ed-fig img { height: 116px; }
-.xh-ed-figs.big .xh-ed-fig img { height: 360px; }
+.xh-ed-figs.thumbs .xh-ed-fig img { height: 116px; aspect-ratio: auto; object-fit: cover; }
+.xh-ed-figs.big .xh-ed-fig img { height: 360px; aspect-ratio: auto; object-fit: cover; }
 .xh-ed-fig figcaption { font-size: 11.5px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
 .xh-ed-paras { font-size: 14.5px; line-height: 1.95; color: var(--ink); }
 .xh-ed-paras p { margin: 0 0 12px; }
@@ -5193,6 +5196,7 @@ body{
 /* P0-9：行程每段按内容语义匹配到的图，渲染在对应 DAY 旁 */
 .itin-day-photos { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .itin-day-photo { width: 96px; height: 72px; border-radius: 10px; overflow: hidden; background: #eee; box-shadow: 0 1px 6px rgba(0,0,0,.08); }
+.itin-day-photo[data-ar-auto] img { object-fit: cover !important; }
 .itin-day-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .itin-day-photo.ph-safe img { object-fit: contain; background: #f3f1ec; }
 

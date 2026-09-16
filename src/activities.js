@@ -70,11 +70,26 @@
       + `<span class="dms-cur">${esc(imgLabel)}·${esc(structLabel)} ｜ ${esc(ang)}·${esc(densLabel)}</span>`
       + `</div>`;
   }
+  /* v190 图片比例自适应：容器宽高比跟随「图片真实比例」，竖图/横图/方图各得其形。
+     此前的固定高度(280/190/150px) + contain 会让竖图左右露出大片米色留白，这是老板反馈的「图片处理很差」。 */
+  function figAspect(src) {
+    const m = (typeof photoMeta === "function") ? photoMeta(src) : null;
+    const r = (m && m.ratio) ? Number(m.ratio) : 0;
+    if (r > 0) return Math.max(0.62, Math.min(2.6, r));
+    return 1.36; // 分析未完成前先按中性横构图渲染，避免竖图被先拉成横条再跳变
+  }
   function xhFig(a, i, cap) {
     const src = (a.photos || [])[i];
     if (!src) return "";
-    const contain = (typeof pagePhotoContain === "function") ? pagePhotoContain(src) : false; // P0-11 安全裁切：含人物/竖图关键景物/高风险图宁可留白也不裁坏主体
-    return `<figure class="xh-ed-fig"><img src="${src}" alt="" loading="lazy" style="object-position:${smartPos(src)};object-fit:${contain ? "contain" : "cover"}">${cap ? `<figcaption>${esc(cap)}</figcaption>` : ""}</figure>`;
+    const m = (typeof photoMeta === "function") ? photoMeta(src) : null;
+    const exact = !!(m && m.ratio);
+    const ar = figAspect(src);
+    const clamped = !!(exact && Math.abs(ar - Number(m.ratio)) > 0.001); // 极端长图比例被收敛，容器已不等于原图比例
+    let contain = (typeof pagePhotoContain === "function") ? pagePhotoContain(src) : false; // P0-11 安全裁切：含人物/高风险图宁可留白也不裁坏主体
+    // 只有「容器比例 === 图片真实比例」时才允许 contain：否则必然露出留白色块 → 改用 cover 满幅
+    if (contain && (!exact || clamped)) contain = false;
+    const shape = ar < 0.95 ? "tall" : (ar > 1.32 ? "wide" : "square");
+    return `<figure class="xh-ed-fig s-${shape}${contain ? " ph-safe" : ""}" style="--ar:${ar}" data-ar-auto><img src="${esc(src)}" alt="" loading="lazy" style="object-position:${smartPos(src)};object-fit:${contain ? "contain" : "cover"}">${cap ? `<figcaption>${esc(cap)}</figcaption>` : ""}</figure>`;
   }
   function renderActivityEditorial(a) {
     if (!a) return "";
@@ -157,7 +172,7 @@
     const itinHtml = days.length ? `<div class="dsec"><div class="dsec-h"><h3>详细行程</h3></div>${itinContent}<div class="itin-timeline-wrap">${days.map((d, i) => {
       const dayNo = i + 1;
       const dp = (itinPhotos && itinPhotos.byDay && itinPhotos.byDay[dayNo]) ? itinPhotos.byDay[dayNo] : [];
-      const dpHtml = dp.length ? `<div class="itin-day-photos">${dp.slice(0, 2).map((p) => { const c = (typeof pagePhotoContain === "function") ? pagePhotoContain(p.src) : false; return `<div class="itin-day-photo${c ? " ph-safe" : ""}"><img data-smart-img src="${p.src}" alt="" style="object-fit:${c ? "contain" : "cover"}"></div>`; }).join("")}</div>` : "";
+      const dpHtml = dp.length ? `<div class="itin-day-photos">${dp.slice(0, 2).map((p) => { const c = (typeof pagePhotoContain === "function") ? pagePhotoContain(p.src) : false; return `<div class="itin-day-photo${c ? " ph-safe" : ""}" data-ar-auto><img data-smart-img src="${p.src}" alt="" style="object-fit:${c ? "contain" : "cover"}"></div>`; }).join("")}</div>` : "";
       return `<div class="xh-ed-day"><div class="xh-ed-day-h"><span>DAY</span><b>${dayNo}</b>${d.label ? " · " + esc(d.label) : ""}</div><div class="timeline">${(d.items || []).filter((t) => t && (t.time || t.text)).map((t) => `<div class="tl-item"><div class="tl-node"></div><div class="t">${esc(t.time)}</div><div class="d">${esc(t.text)}</div></div>`).join("")}</div>${dpHtml}</div>`;
     }).join("")}</div></div>` : "";
 

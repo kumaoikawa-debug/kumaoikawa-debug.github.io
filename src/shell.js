@@ -1509,6 +1509,11 @@
       case "publishReset": { state.xf = null; showView(state.view); break; }
       case "recruitGen": { await runRecruitGen(); break; }
       case "confirmFactsToPage": { await confirmFactsToPage(); break; }
+      case "useGapChip": {
+        const el = document.getElementById("gap_" + (d.key || ""));
+        if (el) { el.value = d.val || ""; el.focus(); }
+        break;
+      }
       case "dropConfirmPhoto": {
         if (!state.draft) break;
         state.draft.photos = (state.draft.photos || []).filter((_, i) => i !== (+d.i));
@@ -1726,6 +1731,8 @@
       const key = el.id.replace("gap_", "");
       if (el.value && el.value.trim()) applyBossFact(fa, key, el.value);
     });
+    // v190：老板什么都没改也要能生成 —— 仍为空的关键事实用 AI 建议兜底补上
+    try { if (typeof applyAllSuggestions === "function") applyAllSuggestions(fa, true); } catch (e) { /* 兜底不阻断生成 */ }
     // 2) AI 补齐派生内容（章节 / 行程 / 文案）。全部幂等，失败不阻断落库。
     try {
       if (typeof syncDerived === "function") syncDerived(fa);
@@ -1839,33 +1846,48 @@
     });
   }
 
-  // P0-1：一句话创建后的「老板确认卡」——AI 已完成约 80%，只让老板补关键事实
+  // P0-1 / v190「老板过目卡」：AI 已把能推断的事实全部预填，老板扫一眼即可生成，不必逐字段打字
   function renderFactConfirm() {
     const a = state.draft;
     if (!a) { showView("dashboard"); return ""; }
     const gaps = detectKeyGaps(a);
-    const missingGaps = gaps.filter((g) => g.status === "missing");
-    const inferredGaps = gaps.filter((g) => g.status === "inferred");
+    const suggested = gaps.filter((g) => g.suggest && g.suggest.value);
+    const needOwner = gaps.filter((g) => !(g.suggest && g.suggest.value));
     const confirmed = confirmedFacts(a);
-    const doneList = confirmed.slice(0, 10).map((f) => `<li><span class="gc-done-k">${esc(f.label)}</span><b>${esc(f.value)}</b></li>`).join("");
+    const doneList = confirmed.slice(0, 12).map((f) => `<li><span class="gc-done-k">${esc(f.label)}</span><b>${esc(f.value)}</b></li>`).join("");
     const ph = a.photos || []; // §七：照片在「一句话创建」这一步就能传，不需要另开模块
     const gapRow = (g, i) => {
-      const tag = g.status === "inferred" ? `<span class="gc-tag gc-tag-inf">系统已推测·待确认</span>` : `<span class="gc-tag gc-tag-miss">缺失</span>`;
+      const sg = g.suggest || {};
+      const pre = sg.value || "";
+      const tag = pre
+        ? `<span class="gc-tag gc-tag-ai">AI 建议 · ${esc(sg.label || "已预填")}</span>`
+        : `<span class="gc-tag gc-tag-need">${esc(sg.label || "需你补一句")}</span>`;
+      const chips = (sg.chips || []).length
+        ? `<div class="gc-chips">${(sg.chips || []).map((c) => `<button type="button" class="gc-chip" data-action="useGapChip" data-key="${esc(g.key)}" data-val="${esc(c)}">${esc(c)}</button>`).join("")}</div>`
+        : "";
       const input = g.kind === "textarea"
-        ? `<textarea class="input" id="gap_${g.key}" rows="2" placeholder="${esc(g.placeholder || "")}">${esc(g.value || "")}</textarea>`
-        : `<input class="input" id="gap_${g.key}" placeholder="${esc(g.placeholder || "")}" ${g.inputmode ? `inputmode="${g.inputmode}"` : ""} value="${esc(g.value || "")}">`;
+        ? `<textarea class="input" id="gap_${g.key}" rows="2" placeholder="${esc(g.placeholder || "")}">${esc(pre)}</textarea>`
+        : `<input class="input" id="gap_${g.key}" placeholder="${esc(g.placeholder || "")}" ${g.inputmode ? `inputmode="${g.inputmode}"` : ""} value="${esc(pre)}">`;
       return `<div class="gc-row">
         <div class="gc-row-head"><span class="gc-idx">${i + 1}</span><span class="gc-label">${esc(g.label)}</span>${tag}</div>
         <div class="gc-prompt">${esc(g.prompt)}</div>
-        ${input}
+        ${input}${chips}
       </div>`;
     };
-    const missingHtml = missingGaps.length ? missingGaps.map(gapRow).join("") : `<div class="gc-empty">✅ 关键事实已齐全</div>`;
-    const inferredHtml = inferredGaps.length ? `<div class="gc-subtitle">系统已为你推测，确认或改正即可</div>` + inferredGaps.map(gapRow).join("") : "";
+    const head = needOwner.length
+      ? `AI 已替你填好 <b>${suggested.length}</b> 项，还剩 <b>${needOwner.length}</b> 项点一下候选就行`
+      : `AI 已把关键事实全部替你填好了`;
+    const body = gaps.length
+      ? `<div class="gc-block">
+        <div class="gc-block-head">${gaps.length} 项请你过目<b class="gc-hint">已按你的历史活动/品牌资料预填，不改也能直接生成</b></div>
+        ${gaps.map(gapRow).join("")}
+      </div>`
+      : `<div class="gc-block"><div class="gc-block-head">关键事实已齐全</div><div class="gc-empty">✅ 可以直接生成</div></div>`;
     return `<div class="card card-pad gc-card">
       <style>
         .gc-card{max-width:720px;margin:18px auto}
         .gc-head{font-size:20px;font-weight:800;margin:6px 0 4px;line-height:1.4}
+        .gc-head b{color:var(--primary,#c0392b)}
         .gc-sub{color:#888;font-size:13px;margin:0 0 14px}
         .gc-done{background:#f7faf7;border:1px solid #e3efe3;border-radius:12px;padding:12px 14px;margin-bottom:16px}
         .gc-done-title{font-size:12px;font-weight:700;color:#2e7d4f;margin-bottom:6px;letter-spacing:.5px}
@@ -1875,28 +1897,28 @@
         .gc-done-k{color:#2e7d4f;margin-right:4px}
         .gc-block{background:#fffaf7;border:1px solid #f3e0d2;border-radius:14px;padding:16px;margin-bottom:14px}
         .gc-block-head{font-size:15px;font-weight:800;margin-bottom:12px;color:#b5532b}
-        .gc-block-head b{font-size:20px;color:#c0392b}
-        .gc-subtitle{font-size:12px;font-weight:700;color:#888;margin:10px 0 8px}
+        .gc-hint{font-weight:400;font-size:12px;color:#a08b7d;margin-left:6px}
         .gc-row{margin-bottom:14px}
-        .gc-row-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+        .gc-row-head{display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap}
         .gc-idx{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:var(--primary,#c0392b);color:#fff;font-size:12px;font-weight:700}
         .gc-label{font-weight:700;font-size:15px}
         .gc-tag{font-size:11px;padding:1px 8px;border-radius:20px;font-weight:700}
         .gc-tag-miss{background:#fdecea;color:#c0392b}
         .gc-tag-inf{background:#fff4e0;color:#b9770a}
+        .gc-tag-ai{background:#eef4ff;color:#3f6aa8}
+        .gc-tag-need{background:#fdecea;color:#c0392b}
         .gc-prompt{font-size:12.5px;color:#777;margin:0 0 6px}
+        .gc-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+        .gc-chip{border:1px solid #e6dcd2;background:#fff;border-radius:20px;padding:4px 12px;font-size:12.5px;color:#555;cursor:pointer}
+        .gc-chip:hover{border-color:var(--primary,#c0392b);color:var(--primary,#c0392b)}
         .gc-empty{color:#2e7d4f;font-weight:700;padding:6px 0}
         .gc-actions{display:flex;gap:10px;margin-top:6px}
       </style>
       <div class="eyebrow">AI 已生成内容</div>
-      <div class="gc-head">AI 已完成约 80%，只需你确认关键事实</div>
-      <p class="gc-sub">我们基于你的一句话，自动生成了标题、正文文案、卖点、装备建议等。下面这几项关键信息系统无法替你决定——补全后即可进入编辑器微调或直接发布。</p>
-      ${doneList ? `<div class="gc-done"><div class="gc-done-title">AI 已确认的内容（${confirmed.length} 项）</div><ul class="gc-done-list">${doneList}</ul></div>` : ""}
-      <div class="gc-block">
-        <div class="gc-block-head">${missingGaps.length ? `还差 <b>${missingGaps.length}</b> 项关键事实` : "关键事实已齐全"}</div>
-        ${missingHtml}
-        ${inferredHtml}
-      </div>
+      <div class="gc-head">${head}</div>
+      <p class="gc-sub">标题、正文、行程、装备建议、费用说明已由 AI 依据你的那句话 + 你的历史活动生成。下面的建议值都预填好了，<b>不改也能直接出图文详情页</b>。</p>
+      ${doneList ? `<div class="gc-done"><div class="gc-done-title">AI 已自动完成（${confirmed.length} 项）</div><ul class="gc-done-list">${doneList}</ul></div>` : ""}
+      ${body}
       <div class="gc-block" style="background:#f3f8f4;border-color:#d5e8da">
         <div class="gc-block-head" style="color:#2e7d4f">活动照片 / 旧资料（可选）</div>
         <p class="gc-sub" style="margin:0 0 10px">照片直接放这里就行：AI 会自动挑图、自动配到对应段落、自动排版，并自动规避人物被裁坏——<b>不需要你手动选图/配图</b>。</p>
@@ -1907,10 +1929,10 @@
         <p class="tiny muted" style="margin:8px 0 0">${ph.length ? `已上传 ${ph.length} 张，生成时自动筛选与分配角色。` : "不传照片也能生成，页面会自动使用克制的纯文字版式。"}旧文案可直接粘贴在最上面的输入框。</p>
       </div>
       <div class="gc-actions">
-        <button class="btn btn-primary btn-lg" data-action="confirmFactsToPage">${ICON("sparkles")} ${missingGaps.length ? "补全并生成图文详情页" : "一键生成图文详情页"}</button>
+        <button class="btn btn-primary btn-lg" data-action="confirmFactsToPage">${ICON("sparkles")} 一键生成图文详情页</button>
         <button class="btn btn-ghost" data-action="confirmFactsContinue">先看内容策略</button>
       </div>
-      <p class="tiny muted" style="margin-top:10px">生成后可直接「换版式 / 换风格」，满意再确认发布；也可以随时回到编辑器逐字段微调。</p>
+      <p class="tiny muted" style="margin-top:10px">生成后可直接「换版式 / 换风格」，满意再确认发布；确实想逐字段微调时再进编辑器。</p>
     </div>`;
   }
   function rerenderEditor() {
