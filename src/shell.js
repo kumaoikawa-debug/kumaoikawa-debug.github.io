@@ -66,57 +66,78 @@
     window.scrollTo(0, 0);
   }
 
-  function bindEditorExtras() {
+  /* ⚠️ 照片上传：全站只有「一个」文件输入 —— index/admin/front.html 里的全局 #photoInput。
+     编辑页与宣发中心**共用同一个 DOM 节点**，但语义不同（编辑页写 state.draft.photos，
+     宣发中心写 publishState().photos）。
+     旧实现让两个 bind 函数各自用 `_bound` + addEventListener 去抢这个节点：谁先被访问谁绑上，
+     `_bound` 之后恒为 true → 后到的视图再也绑不上，上传的照片会写进**另一个草稿**，
+     用户看到的就是「点了上传、缩略图区永远空白」。
+     现改为 `onchange` **赋值**（覆盖而非累积），且每次渲染都按当前视图重新决定语义。 */
+  function installPhotoInput(kind) {
     const inp = $("#photoInput");
-    if (inp && !inp._bound) {
-      inp._bound = true;
-      inp.addEventListener("change", (e) => {
-        const files = Array.from(e.target.files);
-        let pending = files.length;
-        if (!pending) return;
-        files.forEach((f) => {
-          const r = new FileReader();
-          r.onload = (ev) => {
-            const src = ev.target.result;
-            analyzeImageFocus(src).then((focus) => {
-              PHOTO_FOCUS_CACHE.set(src, focus);
-              if (state.draft) state.draft.photos.push(src);
-              if (--pending === 0) {
-                if (state.draft && !state.draft._coverManual) state.draft.coverIndex = bestCoverIndex(state.draft);
-                if (state.draft) { $("#thumbsWrap").innerHTML = thumbsHtml(state.draft); refreshPreview(); }
-                e.target.value = "";
-              }
-            });
-          };
-          r.readAsDataURL(f);
-        });
-      });
-    }
-  }
-  function bindFabuExtras() {
-    const inp = $("#photoInput");
-    if (inp && !inp._bound) {
-      inp._bound = true;
-      inp.addEventListener("change", (e) => {
+    if (!inp) return;
+    if (kind === "fabu") {
+      inp.onchange = (e) => {
         const files = Array.from(e.target.files || []);
         if (!files.length) return;
         let pending = files.length;
-        files.forEach((f) => {
-          const r = new FileReader();
-          r.onload = (ev) => {
-            const src = ev.target.result;
-            (typeof analyzeImageFocus === "function" ? analyzeImageFocus(src) : Promise.resolve(null)).then((focus) => {
-              if (typeof PHOTO_FOCUS_CACHE !== "undefined" && focus) PHOTO_FOCUS_CACHE.set(src, focus);
-              const xf = publishState();
-              xf.photos = xf.photos || [];
-              xf.photos.push(src);
-              if (--pending === 0) showView(state.view);
-            });
-          };
-          r.readAsDataURL(f);
-        });
-      });
+        const done = () => { if (--pending === 0) { e.target.value = ""; showView(state.view); } };
+        files.forEach((f) => readPhotoFile(f, (src) => {
+          const xf = publishState();
+          xf.photos = xf.photos || [];
+          xf.photos.push(src);
+        }, done));
+      };
+      return;
     }
+    inp.onchange = (e) => {
+      const files = Array.from(e.target.files || []);
+      if (!files.length) return;
+      let pending = files.length;
+      const done = () => {
+        if (--pending === 0) {
+          if (state.draft && !state.draft._coverManual) state.draft.coverIndex = bestCoverIndex(state.draft);
+          const tw = $("#thumbsWrap");
+          if (tw && state.draft) tw.innerHTML = thumbsHtml(state.draft);
+          refreshPreview();
+          if (typeof saveState === "function") saveState();
+          e.target.value = "";
+        }
+      };
+      files.forEach((f) => readPhotoFile(f, (src) => { if (state.draft) state.draft.photos.push(src); }, done));
+    };
+  }
+  /* 读图 + 视觉分析，**保证 done() 恰好被调用一次**。
+     旧实现只有 FileReader.onload → analyzeImageFocus()（其内部只有 img.onload，
+     既无 img.onerror 也无超时）：任何一张图解码失败，pending 就永远减不到 0，
+     整批照片的缩略图刷新被永久卡住 —— 这是「上传没反应」的另一半原因。 */
+  function readPhotoFile(file, push, done) {
+    let called = false;
+    const finish = () => { if (!called) { called = true; done(); } };
+    const r = new FileReader();
+    r.onerror = () => { toast("「" + (file.name || "这张照片") + "」读取失败，已跳过"); finish(); };
+    r.onload = (ev) => {
+      const src = ev.target.result;
+      const timer = setTimeout(() => {
+        if (called) return;
+        toast("「" + (file.name || "这张照片") + "」解析超时，已按普通照片放入");
+        push(src); finish();
+      }, 8000);
+      let p;
+      try { p = (typeof analyzeImageFocus === "function") ? analyzeImageFocus(src) : Promise.resolve(null); }
+      catch (err) { p = Promise.resolve(null); }
+      p.then((focus) => {
+        clearTimeout(timer);
+        if (called) return;
+        if (focus && typeof PHOTO_FOCUS_CACHE !== "undefined") PHOTO_FOCUS_CACHE.set(src, focus);
+        push(src); finish();
+      }).catch(() => { clearTimeout(timer); if (called) return; push(src); finish(); });
+    };
+    r.readAsDataURL(file);
+  }
+  function bindEditorExtras() { installPhotoInput("editor"); }
+  function bindFabuExtras() {
+    installPhotoInput("fabu");
     // live bind custom recap fields so re-render does not lose typed values
     ["customTitle", "customDate", "customPlace", "customType", "customSignups", "customLeader"].forEach((k) => {
       const el = document.querySelector(`[data-xf="${k}"]`);
@@ -385,7 +406,24 @@
         toast("已载入历史活动，请更新日期与价格"); showView("editor"); break;
       }
       case "upload": { const inp = $("#photoInput"); if (inp) inp.click(); break; }
-      case "delPhoto": { if (state.draft) { state.draft.photos.splice(+d.i, 1); $("#thumbsWrap").innerHTML = thumbsHtml(state.draft); refreshPreview(); } break; }
+      case "delPhoto": {
+        // 编辑页删 draft.photos；宣发中心删宣发草稿 —— 两边共用同一个 data-action，
+        // 必须按 state.view 分流，否则会删错数组（或直接没反应）。
+        if (state.view === "editor" || state.view === "create") {
+          if (state.draft) {
+            state.draft.photos.splice(+d.i, 1);
+            const tw = $("#thumbsWrap");
+            if (tw) tw.innerHTML = thumbsHtml(state.draft);
+            refreshPreview();
+          }
+        } else {
+          const xf = publishState();
+          xf.photos = (xf.photos || []).filter((_, i) => i !== (+d.i));
+          xf.photoOverrides = { cover: null, excluded: {} };
+          showView(state.view);
+        }
+        break;
+      }
       case "toggleServ": { if (state.draft) { state.draft[d.key] = !state.draft[d.key]; confirmFact(state.draft, "services"); syncDerived(state.draft); rerenderEditor(); } break; }
       case "toggleActOpt": {
         if (!state.draft) break;
@@ -1414,13 +1452,8 @@
         showView(state.view);
         break;
       }
-      case "delPhoto": {
-        const xf = publishState();
-        xf.photos = (xf.photos || []).filter((_, i) => i !== (+d.i));
-        xf.photoOverrides = { cover: null, excluded: {} }; // 索引已变，清空轻确认覆盖
-        showView(state.view);
-        break;
-      }
+      /* case "delPhoto" 已在上方统一实现（按 state.view 分流）——
+         同一个 switch 里重复的 case 标签是**死代码**，留着只会让人误以为宣发侧另有实现。 */
       case "setCover": {
         const xf = publishState();
         xf.photoOverrides = xf.photoOverrides || { cover: null, excluded: {} };
@@ -1819,50 +1852,39 @@
   /* 第 1 步「一句话创建」的照片上传：先暂存，生成活动时带进 draft.photos（§七：输入一句话 → 上传图片） */
   function bindCreateExtras() {
     const inp = $("#createPhotoInput");
-    if (!inp || inp._bound) return;
-    inp._bound = true;
-    inp.addEventListener("change", (e) => {
+    if (!inp) return;
+    // v192：改用 onchange 赋值 + readPhotoFile（含 onerror/超时兜底），
+    // 与全局 #photoInput 同一套语义，避免「某张图解码失败 → pending 永不归零 → 点了没反应」。
+    inp.onchange = (e) => {
       const files = Array.from(e.target.files || []);
       if (!files.length) return;
       let pending = files.length;
       state._pendingPhotos = state._pendingPhotos || [];
-      files.forEach((f) => {
-        const r = new FileReader();
-        r.onload = (ev) => {
-          const src = ev.target.result;
-          (typeof analyzeImageFocus === "function" ? analyzeImageFocus(src) : Promise.resolve(null)).then((focus) => {
-            if (typeof PHOTO_FOCUS_CACHE !== "undefined" && focus) PHOTO_FOCUS_CACHE.set(src, focus);
-            state._pendingPhotos.push(src);
-            if (--pending === 0) { e.target.value = ""; showView("create"); }
-          });
-        };
-        r.readAsDataURL(f);
-      });
-    });
+      const done = () => { if (--pending === 0) { e.target.value = ""; showView("create"); } };
+      files.forEach((f) => readPhotoFile(f, (src) => { state._pendingPhotos.push(src); }, done));
+    };
   }
 
   /* 确认卡的照片上传：直接写进 draft.photos，生成时由 AI 自动筛选/配图/排版 */
   function bindConfirmExtras() {
     const inp = $("#confirmPhotoInput");
-    if (!inp || inp._bound) return;
-    inp._bound = true;
-    inp.addEventListener("change", (e) => {
+    if (!inp) return;
+    // v192：同 bindCreateExtras —— 统一走 readPhotoFile，读图失败/超时不会卡死确认卡。
+    inp.onchange = (e) => {
       const files = Array.from(e.target.files || []);
       if (!files.length) return;
       let pending = files.length;
-      files.forEach((f) => {
-        const r = new FileReader();
-        r.onload = (ev) => {
-          const src = ev.target.result;
-          (typeof analyzeImageFocus === "function" ? analyzeImageFocus(src) : Promise.resolve(null)).then((focus) => {
-            if (typeof PHOTO_FOCUS_CACHE !== "undefined" && focus) PHOTO_FOCUS_CACHE.set(src, focus);
-            if (state.draft) { state.draft.photos = state.draft.photos || []; state.draft.photos.push(src); }
-            if (--pending === 0) { e.target.value = ""; showView("factConfirm"); }
-          });
-        };
-        r.readAsDataURL(f);
-      });
-    });
+      const done = () => {
+        if (--pending === 0) {
+          e.target.value = "";
+          if (typeof saveState === "function") saveState();
+          showView("factConfirm");
+        }
+      };
+      files.forEach((f) => readPhotoFile(f, (src) => {
+        if (state.draft) { state.draft.photos = state.draft.photos || []; state.draft.photos.push(src); }
+      }, done));
+    };
   }
 
   // P0-1 / v190「老板过目卡」：AI 已把能推断的事实全部预填，老板扫一眼即可生成，不必逐字段打字

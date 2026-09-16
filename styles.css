@@ -5172,6 +5172,14 @@ body{
 .xh-ed-figs.three .xh-ed-fig:first-child img { max-height: 500px; }
 .xh-ed-figs.three .xh-ed-fig:not(:first-child) img { max-height: 380px; }
 .xh-ed-figs.one .xh-ed-fig.s-tall { max-width: 100%; }
+/* v192 照片驱动：单图章节「通栏出血」——去掉两侧 16px 内边距与圆角，让照片成为绝对主视觉。
+   只改宽度，不动 --ar / object-fit，故 v190「容器比例 == 图片真实比例」的约定不受影响；
+   原比例(contain / .ph-safe)展示的图仍保留内缩，避免通栏出现大片色带。 */
+.xh-ed-figs.one .xh-ed-fig:not(.ph-safe) { margin: 0 -16px; }
+.xh-ed-figs.one .xh-ed-fig:not(.ph-safe) img { border-radius: 0; }
+/* v192 结尾「现场影像」同样通栏，收尾形成一面照片墙 */
+.xh-ed-gallery .photo-layout { margin: 0 -16px; }
+.xh-ed-gallery .photo-layout .ph { border-radius: 0; }
 /* P0-12：小图版式——三联缩略图，照片更小更密，配合画册/转化型密度 */
 .xh-ed-figs.thumbs { grid-template-columns: repeat(3, 1fr); }
 .xh-ed-figs.thumbs .xh-ed-fig img { height: 116px; aspect-ratio: auto; object-fit: cover; }

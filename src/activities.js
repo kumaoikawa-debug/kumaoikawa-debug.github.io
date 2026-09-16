@@ -91,6 +91,8 @@
     const shape = ar < 0.95 ? "tall" : (ar > 1.32 ? "wide" : "square");
     return `<figure class="xh-ed-fig s-${shape}${contain ? " ph-safe" : ""}" style="--ar:${ar}" data-ar-auto><img src="${esc(src)}" alt="" loading="lazy" style="object-position:${smartPos(src)};object-fit:${contain ? "contain" : "cover"}">${cap ? `<figcaption>${esc(cap)}</figcaption>` : ""}</figure>`;
   }
+  /* v192：结尾「现场影像」图廊的照片上限——保证照片驱动，但不做无限照片墙 */
+  function galleryMaxFor(n) { return (n || 0) >= 16 ? 9 : ((n || 0) >= 9 ? 6 : 4); }
   function renderActivityEditorial(a) {
     if (!a) return "";
     if (typeof setPagePhotoIntel === "function") setPagePhotoIntel(a);
@@ -113,12 +115,15 @@
     const usedSet = new Set([coverIdx]);
     let capIdx = 1;
     const nextCap = () => { const c = caps[capIdx]; capIdx++; return (c && String(c).trim()) ? String(c).trim() : ""; };
-    // 长图文节奏：图多时预留末尾一组「现场影像」，不把照片全塞进章节（先预占，章节取图时自然跳过）
-    const reserveIdx = [];
-    if (photos.length >= 8) {
-      for (let i = photos.length - 1; i >= 0 && reserveIdx.length < 3; i--) { if (i === coverIdx) continue; reserveIdx.push(i); }
-      reserveIdx.forEach((i) => usedSet.add(i));
-    }
+    /* v192 照片驱动：改为「每节至少 1 张 → 余图补给章节第二/三张 → 剩下的进结尾图廊」。
+       旧逻辑是「照片 ≥8 才预留末尾 3 张给图廊」，叠加封面后 8 张图只剩 4 张可分，
+       被前两个章节（每节 2 张）吃光 → 后 6 节全无图，整页退化成纯文字。 */
+    const planImgCfg = (typeof EDITORIAL_IMG !== "undefined" && EDITORIAL_IMG[variant.img]) || { secCount: 2 };
+    const photoPlan = (typeof planEditorialPhotoCaps === "function")
+      ? planEditorialPhotoCaps(photos.length, outline, coverIdx, planImgCfg.secCount, galleryMaxFor(photos.length))
+      : { caps: {}, reserveN: 0, pool: [] };
+    const reserveIdx = photoPlan.pool.slice(Math.max(0, photoPlan.pool.length - photoPlan.reserveN));
+    reserveIdx.forEach((i) => usedSet.add(i));
 
     // 数据条（事实层）
     const kvs = [];
@@ -133,7 +138,7 @@
 
     // 图文故事：每节 = 编号 + 标题 + 图片匹配/组合 + 每段文案（取图数量/图种由变体 img 结构决定）
     const secHtml = outline.map((sec) => {
-      const idxs = (typeof editorialPhotosFor === "function") ? editorialPhotosFor(a, sec, usedSet) : [];
+      const idxs = (typeof editorialPhotosFor === "function") ? editorialPhotosFor(a, sec, usedSet, (photoPlan.caps && photoPlan.caps[sec.key]) || sec.imgCount) : [];
       const fcls = idxs.length === 1 ? "one" : (idxs.length === 2 ? "two" : (idxs.length >= 3 ? "three" : ""));
       const kindCls = sec.imgKind ? " figs-" + sec.imgKind : "";
       let figs = "";

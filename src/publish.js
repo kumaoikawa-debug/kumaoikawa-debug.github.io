@@ -1104,6 +1104,17 @@ function applyVisionBatch(map) {
 
   // —— 难度字段清洗：AI 在缺字段时常按提示词返回字面 "missing"，必须过滤，否则详情页会显示 missing ——
   const DIFFICULTY_VALID = ["轻松", "适中", "进阶", "挑战", "专业"];
+  // AI 在缺字段时会把字面量 "missing"/"null" 当值返回（difficulty 已单独清洗）。
+  // 其它自由文本事实字段同样要洗，否则详情页会渲染出「适合missing」这类脏文案。
+  const AI_SENTINEL = /^(missing|undefined|null|nan|none|n\/a|n\.a\.?|待确认|待机构确认|未知|不详|暂无|无|-|—|\/)$/i;
+  function cleanFactText(v, maxLen) {
+    if (v == null) return "";
+    if (typeof v === "number") return isFinite(v) ? String(v) : "";
+    let s = String(v).trim();
+    if (!s || AI_SENTINEL.test(s)) return "";
+    if (maxLen && s.length > maxLen) s = s.slice(0, maxLen);
+    return s;
+  }
   function cleanDifficulty(d) {
     if (d == null) return "";
     d = String(d).trim();
@@ -1149,16 +1160,16 @@ function applyVisionBatch(map) {
       a.contentDirection = 0;
       a.contentStrategy = a.contentDirections[0];
     }
-    if (json.type) a.type = json.type;
-    if (json.place) a.place = json.place;
+    if (json.type) a.type = cleanFactText(json.type, 12) || a.type;
+    if (json.place) a.place = cleanFactText(json.place, 24) || a.place;
     if (json.days) a.days = +json.days;
-    if (json.startDate || json.date) { const d = json.startDate || json.date; a.date = d; a.dateMD = toDateMD(d); }
+    if (json.startDate || json.date) { const d = cleanFactText(json.startDate || json.date, 24) || (json.startDate || json.date); a.date = d; a.dateMD = toDateMD(d); }
     if (json.price != null) a.price = +json.price;
-    if (json.meeting) a.meeting = json.meeting;
-    if (json.meetTime) a.meetTime = json.meetTime;
-    if (json.returnTime) a.returnTime = json.returnTime;
-    if (json.transport) a.transport = json.transport;
-    if (json.leader) a.leaderName = json.leader;
+    if (json.meeting) a.meeting = cleanFactText(json.meeting, 30) || a.meeting;
+    if (json.meetTime) a.meetTime = cleanFactText(json.meetTime, 16) || a.meetTime;
+    if (json.returnTime) a.returnTime = cleanFactText(json.returnTime, 16) || a.returnTime;
+    if (json.transport) a.transport = cleanFactText(json.transport, 40) || a.transport;
+    if (json.leader) a.leaderName = cleanFactText(json.leader, 20) || a.leaderName;
     // 首次 AI 生成时，把日期/价格同步为默认团期
     if (a.date && (!a.departures || !a.departures.length)) {
       const d = departureFromDate(a.date, a.price);
@@ -1168,7 +1179,10 @@ function applyVisionBatch(map) {
     }
     if (json.limit != null) a.limit = +json.limit;
     if (json.limitUnit) a.limitUnit = json.limitUnit;
-    if (json.ageRange) { a.ageRange = json.ageRange; const mm = String(json.ageRange).match(/(\d{1,2})\s*[-—~至到]\s*(\d{1,2})/); if (mm) { a.ageFrom = +mm[1]; a.ageTo = +mm[2]; } }
+    // 年龄：AI 缺字段常返回字面 "missing"，洗掉后视为「未确认」，绝不进页面
+    const aiAge = cleanFactText(json.ageRange, 24);
+    if (aiAge) { a.ageRange = aiAge; const mm = String(aiAge).match(/(\d{1,2})\s*[-—~至到]\s*(\d{1,2})/); if (mm) { a.ageFrom = +mm[1]; a.ageTo = +mm[2]; } }
+    else if (json.ageRange != null) { a.ageRange = ""; }
     if (json.distance != null) a.distance = +json.distance;
     if (json.elevation != null) a.elevation = +json.elevation;
     // 难度：AI 缺字段会返回 "missing"，清洗后无效则归「待确认」，避免详情页渲染字面 missing
@@ -4028,7 +4042,7 @@ function applyVisionBatch(map) {
     const t = [];
     const confirmed = new Set(confirmedFacts(a).map((f) => f.key));
     if (confirmed.has("days") && a.days > 1) t.push(a.days + " 天行程");
-    if (confirmed.has("age")) t.push("适合" + a.ageRange);
+    if (confirmed.has("age")) { const ar = cleanFactText(a.ageRange, 24); if (ar) t.push("适合" + ar); }
     if (confirmed.has("difficulty")) t.push(a.difficulty + "难度");
     if (confirmed.has("limit")) t.push("限额" + a.limit + a.limitUnit);
     if (confirmed.has("services") && a.includeLeader) t.push("含领队");
@@ -5084,9 +5098,11 @@ function applyVisionBatch(map) {
 
   /* P0-4：图文详情页的图片匹配——按章节语义（kind）从页面图片智能里取图（scenic/experience/route/people…），
      不足时从「未用过的图」按序补；最多 3 张，构成「图片组合」（1 整幅 / 2 对开 / 3 三联）。 */
-  function editorialPhotosFor(a, sec, usedSet) {
+  function editorialPhotosFor(a, sec, usedSet, cap) {
     const photos = (a && a.photos) || [];
     const out = [];
+    // v192：每节取图「预算」由页面级分配计划给出（cap）；缺省回退到变体 img 结构（P0-12 语义不变）
+    const want = Math.max(1, +cap || (sec && sec.imgCount) || 2);
     const addSrc = (src) => { const i = photos.indexOf(src); if (i >= 0 && out.indexOf(i) < 0 && !usedSet.has(i)) out.push(i); };
     const intel = (typeof pagePhotoIntel === "function") ? pagePhotoIntel() : null;
     if (intel && intel.matched && intel.matched.length) {
@@ -5103,19 +5119,51 @@ function applyVisionBatch(map) {
     // Case 4：「入夜」章节优先取夜晚素材，确保昼→夜节奏在配图上也成立
     if (sec.kind === "night") {
       const dn = (typeof photoDayNight === "function") ? photoDayNight(photos) : null;
-      if (dn && dn.night.length) {
-        const want = (sec && sec.imgCount) || 2;
-        dn.night.forEach((i) => { if (out.length < Math.max(2, want) && !usedSet.has(i)) out.push(i); });
-      }
+      if (dn && dn.night.length) dn.night.forEach((i) => { if (out.length < want && out.indexOf(i) < 0 && !usedSet.has(i)) out.push(i); });
     }
-    if (!out.length) {
-      const want = (sec && sec.imgCount) || 2;
-      for (let i = 0; i < photos.length && out.length < Math.max(2, want); i++) if (!usedSet.has(i)) out.push(i);
+    /* v192 修复（照片驱动）：旧逻辑只在「语义匹配一张都没命中」时才从池子里顺序补图，
+       于是语义命中 1 张的章节永远只有 1 张、剩余照片全部闲置（实测 20 张只用了 7 张）。
+       现改为「语义不足 → 一律补齐到该节预算」，既让每节都有图，也不浪费用户上传的照片。 */
+    if (out.length < want) {
+      for (let i = 0; i < photos.length && out.length < want; i++) if (!usedSet.has(i) && out.indexOf(i) < 0) out.push(i);
     }
-    // P0-12：每节取图数量由变体 img 结构决定（1 大图 / 2 拼图 / 3 小图），绝不溢出
-    const res = out.slice(0, (sec && sec.imgCount) || 2);
+    const res = out.slice(0, want);
     res.forEach((i) => usedSet.add(i));
     return res;
+  }
+
+  /* v192：页面级配图分配计划 —— 目标「照片驱动」：
+     ① 每个章节至少 1 张；② 余图优先补给章节第二/三张（轮转，不超过变体上限）；
+     ③ 再留 1–3 张给结尾「现场影像」图廊；④ 章节容量已满时分不出去的，一律并入图廊（不浪费）。
+     每节上限仍由变体 img 结构决定（hero-mosaic=2 / small-thumbs=3 / big-solo|gallery-strip=1），
+     故 P0-12「不同变体图片结构不同」的语义保持不变（sec.imgCount 未被改写）。 */
+  function planEditorialPhotoCaps(photoCount, secs, coverIdx, maxPer, galleryMax) {
+    const pool = [];
+    for (let i = 0; i < (photoCount || 0); i++) if (i !== coverIdx) pool.push(i);
+    const list = secs || [];
+    const n = list.length;
+    const cap = Math.max(1, +maxPer || 1);
+    /* 结尾「现场影像」图廊预留：照片 ≥3 张时至少留 1 张（p0-4 长图文契约：须有结尾影像组），
+       富余时最多 3 张；但永远至少留 1 张给正文章节，避免整页只剩图廊。 */
+    let reserveN = pool.length >= 3 ? Math.min(3, Math.max(1, pool.length - n)) : 0;
+    reserveN = Math.min(reserveN, Math.max(0, pool.length - 1));
+    let extra = Math.max(0, (pool.length - reserveN) - n);   // 可补给章节第二/三张的富余
+    const caps = {};
+    list.forEach((s) => { caps[s.key] = 1; });
+    let guard = 0;
+    while (extra > 0 && guard < 64) {
+      let moved = false;
+      for (let i = 0; i < n && extra > 0; i++) {
+        const k = list[i].key;
+        if (caps[k] < cap) { caps[k]++; extra--; moved = true; }
+      }
+      if (!moved) break;
+      guard++;
+    }
+    reserveN += extra;                                         // 章节容量已满 → 分不出去的并入图廊，不浪费照片
+    reserveN = Math.max(0, Math.min(reserveN, pool.length));
+    if (galleryMax && reserveN > galleryMax) reserveN = galleryMax;
+    return { caps: caps, reserveN: reserveN, pool: pool };
   }
 
   // 适合 / 不适合人群：只依据已确认事实，不做医疗或安全承诺
@@ -7338,7 +7386,7 @@ function recruitPicker() {
       <div class="panel"><div class="panel-head"><h3>添加图片 / 海报（可选）</h3><span class="tiny muted">用于公众号配图，自动分类</span></div>
         <div class="panel-body">
           <div class="xf-photos">${(xf.photos || []).map((p, i) => `<div class="xf-ph" ${smartBg(p)}><button class="x" data-action="delPhoto" data-i="${i}">${ICON("x")}</button></div>`).join("")}
-            <label class="xf-ph-add">${ICON("upload")}<input type="file" id="photoInput" accept="image/*" multiple hidden></label></div>
+            <label class="xf-ph-add" data-action="upload">${ICON("upload")}</label></div>
           ${photoReviewPanel(xf)}
           <button class="btn btn-primary btn-sm" data-action="recruitGen" style="margin-top:10px" ${xf.genState === "loading" ? "disabled" : ""}>${ICON("sparkles")} ${xf.genState === "loading" ? "生成中…" : "生成宣传内容"}</button>
         </div></div>
@@ -7356,7 +7404,7 @@ function recapPicker() {
       <div class="panel"><div class="panel-head"><h3>上传本次活动照片</h3><span class="tiny muted">先传照片，AI 先识别 / 筛图 / 分类，再据此提炼回顾主题</span></div>
         <div class="panel-body">
           <div class="xf-photos">${(xf.photos || []).map((p, i) => `<div class="xf-ph" ${smartBg(p)}><button class="x" data-action="delPhoto" data-i="${i}">${ICON("x")}</button><span class="xf-ph-cat">${photoCategory(p, i)}</span></div>`).join("")}
-            <label class="xf-ph-add">${ICON("camera")}<input type="file" id="photoInput" accept="image/*" multiple hidden></label></div>
+            <label class="xf-ph-add" data-action="upload">${ICON("camera")}</label></div>
           ${photoReviewPanel(xf)}
           ${(xf.photos || []).length ? "" : `<p class="tiny muted">上传现场照片后，AI 会先整理照片，再基于照片与补充信息提炼回顾主题。</p>`}
         </div></div>
