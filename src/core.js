@@ -67,10 +67,54 @@
     if (isNaN(d.getTime())) return "";
     return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
   }
-  function departureFromDate(dstr, price) {
+  function departureFromDate(dstr, price, capacity) {
     const ymd = parseDateToYMD(dstr);
     if (!ymd) return null;
-    return { id: uid(), date: ymd, dateMD: formatDepartureMD(ymd), weekDay: weekDayName(ymd), price: price || null, status: "open", note: "", signups: 0 };
+    const cap = (capacity != null && +capacity > 0) ? Math.round(+capacity) : null;
+    return { id: uid(), date: ymd, dateMD: formatDepartureMD(ymd), weekDay: weekDayName(ymd), price: price || null, capacity: cap, status: "open", note: "", signups: 0 };
+  }
+
+  /* v197 团期批量生成：把「日期区间 + 发团节奏」展开成一组出发日（纯函数，便于契约测试）
+     freq: "daily" 每天 | "weekly" 每周指定星期几 | "interval" 每隔 N 天
+     weekdays: [0..6]，0=周日（仅 weekly 生效）；interval: 间隔天数（仅 interval 生效）
+     返回升序 yyyy-mm-dd 数组；起始日无效或区间倒置返回 [] */
+  function depBatchDates(opt) {
+    opt = opt || {};
+    const start = parseDateToYMD(opt.start || "");
+    if (!start) return [];
+    const end = parseDateToYMD(opt.end || "") || start;
+    if (end < start) return [];
+    const freq = opt.freq || "daily";
+    const weekdays = (opt.weekdays || []).map(Number).filter((n) => n >= 0 && n <= 6);
+    const interval = Math.max(1, Math.min(60, Math.round(+opt.interval) || 1));
+    const out = [];
+    const d = new Date(start + "T00:00:00");
+    const last = new Date(end + "T00:00:00");
+    let i = 0;
+    for (let cur = new Date(d); cur <= last; cur.setDate(cur.getDate() + 1), i++) {
+      let hit;
+      if (freq === "weekly") hit = weekdays.length ? weekdays.indexOf(cur.getDay()) >= 0 : true;
+      else if (freq === "interval") hit = (i % interval === 0);
+      else hit = true;
+      if (!hit) continue;
+      out.push(`${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, "0")}-${String(cur.getDate()).padStart(2, "0")}`);
+      if (out.length >= 400) break; // 安全上限：误选整年也不会生成上千条
+    }
+    return out;
+  }
+
+  /* v197 团期容量：优先 per-团期 capacity，缺省回退活动级 limit；两者都没有返回 null（不编造名额） */
+  function depCapacityOf(d, a) {
+    d = d || {};
+    const c = (d.capacity != null && +d.capacity > 0) ? Math.round(+d.capacity) : null;
+    if (c) return c;
+    return (a && a.limit != null && +a.limit > 0) ? Math.round(+a.limit) : null;
+  }
+  /* v197 余位：只在有容量时计算，否则 null（UI 必须显示「名额未定」而不是 0） */
+  function depRemainingOf(d, a) {
+    const cap = depCapacityOf(d, a);
+    if (cap == null) return null;
+    return Math.max(0, cap - (+((d || {}).signups || 0)));
   }
   function syncDepartures(a) {
     if (!a.departures) a.departures = [];
@@ -207,6 +251,20 @@
     pencil: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/>',
     truck: '<path d="M1 3h15v13H1z"/><path d="M16 8h4l3 3v5h-7z"/><circle cx="5.5" cy="18.5" r="2"/><circle cx="17.5" cy="18.5" r="2"/>',
     "credit-card": '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>',
+    /* v197 后台面板补充图标（未注册的 ICON() 会静默渲染空白） */
+    info: '<circle cx="12" cy="12" r="9"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>',
+    image: '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>',
+    video: '<polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>',
+    layers: '<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>',
+    grid: '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>',
+    "dollar-sign": '<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
+    "alert-triangle": '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+    bookmark: '<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>',
+    package: '<line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
+    minus: '<line x1="5" y1="12" x2="19" y2="12"/>',
+    "map-pin": '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>',
+    "user-check": '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/>',
+    "file-text": '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>',
   };
   const ICON = (n) => `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[n] || ""}</svg>`;
 

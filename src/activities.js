@@ -122,8 +122,8 @@
   function galleryMaxFor(n) { return (n || 0) >= 16 ? 9 : ((n || 0) >= 9 ? 6 : 4); }
   /* ===== v195：详情页「行程骨架 + 杂志视觉」新增能力（纯新增，不改既有契约）===== */
 
-  /* 按活动类型/季节/地点推导主题（对应户外场景换肤） */
-  function edThemeOf(a) {
+  /* 按活动类型/季节/地点推导主题；v197 起老板可手动指定（a.edTheme），留空才走自动推导 */
+  function edThemeAutoOf(a) {
     a = a || {};
     var blob = String(a.type || "") + " " + String(a.season || "") + " " + String(a.place || "");
     blob = blob.toLowerCase();
@@ -131,6 +131,165 @@
     if (/(海岛|溯溪|溪|水上|桨板|浆板|皮划艇|潜水|岛|island|river|water)/.test(blob)) return "island";
     if (/(沙漠|峡谷|丹霞|戈壁|desert|canyon|gobi)/.test(blob)) return "desert";
     return "forest";
+  }
+  const ED_THEME_IDS = ["forest", "island", "desert", "snow"];
+  /* v197：整体视觉可选（旧版只能自动推导，界面上没有入口 —— 老板的原话是「整视也不能换」） */
+  const ED_THEMES = [
+    { id: "", label: "按活动自动", desc: "按类型 / 季节 / 地点匹配" },
+    { id: "forest", label: "森林", desc: "墨绿 · 林间" },
+    { id: "island", label: "海岛", desc: "青蓝 · 水岸" },
+    { id: "desert", label: "沙漠", desc: "暖沙 · 峡谷" },
+    { id: "snow", label: "雪原", desc: "冷白 · 冰川" }
+  ];
+  function edThemeLabel(id) {
+    const t = ED_THEMES.find((x) => x.id === (id || ""));
+    return t ? t.label : "按活动自动";
+  }
+  function edThemeOf(a) {
+    a = a || {};
+    var forced = String(a.edTheme || "");
+    if (ED_THEME_IDS.indexOf(forced) >= 0) return forced;
+    return edThemeAutoOf(a);
+  }
+
+  /* ===== v197 视觉呈现 Tab 重做 =====
+     老板反馈「这些地方 ui 交互都设计得太差了」。旧版把内部字段直接印给老板看：
+     `类别：山野/植被 · 朝向：横 · 质量：0.71`、`推荐：story、full · 文字区：top-left`；
+     页面结构更是一列英文变量名（editorial_lead / narrative_why / fee…），没人读得懂。
+     现在三处都改成看得懂的东西：分析卡片化（缩略图 + 中文标签）、封面给大图预览、
+     结构表换「中文区块名 + 图标 + 序号」，并新增「整体视觉」切换入口。 */
+  const BLOCK_META = {
+    editorial_lead: { label: "开篇导语", ic: "file-text", tone: "lead" },
+    text_block: { label: "正文段落", ic: "file-text", tone: "body" },
+    pull_quote: { label: "金句引文", ic: "quote", tone: "accent" },
+    route_story: { label: "路线故事", ic: "map", tone: "accent" },
+    narrative_why: { label: "为什么值得去", ic: "compass", tone: "accent" },
+    narrative_experience: { label: "会体验到什么", ic: "activity", tone: "accent" },
+    narrative_gain: { label: "能得到什么", ic: "heart", tone: "accent" },
+    narrative_fit: { label: "适合谁 / 不适合谁", ic: "user-check", tone: "accent" },
+    selling_points: { label: "核心卖点", ic: "sparkles", tone: "key" },
+    itinerary: { label: "真实行程", ic: "map-pin", tone: "key" },
+    gear: { label: "出发前准备", ic: "package", tone: "key" },
+    highlights: { label: "核心亮点", ic: "star", tone: "key" },
+    services: { label: "已确认服务", ic: "check", tone: "body" },
+    leader_safety: { label: "领队与安全", ic: "shield", tone: "key" },
+    travel_notes: { label: "退改与安全须知", ic: "alert-triangle", tone: "body" },
+    fee: { label: "价格与费用", ic: "dollar-sign", tone: "key" },
+    metric_strip: { label: "关键数据条", ic: "bar-chart", tone: "body" },
+    gallery: { label: "图片廊", ic: "image", tone: "media" },
+    media: { label: "图片", ic: "image", tone: "media" },
+    video: { label: "视频", ic: "video", tone: "media" },
+    reviews: { label: "活动评价", ic: "star", tone: "body" },
+    org: { label: "机构信息", ic: "settings", tone: "body" },
+    meta: { label: "基础信息", ic: "info", tone: "body" },
+    suitability: { label: "适合人群", ic: "users", tone: "body" },
+    text: { label: "文字", ic: "file-text", tone: "body" }
+  };
+  function blockMeta(t) {
+    return BLOCK_META[t] || { label: String(t || "区块"), ic: "file-text", tone: "body" };
+  }
+  const PHOTO_USE_CN = { hero: "主视觉大图", story: "正文配图", detail: "细节配图", full: "通栏大图", cover: "封面主视觉", gallery: "图廊" };
+  const PHOTO_AREA_CN = { "top-left": "左上", "top-right": "右上", "bottom-left": "左下", "bottom-right": "右下", center: "居中" };
+  const PHOTO_ORIENT_CN = { landscape: "横构图", portrait: "竖构图", square: "方构图" };
+  function qualityChip(q) {
+    const n = Math.round((+q || 0) * 100);
+    const lv = n >= 70 ? { t: "优", c: "hi" } : (n >= 60 ? { t: "良", c: "mid" } : { t: "一般", c: "lo" });
+    return `<span class="pc-q ${lv.c}">${lv.t} ${n}%</span>`;
+  }
+  const VT_SVG_PHOTO = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>';
+  const VT_SVG_COVER = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M3 10h18"/></svg>';
+
+  function photoAnalysisCard(src, i, cover) {
+    const idx = i + 1;
+    const m = (typeof photoMeta === "function") ? photoMeta(src) : null;
+    if (!m) {
+      return `<div class="photo-card"><div class="pc-thumb" ${smartBg(src)}><span class="pc-idx">${idx}</span></div><div class="pc-body"><div class="pc-top"><b>图 ${idx}</b><span class="pc-cat">分析中…</span></div><div class="pc-chips"><span class="pc-chip">正在读取画面信息（模拟推断）</span></div></div></div>`;
+    }
+    const subj = (m.subjects || []).filter(Boolean);
+    const uses = (m.recommended_use || []).map((u) => PHOTO_USE_CN[u] || u);
+    const area = PHOTO_AREA_CN[m.safe_text_area] || m.safe_text_area || "";
+    return `<div class="photo-card">
+      <div class="pc-thumb" ${smartBg(src)}><span class="pc-idx">${idx}</span>${i === cover ? `<span class="pc-cover">封面</span>` : ""}</div>
+      <div class="pc-body">
+        <div class="pc-top"><b>图 ${idx}</b><span class="pc-cat">${esc(m.category || "未分类")}</span>${qualityChip(m.quality_score)}</div>
+        <div class="pc-chips">
+          <span class="pc-chip">${esc(PHOTO_ORIENT_CN[m.orientation] || "构图未知")}</span>
+          ${subj.length ? `<span class="pc-chip">主体：${esc(subj.join("、"))}</span>` : ""}
+          ${m.emotion ? `<span class="pc-chip">情绪：${esc(m.emotion)}</span>` : ""}
+        </div>
+        <div class="pc-uses"><span class="pc-uses-l">适合</span>${uses.length ? uses.map((u) => `<span class="pc-use">${esc(u)}</span>`).join("") : `<span class="pc-use muted">暂无推荐</span>`}${area ? `<span class="pc-area">文字放${esc(area)}</span>` : ""}</div>
+      </div>
+    </div>`;
+  }
+  function visualThemePickerHtml(a) {
+    const cur = edThemeOf(a);
+    const forced = String((a && a.edTheme) || "");
+    const auto = !forced;
+    return `<div class="vis-sec">
+      <h4>整体视觉<span class="vis-hint">详情页与阅读栏的配色氛围，点一下立刻换</span></h4>
+      <div class="vt-themes">
+        ${ED_THEMES.map((t) => {
+          const on = auto ? t.id === "" : t.id === forced;
+          const note = t.id === "" ? `当前：${esc(edThemeLabel(cur))}` : esc(t.desc);
+          return `<button type="button" class="vt-theme${on ? " on" : ""}" data-action="setEdTheme" data-theme="${t.id}" title="${esc(t.label)} · ${esc(t.desc)}">
+            <span class="vt-th${t.id ? " th-" + t.id : " th-auto"}"></span>
+            <b>${esc(t.label)}</b><i>${note}</i>
+          </button>`;
+        }).join("")}
+      </div>
+      <div class="tiny muted" style="margin-top:8px">只改配色，不动你的文案与照片；选「按活动自动」则跟随活动类型。</div>
+    </div>`;
+  }
+  function visualCoverHtml(a) {
+    const photos = a.photos || [];
+    if (!photos.length) {
+      return `<div class="vis-sec"><h4>封面图</h4><div class="empty-state">${VT_SVG_COVER}<div><b>上传图片后可选封面</b><span>先上传照片，再从中挑最具吸引力的一张作为活动封面</span></div></div></div>`;
+    }
+    const cover = Math.max(0, Math.min(+(a.coverIndex || 0), photos.length - 1));
+    return `<div class="vis-sec">
+      <h4>封面图<span class="vis-hint">仅用于页面主视觉，不会在正文里重复出现</span></h4>
+      <div class="vt-cover">
+        <div class="vt-cover-main" ${smartBg(photos[cover])}>
+          <span class="vt-cover-tag">${ICON("star")} 当前封面 · 图 ${cover + 1}</span>
+        </div>
+        <div class="vt-cover-side">
+          <div class="vt-cover-tip">点下面任意一张即可换封面</div>
+          <div class="vt-cover-strip">
+            ${photos.map((p, i) => `<button type="button" class="cover-thumb${i === cover ? " sel" : ""}" data-action="setCover" data-i="${i}" title="设为封面 · 图 ${i + 1}" ${smartBg(p)}><span class="ct-idx">${i + 1}</span></button>`).join("")}
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }
+  function visualOutlineHtml(a) {
+    const outline = buildPageStoryOutline(a);
+    return `<div class="vis-sec">
+      <h4>页面结构<span class="vis-hint">随内容与素材动态编排</span></h4>
+      <div class="outline-list">
+        ${outline.map((b, i) => { const meta = blockMeta(b.type); return `<div class="ol-item tone-${meta.tone}">
+          <span class="ol-no">${i + 1}</span>
+          <span class="ol-ic">${ICON(meta.ic)}</span>
+          <span class="ol-t">${esc(meta.label)}</span>
+          <span class="ol-p">${esc(b.purpose || "")}</span>
+        </div>`; }).join("")}
+      </div>
+      <div class="tiny muted">共 ${outline.length} 个区块。顺序由内容需要决定：先讲清为什么去，再给行程与费用；少图不重复填充，多图形成节奏。</div>
+    </div>`;
+  }
+  function visualTabHtml(a) {
+    const photos = a.photos || [];
+    const cover = Math.max(0, Math.min(+(a.coverIndex || 0), Math.max(0, photos.length - 1)));
+    return `<div class="vis-tab">
+      ${visualThemePickerHtml(a)}
+      <div class="vis-sec">
+        <h4>图片分析结果<span class="sim-tag">模拟分析（演示）</span>${photos.length ? `<span class="vis-count">${photos.length} 张</span>` : ""}</h4>
+        ${photos.length
+        ? `<div class="photo-analysis">${photos.map((src, i) => photoAnalysisCard(src, i, cover)).join("")}</div>`
+        : `<div class="empty-state">${VT_SVG_PHOTO}<div><b>还没有上传图片</b><span>回到「内容」标签上传活动照片后，这里会自动分析画面并推荐用途</span></div></div>`}
+      </div>
+      ${visualCoverHtml(a)}
+      ${visualOutlineHtml(a)}
+    </div>`;
   }
 
   /* 出行前清单：按活动类型给差异化条目（基础 5 条 + 场景补充，最多 8 条） */
@@ -1944,28 +2103,6 @@ function channelMeta(ch) {
         <div class="fc-sec-head"><span class="fc-dot" style="background:#10b981"></span><b>已确认事实</b><span class="fc-count">${confirmed.length}</span></div>
         <div class="fc-chips">${confirmed.map((f) => `<span class="fc-chip">${esc(f.label)}：${esc(f.value || "")}</span>`).join("")}</div>
       </div>` : ""}
-    </div>`;
-  }
-  function visualTabHtml(a) {
-    const photos = a.photos || [];
-    const cover = a.coverIndex || 0;
-    const outline = buildPageStoryOutline(a);
-    const emptyPhotoSvg = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>';
-    const emptyCoverSvg = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M3 10h18"/></svg>';
-    return `<div class="vis-tab">
-      <div class="vis-sec">
-        <h4>图片分析结果<span class="sim-tag">模拟分析（演示）</span></h4>
-        ${photos.length ? `<div class="photo-analysis">${photos.map((src, i) => { const m = photoMeta(src); return `<div class="photo-card"><div class="pc-thumb" ${smartBg(src)}></div><div class="pc-meta"><div><b>图 ${i + 1}</b>${i === cover ? " · 封面" : ""}</div>${m ? `<div>类别：${m.category} · 朝向：${m.orientation === "landscape" ? "横" : m.orientation === "portrait" ? "竖" : "方"} · 质量：${m.quality_score}</div><div>主体：${m.subjects.join("、")} · 情绪：${m.emotion}</div><div>推荐：${m.recommended_use.join("、")} · 文字区：${m.safe_text_area}</div>` : `<div class="muted small">分析中…（模拟推断）</div>`}</div></div>`; }).join("")}</div>` : `<div class="empty-state">${emptyPhotoSvg}<div><b>还没有上传图片</b><span>回到「内容」标签上传活动照片后，这里会自动分析画面并推荐用途</span></div></div>`}
-      </div>
-      <div class="vis-sec">
-        <h4>封面图</h4>
-        ${photos.length ? `<div class="cover-row">${photos.map((src, i) => `<button class="cover-thumb ${i === cover ? "sel" : ""}" data-action="setCover" data-i="${i}" ${smartBg(src)}></button>`).join("")}</div><div class="tiny muted">点击选择封面（仅用于页面主视觉）</div>` : `<div class="empty-state">${emptyCoverSvg}<div><b>上传图片后可选封面</b><span>先上传照片，再从中挑选最具吸引力的一张作为活动封面</span></div></div>`}
-      </div>
-      <div class="vis-sec">
-        <h4>页面结构（随内容与素材动态编排）</h4>
-        <div class="outline-list">${outline.map((b) => `<div class="ol-item"><span class="ol-no">${esc(b.type)}</span><span class="ol-t">${esc(b.purpose || "")}</span></div>`).join("")}</div>
-        <div class="tiny muted">共 ${outline.length} 个区块，少图不重复填充、多图形成节奏。</div>
-      </div>
     </div>`;
   }
   function publishTabHtml(a) {

@@ -202,6 +202,27 @@
       }
     });
   }
+  /* v197 团期批量器：只重刷「节奏子行 + 预览节点」，不整页重渲 —— 整页重渲会让输入框失焦 */
+  function depBatchSyncUI() {
+    if (typeof depBatchForm !== "function") return;
+    const b = depBatchForm();
+    const root = document.getElementById("depBatchRoot");
+    if (root) {
+      root.querySelectorAll(".db-seg-b").forEach((el) => el.classList.toggle("on", el.dataset.freq === b.freq));
+      root.querySelectorAll(".db-wd").forEach((el) => el.classList.toggle("on", b.weekdays.map(Number).indexOf(+el.dataset.wd) >= 0));
+    }
+    const wd = document.getElementById("depWeekdays");
+    if (wd) wd.hidden = b.freq !== "weekly";
+    const iv = document.getElementById("depIntervalRow");
+    if (iv) iv.hidden = b.freq !== "interval";
+    const pv = document.getElementById("depPreview");
+    if (pv && state.draft && typeof depBatchPreviewHtml === "function") {
+      const holder = document.createElement("div");
+      holder.innerHTML = depBatchPreviewHtml(state.draft);
+      const fresh = holder.firstElementChild;
+      if (fresh) pv.replaceWith(fresh);
+    }
+  }
   function refreshPreview() {
     const sc = $("#previewScreen");
     if (sc && state.draft) { sc.innerHTML = renderActivityPhone(state.draft); initEditorialToc(); }
@@ -1352,34 +1373,62 @@
       }
       case "addDeparture": {
         if (!state.draft) break;
-        const startInput = $("#depStartDate");
-        const endInput = $("#depEndDate");
-        const priceInput = $("#depPriceInput");
-        const startYmd = startInput ? startInput.value : "";
-        const endYmd = endInput ? endInput.value : "";
-        if (!startYmd) { toast("请先选择开始日期"); break; }
+        const B = depBatchForm();
+        if (!B.start) { toast("请先选择开始日期"); break; }
+        const dates = depBatchDates({ start: B.start, end: B.end || B.start, freq: B.freq, weekdays: B.weekdays, interval: B.interval });
+        if (!dates.length) { toast("这个规则在所选区间里没有匹配的日期"); break; }
         state.draft.departures = state.draft.departures || [];
         const existingDates = new Set((state.draft.departures || []).map((x) => x.date));
-        const basePrice = priceInput && priceInput.value ? +priceInput.value : state.draft.price;
+        const basePrice = (B.price !== "" && B.price != null && +B.price > 0) ? +B.price : state.draft.price;
+        const cap = (B.capacity !== "" && B.capacity != null && +B.capacity > 0) ? Math.round(+B.capacity) : null;
         let added = 0;
-        const end = endYmd && endYmd >= startYmd ? endYmd : startYmd;
-        const startDate = new Date(startYmd + "T00:00:00");
-        const endDate = new Date(end + "T00:00:00");
-        for (let cur = new Date(startDate); cur <= endDate; cur.setDate(cur.getDate() + 1)) {
-          const ymd = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, "0")}-${String(cur.getDate()).padStart(2, "0")}`;
-          if (existingDates.has(ymd)) continue;
-          const dep = departureFromDate(ymd, basePrice);
+        dates.forEach((ymd) => {
+          if (existingDates.has(ymd)) return;
+          const dep = departureFromDate(ymd, basePrice, cap);
           if (dep) { state.draft.departures.push(dep); existingDates.add(ymd); added++; }
+        });
+        if (!added) { toast("所选日期已存在，未添加新团期"); break; }
+        state.draft.departures.sort((x, y) => x.date.localeCompare(y.date));
+        /* 每团限人数同时补齐活动级「招募上限」—— 仅在原本为空时，绝不覆盖老板已填的值 */
+        let syncedLimit = false;
+        if (cap && !(state.draft.limit != null && +state.draft.limit > 0)) {
+          state.draft.limit = cap;
+          state.draft.limitUnit = state.draft.limitUnit || "人";
+          syncedLimit = true;
         }
-        if (added) {
-          state.draft.departures.sort((x, y) => x.date.localeCompare(y.date));
-          syncDepartures(state.draft);
-          saveState();
-          toast(`已添加 ${added} 个团期`);
-        } else {
-          toast("所选日期已存在，未添加新团期");
-        }
+        syncDepartures(state.draft);
+        saveState();
+        toast(`已生成 ${added} 个团期${cap ? `，每团限 ${cap} 人` : ""}${syncedLimit ? "（已同步为活动招募上限）" : ""}`);
         rerenderEditor();
+        break;
+      }
+      case "depFreq": {
+        depBatchSave({ freq: d.freq });
+        depBatchSyncUI();
+        break;
+      }
+      case "depWeekday": {
+        const b = depBatchForm();
+        const wd = +d.wd;
+        const at = b.weekdays.map(Number).indexOf(wd);
+        if (at >= 0) b.weekdays.splice(at, 1); else b.weekdays.push(wd);
+        depBatchSave({ weekdays: b.weekdays });
+        depBatchSyncUI();
+        break;
+      }
+      case "depQuickRange": {
+        const r = depQuickRange(d.range);
+        depBatchSave({ start: r.start, end: r.end });
+        rerenderEditor();
+        break;
+      }
+      case "setEdTheme": {
+        if (!state.draft) break;
+        const t = ED_THEME_IDS.indexOf(d.theme) >= 0 ? d.theme : "";
+        state.draft.edTheme = t;
+        saveState();
+        rerenderEditor();
+        toast(t ? `整体视觉已切换为「${edThemeLabel(t)}」` : "整体视觉：按活动自动匹配");
         break;
       }
       case "deleteDeparture": {
@@ -3078,6 +3127,18 @@
       if (typeof refreshMallGrid === "function") refreshMallGrid();
       return;
     }
+    /* v197 团期批量器字段（受控：写 state.editorDepBatch，再只刷预览） */
+    const dbe = e.target.closest("[data-dep-batch]");
+    if (dbe) {
+      const k = dbe.dataset.depBatch;
+      let v = dbe.value;
+      if (k === "capacity" || k === "price" || k === "interval") v = (v === "" ? "" : (+v || ""));
+      const patch = {};
+      patch[k] = v;
+      depBatchSave(patch);
+      depBatchSyncUI();
+      return;
+    }
     const listEl = e.target.closest("[data-bind-list]");
     if (listEl && state.draft) {
       const key = listEl.dataset.bindList;
@@ -3168,6 +3229,7 @@
       const dep = (state.draft.departures || []).find((x) => x.id === id);
       if (dep) {
         if (k === "price") dep.price = de.value === "" ? null : +de.value;
+        else if (k === "capacity") dep.capacity = (de.value === "" || +de.value <= 0) ? null : Math.round(+de.value);
         else if (k === "status") dep.status = de.value;
         else if (k === "note") dep.note = de.value;
         saveState();

@@ -1553,7 +1553,7 @@ function applyVisionBatch(map) {
 
   function blankActivity() {
     return {
-      id: uid(), title: "", titleCandidates: [], type: "户外探索", pageStyle: "outdoor", audience: [], place: "自然", date: "", dateMD: "", departures: [],
+      id: uid(), title: "", titleCandidates: [], type: "户外探索", pageStyle: "outdoor", audience: [], place: "自然", date: "", dateMD: "", departures: [], edTheme: "",
       ageFrom: 6, ageTo: 12, ageRange: "", price: null, originalPrice: null,
       limit: null, limitUnit: "人", meeting: "", meetTime: "", returnTime: "", distance: null, elevation: "",
       includeLeader: false, includeMeal: false, includeInsurance: false, includeTransport: false, includeGear: false,
@@ -3474,11 +3474,94 @@ function applyVisionBatch(map) {
     return { name, note, must: false };
   }
 
+  /* ===== v197 团期批量生成 =====
+     老板诉求原话：「团期可以不可以批量选，比如 9月17日至10月1日，每天都可以发团，每团限20人 这种」。
+     旧实现只能按「起-止日期」逐日展开，既不能挑节奏（每周几 / 每隔N天），也没有「每团限人数」。
+     下面把表单做成受控状态（存在 state.editorDepBatch），重渲不丢输入；
+     实时预览只更新 #depPreview 节点，不整页重渲 —— 否则打字时输入框会失焦。 */
+  const DEP_WEEK_CN = ["日", "一", "二", "三", "四", "五", "六"];
+  function depBatchForm() {
+    const b = (typeof state !== "undefined" && state && state.editorDepBatch) || {};
+    return {
+      start: b.start || "",
+      end: b.end || "",
+      freq: b.freq || "daily",
+      weekdays: Array.isArray(b.weekdays) ? b.weekdays.slice() : [],
+      interval: b.interval != null ? b.interval : 2,
+      capacity: b.capacity != null ? b.capacity : "",
+      price: b.price != null ? b.price : ""
+    };
+  }
+  function depBatchSave(patch) {
+    if (typeof state === "undefined" || !state) return;
+    const b = depBatchForm();
+    Object.assign(b, patch || {});
+    state.editorDepBatch = b;
+  }
+  function depFreqLabel(b) {
+    if (b.freq === "weekly") {
+      const ws = (b.weekdays || []).slice().sort((x, y) => (+x) - (+y));
+      return ws.length ? "每周" + ws.map((n) => DEP_WEEK_CN[n]).join("、") : "每周（还没挑星期几）";
+    }
+    if (b.freq === "interval") return `每隔 ${b.interval || 1} 天`;
+    return "每天";
+  }
+  /* 预览：算出「将新增几个团期」，并把已存在的天数单独说明（不静默吞掉） */
+  function depBatchPreview(a) {
+    const b = depBatchForm();
+    if (!b.start) return { ok: false, count: 0, skip: 0, dates: [], text: "先选开始日期，再挑发团节奏" };
+    const dates = depBatchDates({ start: b.start, end: b.end || b.start, freq: b.freq, weekdays: b.weekdays, interval: b.interval });
+    if (!dates.length) return { ok: false, count: 0, skip: 0, dates: [], text: "这个规则在所选区间里没有匹配的日期" };
+    const existing = {};
+    (a.departures || []).forEach((d) => { existing[d.date] = true; });
+    const fresh = dates.filter((x) => !existing[x]);
+    const skip = dates.length - fresh.length;
+    const range = (b.end && b.end !== b.start)
+      ? `${formatDepartureSlash(b.start)} — ${formatDepartureSlash(b.end)}`
+      : formatDepartureSlash(b.start);
+    const cap = (b.capacity != null && +b.capacity > 0) ? ` · 每团限 ${+b.capacity} 人` : "";
+    const price = (b.price != null && +b.price > 0) ? ` · ¥${+b.price}/人` : "";
+    const skipNote = skip ? `（已存在的 ${skip} 天自动跳过）` : "";
+    const text = fresh.length
+      ? `${range} · 共 ${dates.length} 天 · ${depFreqLabel(b)} → 将新增 ${fresh.length} 个团期${cap}${price}${skipNote}`
+      : `${range} · ${depFreqLabel(b)} · 这些日期都已有团期，无需重复添加`;
+    return { ok: fresh.length > 0, count: fresh.length, skip, dates: fresh, text };
+  }
+  function depBatchPreviewHtml(a) {
+    const p = depBatchPreview(a);
+    return `<div class="db-preview ${p.ok ? "ok" : "idle"}" id="depPreview">${ICON(p.ok ? "check" : "info")}<span>${esc(p.text)}</span></div>`;
+  }
+  /* v197 日期快捷区间：本周末 / 未来两周 / 本月余下 —— 都是「起止都填好」，不用手点日历 */
+  function depQuickRange(kind) {
+    const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const now = new Date();
+    if (kind === "clear") return { start: "", end: "" };
+    if (kind === "weekend") {
+      const dow = now.getDay();
+      const toSat = (6 - dow + 7) % 7;
+      const sat = new Date(now.getFullYear(), now.getMonth(), now.getDate() + toSat);
+      const sun = new Date(sat.getFullYear(), sat.getMonth(), sat.getDate() + 1);
+      return { start: ymd(sat), end: ymd(sun) };
+    }
+    if (kind === "fortnight") {
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 13);
+      return { start: ymd(now), end: ymd(end) };
+    }
+    const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return { start: ymd(now), end: ymd(last) };
+  }
+
   function departuresEditHtml(a) {
     syncDepartures(a);
     const deps = a.departures || [];
+    const B = depBatchForm();
     const list = deps.map((d) => {
       const price = d.price != null ? d.price : (a.price || "");
+      const cap = depCapacityOf(d, a);
+      const left = depRemainingOf(d, a);
+      const capLine = cap == null
+        ? `<span class="dep-cap none">名额未定</span>`
+        : `<span class="dep-cap${left != null && left <= 3 ? " tight" : ""}">${ICON("users")} 限 ${cap} 人${left != null ? ` · 余 ${left} 位` : ""}</span>`;
       return `<div class="departure-card">
         <div class="dep-date">
           <div class="dep-week">${esc(d.weekDay || "")}</div>
@@ -3486,36 +3569,74 @@ function applyVisionBatch(map) {
         </div>
         <div class="dep-fields">
           <input type="number" class="input input-sm" data-bind-dep="${d.id}" data-dep-key="price" value="${price}" placeholder="价格">
+          <input type="number" class="input input-sm" data-bind-dep="${d.id}" data-dep-key="capacity" value="${d.capacity != null ? d.capacity : ""}" placeholder="限人数" min="1">
           <select class="select select-sm" data-bind-dep="${d.id}" data-dep-key="status">
             <option value="open" ${d.status === "open" ? "selected" : ""}>可报名</option>
             <option value="full" ${d.status === "full" ? "selected" : ""}>已满员</option>
             <option value="closed" ${d.status === "closed" ? "selected" : ""}>已截止</option>
           </select>
           <input type="text" class="input input-sm" data-bind-dep="${d.id}" data-dep-key="note" value="${esc(d.note || "")}" placeholder="备注，如余位3">
+          <div class="dep-cap-row">${capLine}<span class="dep-cap-hint">每团独立 · 留空则按活动招募上限</span></div>
         </div>
         <button class="icon-btn" data-action="deleteDeparture" data-id="${d.id}" title="删除团期">${ICON("x")}</button>
       </div>`;
     }).join("");
+    const wdChips = DEP_WEEK_CN.map((w, i) => `<button type="button" class="db-wd${B.weekdays.map(Number).indexOf(i) >= 0 ? " on" : ""}" data-action="depWeekday" data-wd="${i}">${w}</button>`).join("");
     return `<div class="panel">
-      <div class="panel-head"><h3>行程与团期</h3><span class="tiny muted">一个活动可设置多个出发日期，每个团期可独立定价</span></div>
+      <div class="panel-head"><h3>行程与团期</h3><span class="tiny muted">一个活动可设置多个出发日期，每个团期可独立定价与限额</span></div>
       <div class="panel-body">
-        <div class="departure-add-row">
-          <div class="field">
-            <label>开始日期</label>
-            <input type="date" class="input" id="depStartDate">
+        <div class="dep-batch" id="depBatchRoot">
+          <div class="db-head">
+            <span class="db-title">${ICON("calendar")} 按规则批量生成</span>
+            <span class="db-sub">框一段日期 + 挑发团节奏，一次生成整段排期</span>
           </div>
-          <div class="field">
-            <label>结束日期（可选）</label>
-            <input type="date" class="input" id="depEndDate">
+
+          <div class="db-row">
+            <span class="db-label">日期范围</span>
+            <div class="db-body">
+              <div class="db-dates">
+                <input type="date" class="input input-sm" id="depStart" data-dep-batch="start" value="${esc(B.start)}">
+                <span class="db-tilde">至</span>
+                <input type="date" class="input input-sm" id="depEnd" data-dep-batch="end" value="${esc(B.end)}">
+              </div>
+              <div class="db-quick">
+                <button type="button" data-action="depQuickRange" data-range="weekend">本周末</button>
+                <button type="button" data-action="depQuickRange" data-range="fortnight">未来两周</button>
+                <button type="button" data-action="depQuickRange" data-range="month">本月余下</button>
+                ${B.start ? `<button type="button" class="ghost" data-action="depQuickRange" data-range="clear">清除</button>` : ""}
+              </div>
+            </div>
           </div>
-          <div class="field">
-            <label>价格（可选）</label>
-            <input type="number" class="input" id="depPriceInput" placeholder="默认 ¥${a.price || 0}">
+
+          <div class="db-row">
+            <span class="db-label">发团节奏</span>
+            <div class="db-body">
+              <div class="db-seg">
+                <button type="button" class="db-seg-b${B.freq === "daily" ? " on" : ""}" data-action="depFreq" data-freq="daily">每天</button>
+                <button type="button" class="db-seg-b${B.freq === "weekly" ? " on" : ""}" data-action="depFreq" data-freq="weekly">每周几</button>
+                <button type="button" class="db-seg-b${B.freq === "interval" ? " on" : ""}" data-action="depFreq" data-freq="interval">每隔 N 天</button>
+              </div>
+              <div class="db-weekdays" id="depWeekdays"${B.freq === "weekly" ? "" : " hidden"}>${wdChips}<span class="db-wd-hint">可多选，如只发周末就选六、日</span></div>
+              <div class="db-interval" id="depIntervalRow"${B.freq === "interval" ? "" : " hidden"}>每
+                <input type="number" class="input input-sm" id="depInterval" data-dep-batch="interval" min="2" max="60" value="${esc(String(B.interval))}"> 天发一团</div>
+            </div>
           </div>
-          <button class="btn btn-primary btn-sm" data-action="addDeparture">${ICON("plus")} 批量添加团期</button>
+
+          <div class="db-row">
+            <span class="db-label">每团配置</span>
+            <div class="db-body db-cfg">
+              <label class="db-field"><span>每团限</span><input type="number" class="input input-sm" id="depCapacity" data-dep-batch="capacity" min="1" value="${esc(B.capacity === "" ? "" : String(B.capacity))}" placeholder="20"><i>人</i></label>
+              <label class="db-field"><span>价格</span><input type="number" class="input input-sm" id="depPrice" data-dep-batch="price" min="0" value="${esc(B.price === "" ? "" : String(B.price))}" placeholder="默认 ¥${a.price || 0}"><i>元/人</i></label>
+            </div>
+          </div>
+
+          <div class="db-foot">
+            ${depBatchPreviewHtml(a)}
+            <button class="btn btn-primary btn-sm" data-action="addDeparture">${ICON("plus")} 生成团期</button>
+          </div>
         </div>
-        <div class="dep-hint"><span style="opacity:.7"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span> 选择起止日期可批量生成每一天的团期；只填开始日期则添加单日。已存在日期会自动跳过。</div>
-        ${deps.length ? `<div class="departure-list">${list}</div>` : `<div class="dep-empty"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg><div><b>还没有团期</b><div>在上方选择日期范围，一键生成多日团期</div></div></div>`}
+        <div class="dep-hint">${ICON("info")} 已存在的日期会自动跳过，不会重复添加；生成后可逐条改价、改限人数或停售。</div>
+        ${deps.length ? `<div class="departure-list">${list}</div>` : `<div class="dep-empty"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg><div><b>还没有团期</b><div>在上方框一段日期，一键生成整段排期</div></div></div>`}
       </div>
     </div>`;
   }
@@ -4324,6 +4445,15 @@ function applyVisionBatch(map) {
     }
     return `<section class="dsec story-sec editorial-sec"><div class="editorial-index">03 / MOMENTS</div><h3>${title}</h3>${inner}</section>`;
   }
+  /* v197 前台团期容量行：有容量才说名额，无容量一律不编（避免「仅剩X位」这类假紧迫感） */
+  function depCapacityLine(d, a, cls) {
+    const cap = (typeof depCapacityOf === "function") ? depCapacityOf(d, a) : null;
+    if (cap == null) return "";
+    const left = (typeof depRemainingOf === "function") ? depRemainingOf(d, a) : null;
+    const tight = (left != null && left <= 3);
+    const unit = esc(a.limitUnit || "人");
+    return `<div class="${cls}${tight ? " tight" : ""}">限 ${cap} ${unit}${left != null ? ` · 剩 ${left} 位` : ""}</div>`;
+  }
   function departuresBlockHtml(a) {
     syncDepartures(a);
     const deps = (a.departures || []).filter((d) => d.status !== "closed");
@@ -4336,6 +4466,7 @@ function applyVisionBatch(map) {
           <div class="dep-single-date"><span class="dep-single-week">${esc(d.weekDay)}</span><span class="dep-single-md">${esc(formatDepartureSlash(d.date))}</span></div>
           <div class="dep-single-info">
             <div class="dep-single-price">${price != null ? "¥" + price + "<small>/" + esc(a.limitUnit) + "</small>" : "价格详询"}</div>
+            ${depCapacityLine(d, a, "dep-single-cap")}
             ${d.note ? `<div class="dep-single-note">${esc(d.note)}</div>` : ""}
           </div>
         </div>
@@ -4348,6 +4479,7 @@ function applyVisionBatch(map) {
         <div class="dep-slide-week">${esc(d.weekDay)}</div>
         <div class="dep-slide-md">${esc(formatDepartureSlash(d.date))}</div>
         <div class="dep-slide-price">${price != null ? "¥" + price : "详询"}</div>
+        ${depCapacityLine(d, a, "dep-slide-cap")}
         ${d.note ? `<div class="dep-slide-note">${esc(d.note)}</div>` : ""}
         ${disabled ? `<div class="dep-slide-badge">已满员</div>` : ""}
       </div>`;
