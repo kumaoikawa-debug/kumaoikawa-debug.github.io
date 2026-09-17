@@ -240,6 +240,11 @@ function intakeCleanText(s) {
 /* docx / pptx 的 XML → 纯文本：靠「闭合标签」定位段落边界，再统一剥标签（比逐层解析稳） */
 function intakeXmlToText(xml) {
   return String(xml || "")
+    /* v205：先剥掉所有属性值，再剥标签。AI 生成的 PPT 常把整套版式源码塞进形状 descr（替代文字）
+       属性里，且源码里的 ">" 没做 XML 转义 —— 不先剥属性，后面的剥标签会在那个 ">" 提前终止，
+       剩下的源码全被当成正文漏进来，几千字垃圾吃掉长度预算，真正的行程页反而被截掉。 */
+    .replace(/\s[a-zA-Z_:][-\w.:]*="[^"]*"/g, "")
+    .replace(/\s[a-zA-Z_:][-\w.:]*='[^']*'/g, "")
     .replace(/<w:tab\b[^>]*\/?>/g, "\t")
     .replace(/<w:br\b[^>]*\/?>/g, "\n")
     .replace(/<\/w:p>/g, "\n")
@@ -291,6 +296,78 @@ function intakeFromOoxml(buf, kind) {
   if (noteTxt) parts.push("【演讲备注】\n" + noteTxt);
   const text = parts.join("\n").slice(0, INTAKE_MAX_FILE_CHARS);
   return text ? { text: text } : { error: "PPT 页面里没有文字（可能是纯图版式，请把关键页截图后按图片上传）" };
+}
+
+/* ---------- ⑦b v205：结构化事实抽取 → 确认卡「按你上传的方案」预填 ----------
+   原则：宁可缺也不猜 —— 每个字段都要有明确的标签行或强模式才给值；抽不到就不给，
+   让确认卡回落到历史/规则来源，绝不用模糊匹配编一个像样的地点或时间。 */
+function intakeRouteOf(s) {
+  const parts = String(s || "").split(/[·、，,\s—–]+/).map(function (x) { return x.trim(); }).filter(Boolean);
+  const names = parts.map(function (p) {
+    const segs = p.split(/(?:省|自治区|市|州|区|县|镇|乡)+/).filter(Boolean);
+    return (segs.length ? segs[segs.length - 1] : p).replace(/(省|市|州|区|县|镇|乡)$/, "");
+  }).filter(function (x) { return x.length >= 2; });
+  const uniq = []; names.forEach(function (n) { if (uniq.indexOf(n) < 0) uniq.push(n); });
+  return uniq.slice(0, 4).join("—");
+}
+function intakeParseFields(text) {
+  const lines = String(text || "").split("\n").map(function (s) { return s.trim(); }).filter(Boolean);
+  const f = {};
+  const LABEL_RE = /^(活动时间|出行时间|活动日期|出发日期|集合时间|出发时间|集合地点|集合位置|上车地点|集合|活动人数|人数限制|人数|名额|活动地点|地点|活动价格|价格|费用|人均费用|人均)$/;
+  for (let i = 0; i < lines.length; i++) {
+    const L = lines[i];
+    const pm = L.match(/^([^：:]{1,8})[：:]\s*(.+)$/);
+    const lab = (pm && LABEL_RE.test(pm[1])) ? pm[1] : (LABEL_RE.test(L) ? L : "");
+    if (!lab) continue;
+    const v = (pm && lab === pm[1]) ? pm[2].trim() : (lines[i + 1] || "");
+    if (!v) continue;
+    if ((lab.indexOf("时间") >= 0 && lab.indexOf("集合") < 0 && lab.indexOf("出发") < 0) || lab.indexOf("日期") >= 0) {
+      if (!f.date && /月|日|\/|\d{4}/.test(v)) f.date = v.slice(0, 60);
+    } else if (lab === "集合地点" || lab === "集合位置" || lab === "上车地点" || lab === "集合") {
+      if (!f.meeting) f.meeting = v.slice(0, 40);
+    } else if (lab === "集合时间" || lab === "出发时间") {
+      if (!f.meetTime) f.meetTime = v.slice(0, 40);
+    } else if (lab.indexOf("人数") >= 0 || lab === "名额") {
+      const n = v.match(/\d{1,4}/); if (n && !f.limit) f.limit = n[0];
+    } else if (lab === "活动价格" || lab === "价格" || lab === "费用" || lab.indexOf("人均") >= 0) {
+      const n = v.match(/(\d{2,5})/); if (n && !f.price) f.price = n[1];
+    } else if (lab === "活动地点" || lab === "地点") {
+      if (!f.route) f.route = intakeRouteOf(v);
+    }
+  }
+  /* 无标签行的强模式兜底：时刻段（08:00 - 12:00）后两三行里出现「集合出发」才算集合时间 */
+  if (!f.meetTime) {
+    for (let i = 0; i < lines.length; i++) {
+      if (!/^\d{1,2}[:：]\d{2}/.test(lines[i])) continue;
+      for (let j = i + 1; j <= i + 3 && j < lines.length; j++) {
+        const mm = lines[j].match(/[\u4e00-\u9fa5]{2,6}(?:集合出发|等地集合|集合)/);
+        if (mm) {
+          f.meetTime = (((lines[i].match(/(\d{1,2}[:：]\d{2})/) || [])[1]) || "") + " 出发";
+          if (!f.meeting) f.meeting = mm[0].replace(/集合.*/, "") + "集合";
+          break;
+        }
+      }
+      if (f.meetTime) break;
+    }
+  }
+  const t = String(text || "");
+  if (!f.limit) { const m2 = t.match(/限\s*(\d{1,4})\s*人/); if (m2) f.limit = m2[1]; }
+  if (!f.days) {
+    const dm = t.match(/(\d+)\s*天\s*\d*\s*夜?/);
+    if (dm) f.days = dm[1];
+    else if (/两天一夜|两日/.test(t)) f.days = "2";
+    else if (/三天两夜|三日/.test(t)) f.days = "3";
+    else if (/一日游|当天往返/.test(t)) f.days = "1";
+    else {
+      let mx = 0; t.replace(/DAY\s*(\d+)/gi, function (all, n) { mx = Math.max(mx, +n); return all; });
+      if (mx >= 1) f.days = String(mx);
+    }
+  }
+  if (!f.route) {
+    const m3 = t.match(/(?:位于|目的地?为?)([^\n。]{4,40}?)(?:境内|[。\n ]|$)/);
+    if (m3) f.route = intakeRouteOf(m3[1]);
+  }
+  return f;
 }
 
 /* ---------- ⑥ PDF：懒加载 pdf.js（多 CDN 回退） ---------- */
@@ -377,8 +454,9 @@ const INTAKE_SYSTEM = [
   "2. 原文没有的信息一律不写，也不要用「待定」「请补充」这类占位话术。",
   "3. 原文里的精确数字（日期、集合时间、价格、名额、公里、海拔、天数、适合年龄）必须**原样保留**，不要改写成含糊说法。",
   "4. 删掉与活动内容无关的东西：公司抬头、页眉页脚、模板说明、目录、免责声明、版权信息、水印、二维码文字、纯装饰字。",
-  "5. 输出一段自然语言的中文描述，可以分段；不要 markdown 标题、不要 JSON、不要解释你在做什么、不要复述本规则。",
-  "6. 长度控制在 500 字以内；信息确实很多时可以放宽，但不要超过 900 字。"
+  "5. 行程安排（Day 1 / Day 2 / 第一天…，各时间点+地点+做什么）是系统生成行程页的原材料，必须按天逐条保留时间轴骨架，不许压缩成一句总结。",
+  "6. 输出一段自然语言的中文描述，可以分段；不要 markdown 标题、不要 JSON、不要解释你在做什么、不要复述本规则。",
+  "7. 长度控制在 500 字以内；信息确实很多时可以放宽，但不要超过 900 字。"
 ].join("\n");
 
 /* ---------- ⑧ 文件读取（DOM 侧） ---------- */
@@ -438,7 +516,8 @@ async function intakeExtractOne(file, kind) {
 
 /* ---------- ⑨ 编排：文件 → 描述（UI 只负责显示） ---------- */
 function intakeState() {
-  if (!state._intake) state._intake = { busy: false, busyText: "", items: [], description: "", warn: "" };
+  if (!state._intake) state._intake = { busy: false, busyText: "", items: [], description: "", warn: "", fields: {}, _fresh: false };
+  if (!state._intake.fields) state._intake.fields = {};
   return state._intake;
 }
 /* 某个文件一行的显示（读到了 / 没读到，都如实写清楚） */
@@ -502,6 +581,8 @@ async function intakeRunFiles(files) {
   }
   const merged = intakeMergeTexts(texts);
   const comp = await intakeComposeDescription(merged);
+  /* v205：结构化事实（集合地点/时间/价格/日期/人数/天数/路线）——确认卡「按你上传的方案」预填的来源 */
+  it.fields = intakeParseFields(merged);
   it.busy = false; it.busyText = "";
   it.description = comp.description || "";
   if (texts.length && !comp.usedAI) {
@@ -530,6 +611,7 @@ async function intakeRunFiles(files) {
   if (ta2 && it.description) ta2.value = it.description;
   /* 用户要的是「传进去就自动生成」：AI 可用且确实读到了内容 → 直接进生成流程 */
   if (it.description && aiAuthMode()) {
+    it._fresh = true; /* v205：刚传完方案 → 接下来这次生成允许消费结构化字段（一次性，防串场） */
     toast("方案已整理成活动描述，正在生成活动…");
     if (typeof generateFromInput === "function") generateFromInput();
   } else if (it.description) {

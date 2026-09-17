@@ -2679,10 +2679,23 @@ function applyVisionBatch(map) {
       return { value: "", src: "", label: "" };
     },
   };
+  /* v205：上传方案（Word/PPT/PDF/海报）里抽出的结构化事实 —— 确认卡的最高优先预填来源。
+     方案是老板亲笔写的，可信度高于历史活动/规则推断；字段没有就返回 null（回落到原来源，不猜）。 */
+  function planSuggestion(a, key) {
+    const pf = (a && a._planFields) || null;
+    if (!pf) return null;
+    const v = pf[key];
+    if (v == null || v === "") return null;
+    return { value: String(v), src: "plan", label: "按你上传的方案" };
+  }
   function factSuggestionFor(a, key) {
     const f = FACT_SUGGEST[key];
     if (!f || !a) return null;
-    try { return f(a) || null; } catch (e) { return null; }
+    try {
+      const p = planSuggestion(a, key);
+      if (p) return p;
+      return f(a) || null;
+    } catch (e) { return null; }
   }
   function suggestGapValue(a, key) { const s = factSuggestionFor(a, key); return (s && s.value) ? s.value : ""; }
   function keyFactValue(a, key) {

@@ -1821,6 +1821,13 @@
     state.draft = blankActivity();
     state.draft.photos = (state._pendingPhotos || []).slice(); // §七：第 1 步就已上传的照片带进活动
     state.draft.raw = text;
+    /* v205：上传方案抽出的结构化事实（集合地点/时间/价格/日期/人数/天数/路线），
+       一次性挂到「由方案上传触发的这次生成」的草稿上（确认卡最高优先预填来源）。
+       手动点生成不消费旧方案字段（_fresh 只在 intakeRunFiles 成功后置位、此处消费即清），防止串场。 */
+    if (state._intake && state._intake._fresh) {
+      if (state._intake.fields) state.draft._planFields = state._intake.fields;
+      state._intake._fresh = false;
+    }
     showGenerating();
     parseActivityWithAI(text).then(async (json) => {
       // P0-2：无 Key / AI 失败，用本地 Activity DNA 兜底生成（差异化，不依赖 LLM），仍进入确认卡
@@ -2127,7 +2134,7 @@
       const sg = g.suggest || {};
       const pre = sg.value || "";
       const tag = pre
-        ? `<span class="gc-tag gc-tag-ai">AI 建议 · ${esc(sg.label || "已预填")}</span>`
+        ? `<span class="gc-tag gc-tag-ai">${sg.src === "plan" ? esc(sg.label || "按你上传的方案") : "AI 建议 · " + esc(sg.label || "已预填")}</span>`
         : `<span class="gc-tag gc-tag-need">${esc(sg.label || "需你补一句")}</span>`;
       const chips = (sg.chips || []).length
         ? `<div class="gc-chips">${(sg.chips || []).map((c) => `<button type="button" class="gc-chip" data-action="useGapChip" data-key="${esc(g.key)}" data-val="${esc(c)}">${esc(c)}</button>`).join("")}</div>`
