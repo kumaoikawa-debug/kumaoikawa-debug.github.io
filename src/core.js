@@ -1483,6 +1483,9 @@ const REQUIRED_MODULE_FILES = {
   intakePanelHtml: "intake.js",
   intakeRunFiles: "intake.js",
   intakeFromOoxml: "intake.js",
+  /* v205/v206 方案结构化抽取：事实字段 + 按天行程 */
+  intakeParseFields: "intake.js",
+  intakeParseItinerary: "intake.js",
   visionReadPoster: "vision.js",
 };
 const REQUIRED_MODULES = Object.keys(REQUIRED_MODULE_FILES);

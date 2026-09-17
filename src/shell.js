@@ -1826,6 +1826,7 @@
        手动点生成不消费旧方案字段（_fresh 只在 intakeRunFiles 成功后置位、此处消费即清），防止串场。 */
     if (state._intake && state._intake._fresh) {
       if (state._intake.fields) state.draft._planFields = state._intake.fields;
+      if (state._intake.itinerary && state._intake.itinerary.length) state.draft._planItinerary = state._intake.itinerary;
       state._intake._fresh = false;
     }
     showGenerating();
@@ -1836,6 +1837,7 @@
         base.raw = base.raw || text;
         if (typeof syncDerived === "function") syncDerived(base);
         applyDnaCopyFallback(base);
+        restorePlanItinerary(base);
         await ensureItineraryFields(base);
         syncItineraryDays(base);
         const sims = similarList(base);
@@ -1847,12 +1849,24 @@
       }
       applyAIResult(json, state.draft);
       await ensureNarrativeFields(state.draft);
+      restorePlanItinerary(state.draft);   /* AI 返回的 itineraryDays 可能为空数组（publish.js 会整体覆盖），先补回方案行程 */
       await ensureItineraryFields(state.draft);
       syncItineraryDays(state.draft);
       const sims = similarList(state.draft);
       if (sims.length) state.draft._similarList = sims.map((s) => ({ id: s.id, title: s.title }));
       showView("factConfirm");
     });
+  }
+  /* v206：方案里抽出的按天行程是行程页的原材料 —— 优先于 AI 生成，且防被空数组覆盖。
+     必须在 ensureItineraryFields 之前调用（它见到非空行程就不再调 AI 生成）。 */
+  function restorePlanItinerary(a) {
+    if (!a || !a._planItinerary || !a._planItinerary.length) return;
+    /* ★方案原文是行程的唯一真源：AI / 模板从「描述」二次提取的行程会丢条目、也会改写措辞，
+       所以这里直接覆盖（没传方案时 _planItinerary 为空，本函数直接返回，不影响手打创建）。 */
+    a.itineraryDays = a._planItinerary.slice();
+    const n = (a.itineraryDays || []).length;
+    /* syncItineraryDays 会按 a.days 截断 —— 天数没抽到时行程会被砍成 1 天 */
+    if (n && (!a.days || (+a.days) < n)) a.days = n;
   }
   function showGenerating() {
     const steps = ["正在识别活动信息", "正在判断活动类型", "正在生成宣传内容", "正在匹配活动视觉", "正在整理装备与注意事项", "活动页面生成完成"];

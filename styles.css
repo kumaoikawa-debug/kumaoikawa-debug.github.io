@@ -5844,3 +5844,12 @@ s.pp-base, .dm-v s.pp-base { text-decoration: line-through; }
 .intake-desc-h { display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700; color: var(--brand-700); margin-bottom: 5px; }
 .intake-desc-h svg { width: 13px; height: 13px; }
 .intake-desc-b { font-size: 12.5px; line-height: 1.75; color: var(--ink-2); white-space: pre-wrap; max-height: 150px; overflow: auto; }
+
+/* ---- v206：方案里读出的「按天行程」核对块（老板要能一眼看出行程读全了没） ---- */
+.intake-itin { padding: 9px 11px; background: var(--surface); border: 1px solid var(--brand-soft); border-radius: var(--radius-xs); }
+.intake-itin-d { margin-top: 7px; }
+.intake-itin-d > b { font-size: 12px; color: var(--brand-700); }
+.intake-itin-s { margin-left: 6px; font-size: 11px; color: var(--muted); }
+.intake-itin-i { display: flex; flex-direction: column; gap: 2px; margin-top: 3px; }
+.intake-itin-i span { font-size: 11.5px; line-height: 1.6; color: var(--ink-2); }
+.intake-itin-i span::before { content: "· "; color: var(--brand); }

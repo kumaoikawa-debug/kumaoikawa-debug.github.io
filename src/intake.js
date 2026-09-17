@@ -298,6 +298,101 @@ function intakeFromOoxml(buf, kind) {
   return text ? { text: text } : { error: "PPT 页面里没有文字（可能是纯图版式，请把关键页截图后按图片上传）" };
 }
 
+/* ---------- ⑦c v206：按天行程抽取 → 行程页直接用方案原文 ----------
+   形态：Day 1 / DAY 2 / 第一天 作天标题；其后「08:00 - 12:00」这样的时刻段 +
+   下一行非空描述 = 一条时间轴。原则仍是宁可缺也不猜：抽不到就返回空数组，
+   让行程页回落到 AI 生成，绝不拿无关行拼凑行程。 */
+const INTAKE_DAY_RE = /^(?:day|d|第)\s*(\d+)\s*(?:天|日)?(?:\s*(?:时间计划|行程|schedule))?$/i;
+const INTAKE_DAY_CN = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
+function intakeDayNo(line) {
+  const t = String(line || "").trim();
+  let m = t.match(INTAKE_DAY_RE);
+  if (m) return +m[1];
+  m = t.match(/^第\s*([一二三四五六七八九十])\s*天/);
+  if (m) return INTAKE_DAY_CN.indexOf(m[1]) + 1;
+  m = t.match(/^第\s*(\d+)\s*天/);
+  if (m) return +m[1];
+  return 0;
+}
+/* 追加一条时间轴；返回是否真的写入（重复汇总行会被丢掉） */
+function intakePushItem(cur, time, text) {
+  if (!cur) return false;
+  const txt = String(text || "").slice(0, 60);
+  if (!txt) return false;
+  const prev = cur.items[cur.items.length - 1];
+  /* 单点时刻（无区间）且描述已被上一条覆盖 → 是汇总行（如「21:00 返回酒店」），丢掉 */
+  if (prev && !/[-–—~至]/.test(time) && (prev.text.indexOf(txt) >= 0 || txt.indexOf(prev.text) >= 0)) return false;
+  cur.items.push({ time: time, text: txt });
+  return true;
+}
+function intakeParseItinerary(text) {
+  const lines = String(text || "").split("\n").map(function (x) { return String(x || "").trim(); });
+  const days = [];
+  let cur = null, pendTime = "";
+  const isTime = function (L) { return /^\d{1,2}[:：]\d{2}/.test(L); };
+  const isRange = function (L) { return /^\d{1,2}[:：]\d{2}\s*[-–—~至]\s*\d{1,2}[:：]\d{2}/.test(L); };
+  const isNoise = function (L) {
+    if (!L) return true;
+    if (/^\d{2,4}\s*\/\s*\d{1,2}/.test(L)) return true;                 // 页码 05 / 15
+    if (/^(ARC|arc)/.test(L)) return true;                              // 页脚品牌
+    if (/^\d{2,4}\s*(KM|M|MIN|km|m|min)$/i.test(L)) return true;        // 统计数字
+    if (/^(全天车程|最高海拔|金山观景|返程|里程|车程)$/.test(L)) return true;
+    return false;
+  };
+  for (let i = 0; i < lines.length; i++) {
+    const L = lines[i];
+    if (!L) { continue; }
+    const dn = intakeDayNo(L);
+    if (dn >= 1) {
+      cur = { no: dn, label: "第 " + dn + " 天", sub: "", items: [] };
+      days.push(cur); pendTime = "";
+      /* 天标题后紧跟的非时刻行（路线概述）作为 sub */
+      for (let j = i + 1; j < lines.length; j++) {
+        const nx = lines[j];
+        if (!nx) continue;
+        if (isTime(nx) || intakeDayNo(nx)) break;
+        if (!isNoise(nx) && nx.length <= 40) { cur.sub = nx; break; }
+        break;
+      }
+      continue;
+    }
+    if (!cur) continue;
+    /* 两种形态都要支持：①「08:00 - 12:00」独占一行、描述在下一行（PPT 常见）
+       ②「08:00 集合出发」时刻与描述同行（Word / 表格常见） */
+    const rm = L.match(/^(\d{1,2}[:：]\d{2}\s*[-–—~至]\s*\d{1,2}[:：]\d{2})\s*(.*)$/);
+    const tm = L.match(/^(\d{1,2}[:：]\d{2})\s*(.*)$/);
+    if (rm) {
+      /* 只归一化分隔符本身，保留原空格（「08:00 - 12:00」比「08:00-12:00」好读） */
+      pendTime = rm[1].replace(/\s+/g, " ").replace(/\s*[-–—~至]\s*/, " - ");
+      if (rm[2]) { intakePushItem(cur, pendTime, rm[2]); pendTime = ""; }
+      continue;
+    }
+    if (tm) {
+      pendTime = tm[1];
+      if (tm[2]) { intakePushItem(cur, pendTime, tm[2]); pendTime = ""; }
+      continue;
+    }
+    if (isNoise(L)) continue;
+    if (pendTime) { intakePushItem(cur, pendTime, L); pendTime = ""; continue; }
+  }
+  /* 合并同一天（同一 Day 号可能在总览页与计划页各出现一次） */
+  const merged = [];
+  days.forEach(function (d) {
+    const hit = merged.filter(function (m) { return m.no === d.no; })[0];
+    if (!hit) { merged.push({ no: d.no, label: d.label, sub: d.sub, items: d.items.slice() }); return; }
+    if (!hit.sub && d.sub) hit.sub = d.sub;
+    d.items.forEach(function (it) {
+      const dup = hit.items.some(function (x) { return x.time === it.time && x.text === it.text; });
+      if (!dup) hit.items.push(it);
+    });
+  });
+  const out = merged
+    .filter(function (d) { return d.items.length > 0; })
+    .sort(function (a, b) { return a.no - b.no; })
+    .map(function (d) { return { label: d.label, sub: d.sub, items: d.items }; });
+  return out;
+}
+
 /* ---------- ⑦b v205：结构化事实抽取 → 确认卡「按你上传的方案」预填 ----------
    原则：宁可缺也不猜 —— 每个字段都要有明确的标签行或强模式才给值；抽不到就不给，
    让确认卡回落到历史/规则来源，绝不用模糊匹配编一个像样的地点或时间。 */
@@ -443,7 +538,9 @@ function intakeMergeTexts(items) {
 }
 /* ★ 不编造：没有 AI 时只把原文裁一段出来，一个字都不加/不改顺序 */
 function intakeFallbackDescription(text) {
-  return intakeCleanText(String(text || "").slice(0, 1500));
+  /* ★v206：1500 字会把方案后半段的逐日行程整段截掉（实测 2820 字的方案卡在第 8 页 Day 2 中间）。
+     行程是行程页的唯一原材料，宁可描述长一点，也不能丢。 */
+  return intakeCleanText(String(text || "").slice(0, 4000));
 }
 /* 送进 AI 的整理指令：只许搬运与重组，不许新增事实（承 v193 / v201 / v203） */
 const INTAKE_SYSTEM = [
@@ -454,9 +551,9 @@ const INTAKE_SYSTEM = [
   "2. 原文没有的信息一律不写，也不要用「待定」「请补充」这类占位话术。",
   "3. 原文里的精确数字（日期、集合时间、价格、名额、公里、海拔、天数、适合年龄）必须**原样保留**，不要改写成含糊说法。",
   "4. 删掉与活动内容无关的东西：公司抬头、页眉页脚、模板说明、目录、免责声明、版权信息、水印、二维码文字、纯装饰字。",
-  "5. 行程安排（Day 1 / Day 2 / 第一天…，各时间点+地点+做什么）是系统生成行程页的原材料，必须按天逐条保留时间轴骨架，不许压缩成一句总结。",
+  "5. ★行程安排（Day 1 / Day 2 / 第一天…，各时间点+地点+做什么）是系统生成行程页的**唯一原材料**，必须按天、按时间顺序**逐条完整保留**（每一条都写成「08:00 - 12:00 成都集合出发，前往康定城区」这样的完整一行），**绝对不许**压缩成一句总结、不许合并时段、不许只挑亮点。",
   "6. 输出一段自然语言的中文描述，可以分段；不要 markdown 标题、不要 JSON、不要解释你在做什么、不要复述本规则。",
-  "7. 长度控制在 500 字以内；信息确实很多时可以放宽，但不要超过 900 字。"
+  "7. 除行程外的部分控制在 500 字以内；★但行程时间轴不受此限制，方案里写了多少条就保留多少条（可以超过 900 字）。"
 ].join("\n");
 
 /* ---------- ⑧ 文件读取（DOM 侧） ---------- */
@@ -516,8 +613,9 @@ async function intakeExtractOne(file, kind) {
 
 /* ---------- ⑨ 编排：文件 → 描述（UI 只负责显示） ---------- */
 function intakeState() {
-  if (!state._intake) state._intake = { busy: false, busyText: "", items: [], description: "", warn: "", fields: {}, _fresh: false };
+  if (!state._intake) state._intake = { busy: false, busyText: "", items: [], description: "", warn: "", fields: {}, itinerary: [], _fresh: false };
   if (!state._intake.fields) state._intake.fields = {};
+  if (!state._intake.itinerary) state._intake.itinerary = [];
   return state._intake;
 }
 /* 某个文件一行的显示（读到了 / 没读到，都如实写清楚） */
@@ -537,13 +635,28 @@ function intakePanelHtml() {
       + '<div class="intake-row intake-row-busy"><span class="intake-spin"></span>'
       + '<span class="intake-row-n">' + esc(it.busyText || "正在读取方案…") + "</span></div></div>";
   }
-  if (!items.length && !it.description) return "";
+  if (!items.length && !it.description && !(it.itinerary || []).length) return "";
   const warn = it.warn ? '<div class="intake-warn">' + ICON("alert-triangle") + "<span>" + esc(it.warn) + "</span></div>" : "";
+  /* v206：行程是行程页的原材料，单独列出来让老板核对有没有读全 */
+  let itinHtml = "";
+  const itins = it.itinerary || [];
+  if (itins.length) {
+    const cnt = itins.reduce(function (n, d) { return n + (d.items || []).length; }, 0);
+    itinHtml = '<div class="intake-itin"><div class="intake-desc-h">' + ICON("map")
+      + " 已读出 " + itins.length + " 天 / " + cnt + " 条行程（生成时会直接用到行程页）</div>"
+      + itins.map(function (d) {
+        return '<div class="intake-itin-d"><b>' + esc(d.label) + "</b>"
+          + (d.sub ? '<span class="intake-itin-s">' + esc(d.sub) + "</span>" : "")
+          + '<div class="intake-itin-i">' + (d.items || []).map(function (t) {
+            return "<span>" + esc(t.time) + " " + esc(t.text) + "</span>";
+          }).join("") + "</div></div>";
+      }).join("") + "</div>";
+  }
   const desc = it.description
     ? '<div class="intake-desc"><div class="intake-desc-h">' + ICON("check") + " 已整理成活动描述（已填到下面的输入框，可直接修改）</div>"
       + '<div class="intake-desc-b">' + esc(it.description) + "</div></div>"
     : "";
-  return '<div class="intake-panel" id="intakePanel">' + items.map(intakeRowHtml).join("") + warn + desc + "</div>";
+  return '<div class="intake-panel" id="intakePanel">' + items.map(intakeRowHtml).join("") + warn + itinHtml + desc + "</div>";
 }
 /* 全部读完后：有 AI 就整理，没 AI 就原样回填（并如实说明） */
 async function intakeComposeDescription(merged) {
@@ -583,6 +696,12 @@ async function intakeRunFiles(files) {
   const comp = await intakeComposeDescription(merged);
   /* v205：结构化事实（集合地点/时间/价格/日期/人数/天数/路线）——确认卡「按你上传的方案」预填的来源 */
   it.fields = intakeParseFields(merged);
+  /* v206：按天行程直接抽成结构化数组（行程页的原材料，不再只靠描述文本传递） */
+  it.itinerary = intakeParseItinerary(merged);
+  if (it.itinerary.length) {
+    const n = it.itinerary.reduce(function (s, d) { return s + (d.items || []).length; }, 0);
+    it.fields.itineraryNote = it.itinerary.length + " 天 " + n + " 条";
+  }
   it.busy = false; it.busyText = "";
   it.description = comp.description || "";
   if (texts.length && !comp.usedAI) {
