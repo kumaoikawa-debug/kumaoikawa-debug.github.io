@@ -14,3 +14,7 @@ Thumbs.db
 
 # 旧规划草稿（非站点资源）
 styles.css-clubos-v57-plan-free.css
+
+# 发版样例页 / 改前改后对比页（内嵌 base64 截图，体积大；生成脚本已入库，产物本地保留）
+v*-sample.html
+v*-compare.html
