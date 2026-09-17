@@ -1166,6 +1166,216 @@
     };
   }
 
+/* ================= v201 文案事实闸门（文学层 / 事实层边界） =================
+   老板反馈：「为什么文案里面老是出现时间、日期，我们要的文案是有语言美感的，
+   不是这种没有艺术的数字。」根因两条 ——
+     ① 本地角度模板 EDITORIAL_ANGLE_VOICE 把 {D}(日期) / {startTime}(时刻) /
+        {distWord}(公里) / {eleWord}(海拔) / {limit}(人数) 直接填进标题、导语、正文、金句；
+     ② AI prompt 曾要求正文「最后给决策信息」→ AI 就在正文末尾播报
+        「9月20日单日往返｜98元/人｜限15人｜4小时车程」。
+
+   边界原则不是「删掉数字」，而是**分层**：
+     · 事实层 —— 决策速览 / 数据条 / 行程时间轴 / 费用说明 / 报名结算 / 后台面板
+       → 保留精确数字，**一个字都不动**（客户要据此做决策、下单、核对）。
+     · 文学层 —— 标题 / 副标题 / 导语 / 正文段落 / 金句 / hero 摘要
+       → 只谈画面、节奏与感受，参数一律剥离。
+
+   闸门两件事：
+     1) factBroadcastHits(text)：列出这段文字里的「硬参数」（日期/时刻/价格/名额/
+        里程/海拔/年龄/天数）。
+     2) sanitizeLiteraryText(text)：专用于文学层。命中 ≥3 处（或含 ≥2 个竖线且
+        有参数）的句子判定为「参数播报行」→ 整句丢弃；否则就地剥离参数并收拾标点；
+        剥离后残余汉字 < 4 或结尾悬空（约/共/达/左右…）也整句丢弃 ——
+        宁可少一句，也不留一句读不通的。
+   ------------------------------------------------------------------------- */
+
+/* 每条规则都带上「引导词」（全程 / 约 / 限 / 海拔 / 价格…）。
+   若只删数字本身，「全程约 25 公里，一路都在换视野」会被削成
+   「全程约 ，一路都在换视野」这种断句 —— 所以引导词必须一起吃掉。 */
+/* ★ 日期规则里**不认**独立的「周X / 星期X」：
+   「走完回来，周一没那么难熬了。」是文学说法（指代「休息之后」），不是日期参数；
+   早先把它算作日期，会把这类正常句子判成参数句而丢进闸门（v201 契约 B1 实测误伤）。
+   真正的日期表达（9月20日 / 9/20 / 2026-09-20 / 9月）已由下面各分支覆盖。 */
+const FACT_LITERAL_RULES = [
+  { key: "date", re: /(?:\d{4}\s*年\s*)?\d{1,2}\s*月份?(?:\s*\d{1,2}\s*[日号]?)?|\d{4}\s*[-/.]\s*\d{1,2}\s*[-/.]\s*\d{1,2}|\d{1,2}\s*[\/／]\s*\d{1,2}(?!\d)/g },
+  { key: "time", re: /(?:上午|下午|早上|傍晚|晚上|中午|凌晨)?\s*\d{1,2}\s*[:：]\s*\d{2}(?:\s*[-–~至]\s*\d{1,2}\s*[:：]\s*\d{2})?/g },
+  { key: "price", re: /(?:价格|人均|每人|只需|只要|仅需|仅|费用)?\s*(?:¥|￥|RMB)?\s*\d+(?:\.\d+)?\s*(?:元|块钱|块)(?:\s*\/\s*[人位份次])?/g },
+  { key: "dist", re: /(?:全程|单程|全长|距离|累计|长约|大约|约|共|达)?\s*\d+(?:\.\d+)?\s*(?:公里|千米|km|KM|Km)/g },
+  { key: "elev", re: /(?:海拔|累计爬升|爬升|上升|下降|落差)?\s*\d+(?:\.\d+)?\s*米(?![兰克])/g },
+  { key: "quota", re: /(?:限|仅限|限额|人数|控制在|仅收)?\s*\d+\s*(?:人|位|名)(?![们民生])/g },
+  { key: "age", re: /(?:年龄|适合)?\s*\d+\s*[-–~至]\s*\d+\s*岁|\d+\s*岁/g },
+  { key: "count", re: /\d+\s*天(?!气)/g },
+  /* 时长 / 车程：「4小时车程」也是参数（老板截图里那行参数串就含它）。
+     只认「数字 + 时间单位」，不碰「一小时后」这种文学说法（那是中文数词）。 */
+  { key: "dur", re: /(?:车程|路程|耗时|用时|时长|需要|大约|约|共)?\s*\d+(?:\.\d+)?\s*(?:小时|分钟|分钟车程|h)(?![时时])/g },
+];
+
+/* 逐条收集「硬参数」命中项。用 String.match(/g) 而非 exec —— 后者会污染
+   模块级正则的 lastIndex，导致同一段文字第二次检测结果不一致。 */
+function factBroadcastHits(text) {
+  const s = String(text == null ? "" : text);
+  const hits = [];
+  for (let i = 0; i < FACT_LITERAL_RULES.length; i++) {
+    const m = s.match(FACT_LITERAL_RULES[i].re);
+    if (m) for (let j = 0; j < m.length; j++) { const t = String(m[j]).trim(); if (t) hits.push(t); }
+  }
+  return hits;
+}
+
+/* 把句子列表切成「句」——不用 lookbehind（旧 Safari 不支持），手工扫描更稳。 */
+function splitLiterarySentences(src) {
+  const parts = []; let buf = "";
+  const enders = "。！？!?；;\n";
+  for (let i = 0; i < src.length; i++) {
+    const ch = src.charAt(i);
+    buf += ch;
+    if (enders.indexOf(ch) >= 0) { parts.push(buf); buf = ""; }
+  }
+  if (buf) parts.push(buf);
+  return parts;
+}
+
+/* 单行净化：剥离参数、丢弃参数播报行、丢弃剥离后不成句的残句。 */
+/* 参数两侧是否算「边界」：段首/段尾、或标点。
+   只有两侧都是边界时，剥离才安全（参数本身就是整个分句）。 */
+function isFactLiteralEdge(ch) {
+  if (!ch) return true;
+  return /[，。、；：｜|！？!?()（）【】「」·\-—\/]/.test(ch);
+}
+/* 单个分句的安全剥离。
+   ★ 为什么这么严：参数**嵌在短语中间**时硬删会造出破句 ——
+     「把9月20日留给朋友」→「把留给朋友」、「走完这12公里」→「走完这」。
+     所以只有「参数本身就是整个分句」（两侧是边界或标点）时才剥离；
+     否则报不安全，由调用方整句丢弃。宁可少一句，也不留破句。 */
+function factStripSafe(seg) {
+  const text = String(seg == null ? "" : seg);
+  let unsafe = false;
+  for (let r = 0; r < FACT_LITERAL_RULES.length; r++) {
+    const re = new RegExp(FACT_LITERAL_RULES[r].re.source, "g");
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      if (m[0].length === 0) { re.lastIndex++; continue; }
+      const p0 = m.index, p1 = p0 + m[0].length;
+      const before = text.slice(0, p0).replace(/\s+$/, "").slice(-1);
+      const after = text.slice(p1).replace(/^\s+/, "").charAt(0);
+      if (!isFactLiteralEdge(before) || !isFactLiteralEdge(after)) unsafe = true;
+    }
+  }
+  if (unsafe) return { ok: false, text: "" };
+  let out = text;
+  for (let r = 0; r < FACT_LITERAL_RULES.length; r++) out = out.replace(FACT_LITERAL_RULES[r].re, "");
+  out = out.replace(/[（(]\s*[）)]/g, "").replace(/【\s*】/g, "").replace(/「\s*」/g, "")
+    .replace(/[｜|]+/g, "")
+    /* 参数被吃掉后会留下空隔断：「社交 · 9月20日 · 25 公里 · 中等强度」→「社交 · · 中等强度」。
+       先把连续/空的中圆点合并，再统一中圆点两侧间距，避免出现「· ·」这种残渣。 */
+    /* 用「一串中圆点」而非「两个中圆点」：全局替换不重叠，
+       三个点只会并成两个（实测）。这里要求 ≥2 个才合并，一次到位。 */
+    .replace(/[·・](?:\s*[·・])+/g, "·")
+    .replace(/\s*[·・]\s*/g, " · ")
+    .replace(/([，。、；：])\s*[·・]/g, "$1")
+    .replace(/[·・]\s*([，。、；：])/g, "$1")
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[\s·、]+|[\s·、]+$/g, "").trim();
+  return { ok: true, text: out };
+}
+
+/* 单行净化（完整闸门）：剥离参数、丢弃参数播报行、丢弃剥离后不成句的残句。 */
+function sanitizeLiteraryPass(line) {
+  const src = String(line == null ? "" : line);
+  if (!src.trim()) return "";
+  const parts = splitLiterarySentences(src);
+  const out = [];
+  for (let i = 0; i < parts.length; i++) {
+    const sent = parts[i].trim();
+    if (!sent) continue;
+    const hits = factBroadcastHits(sent);
+    /* 干净句原样放行 —— 这是「文学层不误伤」的保险：
+       没有参数就不做任何标点重排与断句取舍（否则「这一天…脚下。」这类
+       正常句子会被规则误伤）。 */
+    if (!hits.length) { out.push(sent); continue; }
+    /* ★ 这里**不做**「参数播报行整句丢弃」的短路。
+       实测（v201 契约 A2b）：播报串常与正常句共处一句、中间没有句号 ——
+       「9月20日单日往返｜98元/人｜限15人｜4小时车程｜海拔800米走路的时候，话题自然就有了。」
+       若整句丢弃，后半句好文案会被一起带走；若整句保留，参数又漏出去。
+       所以统一交给下面「逐分句 × 逐参数片段」处理：
+       参数两侧是边界（段首/段尾/标点）才剥离，嵌在短语中间的只丢那一片。 */
+    // 逐「分句」处理：只有参数本身就是整个分句时才剥离，
+    // 嵌入短语中间的（把9月20日留给朋友 / 走完这12公里）整个分句丢弃。
+    const segs = sent.split(/[，、]/);
+    const kept = [];
+    for (let k = 0; k < segs.length; k++) {
+      const seg = segs[k];
+      if (!factBroadcastHits(seg).length) { kept.push(seg); continue; }
+      const r = factStripSafe(seg);
+      if (!r.ok) continue;                                       // 参数嵌在短语中间 → 丢
+      const han = (r.text.match(/[\u4e00-\u9fa5]/g) || []).length;
+      if (han < 5) continue;                                     // 参数占了大头 → 丢
+      kept.push(r.text);
+    }
+    const endM = sent.match(/[。！？!?；;]+$/);
+    let s2 = kept.join("，").replace(/\s{2,}/g, " ")
+      .replace(/^[，。、；：｜|·\s]+/, "").replace(/[，。、；：｜|·\s]+$/, "")
+      .replace(/^(?:以及|还有|和|与|及|或者|或|并|且)[，、]?/, "")
+      .trim();
+    // 末段被丢掉时句末标点会一起消失 → 补回来，避免和下一句连成一片
+    if (endM && s2 && !/[。！？!?；;]$/.test(s2)) s2 += endM[0];
+    // ③ 残句判定：汉字过少、或结尾悬空（被吃掉引导词后只剩半句）→ 丢弃。
+    //    只认「数量连接词」类悬空尾（约/共/达/左右/上下/以内/之内）——
+    //    早先把「下/上/内/和/的/了」也算进去，误杀了「…脚**下**。」这类正常句。
+    const tail = s2.replace(/[。！？!?；;]+$/, "");
+    const han2 = (tail.match(/[\u4e00-\u9fa5]/g) || []).length;
+    if (han2 < 4) continue;
+    if (/(?:约|共|达|左右|上下|以内|之内)$/.test(tail)) continue;
+    out.push(s2);
+  }
+  return out.join("").replace(/\s{2,}/g, " ").trim();
+}
+
+/* 文学层净化（完整闸门）：**先把换行当段落边界切开**，再逐行逐句处理。
+   ★ 必须先切行：早先把「\n」也算作句末符，导致多段导语被合并成一段
+   （段与段之间的换行被 join("") 吃掉了）—— 段落结构属于排版，不能被净化改掉。 */
+function sanitizeLiteraryText(text) {
+  const src = String(text == null ? "" : text);
+  if (!src.trim()) return "";
+  return src.split(/\n+/).map(function (line) { return sanitizeLiteraryPass(line); })
+    .filter(function (l) { return l && l.trim(); }).join("\n");
+}
+
+/* 文学层净化（轻量闸门）：只丢弃「参数播报行」，其余**一字不动**。
+   用在「老板可能亲手写过」的字段（活动名称 / 导语 / 正文段落 / 金句 / 为什么值得去…）——
+   完整闸门会就地剥离参数，落到人手写的句子上就变成替作者改句子了。
+   判断依据用「参数播报行」的特征（≥3 个硬参数，或 ≥2 个竖线且带参数）：
+   老板自己写「9月20日出发」是他的表达自由；但
+   「9月20日单日往返｜98元/人｜限15人｜4小时车程」这种参数串不是文案，直接丢掉。 */
+function stripBroadcastLines(text) {
+  const src = String(text == null ? "" : text);
+  if (!src.trim()) return "";
+  return src.split(/\n+/).map(function (line) {
+    const parts = splitLiterarySentences(line);
+    const out = [];
+    for (let i = 0; i < parts.length; i++) {
+      const sent = parts[i].trim();
+      if (!sent) continue;
+      const hits = factBroadcastHits(sent);
+      const bars = (sent.match(/[｜|]/g) || []).length;
+      if (hits.length >= 3 || (bars >= 2 && hits.length >= 1)) continue;
+      out.push(sent);
+    }
+    return out.join("");
+  }).filter(function (l) { return l && l.trim(); }).join("\n");
+}
+
+/* 列表版：逐条净化并丢掉空项（避免净化后在页面留下一个大白块）。 */
+function sanitizeLiteraryList(list) {
+  return (Array.isArray(list) ? list : []).map(function (t) { return sanitizeLiteraryText(t); }).filter(Boolean);
+}
+function stripBroadcastList(list) {
+  return (Array.isArray(list) ? list : []).map(function (t) { return stripBroadcastLines(t); }).filter(Boolean);
+}
+
+/* 文学层字段白名单 —— AI 落库时按这张表过闸门（事实层字段不在此列，绝不动）。 */
+const LITERARY_FIELDS = ["body", "intro", "hook", "pullQuote", "whyGo", "experience", "gain", "marketingTitles"];
+
 /* ---------------- v193 模块完整性清单（P0-5） ----------------
    「UI 有入口但函数不存在」是最难查的一类线上问题：按钮点下去才报错。
    这里把「必须存在」的模块集中登记；boot.js 在启动时调用 checkRequiredModules() 自检，
@@ -1187,6 +1397,12 @@ const REQUIRED_MODULE_FILES = {
   redeemMemberPoints: "core.js",
   usableCouponsFor: "core.js",
   couponDiscountOf: "core.js",
+  /* v201 文案事实闸门：publish.js（模板/AI 落库）与 activities.js（渲染兜底）都直接调 */
+  sanitizeLiteraryText: "core.js",
+  sanitizeLiteraryList: "core.js",
+  stripBroadcastLines: "core.js",
+  stripBroadcastList: "core.js",
+  factBroadcastHits: "core.js",
 };
 const REQUIRED_MODULES = Object.keys(REQUIRED_MODULE_FILES);
 /* 返回「缺失的模块名 → 应在文件」清单；全部就绪返回空数组 */

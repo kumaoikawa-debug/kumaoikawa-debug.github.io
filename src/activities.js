@@ -1,6 +1,10 @@
   // 新架构叙事区块：围绕核心传播主题，按"为什么值得去→体验→收获→适合谁"呈现
   function narrativeBlock(a, field, title, defTitle, photo) {
-    const txt = (a[field] && String(a[field]).trim()) || "";
+    /* v201：whyGo / experience / gain 是 AI 生成的消费叙事，属文学层 ——
+       渲染时过完整闸门。老板看的是已存进 localStorage 的旧活动，
+       落库闸门管不到历史数据，渲染层必须兜底（参数播报行在页面上直接消失）。 */
+    const raw = (a[field] && String(a[field]).trim()) || "";
+    const txt = (typeof sanitizeLiteraryText === "function") ? sanitizeLiteraryText(raw) : raw;
     if (!txt) return "";
     const t = (title && String(title).trim()) || defTitle;
     // 长文中间插入「数据/状态」可视化，避免纯文字用户没耐心看完；仅「为什么值得去」区块显示事实胶囊+配图
@@ -30,8 +34,10 @@
     return `<div class="narr-facts">${items.map(([ic, v, k]) => `<div class="nf"><span class="nf-ic">${ICON(ic)}</span><b class="nf-v">${esc(v)}</b><span class="nf-k">${esc(k)}</span></div>`).join("")}</div><div class="narr-facts-hint">以上数据均来自已确认活动信息</div>`;
   }
   function narrativeFitBlock(a) {
-    const fit = (a.fitFor && String(a.fitFor).trim()) || "";
-    const unfit = (a.notFitFor && String(a.notFitFor).trim()) || "";
+    /* v201：「适合谁」可能是老板手写的 → 只过轻量闸门（丢参数串，不改句子）。 */
+    const g = (t) => (typeof stripBroadcastLines === "function") ? stripBroadcastLines(t) : String(t == null ? "" : t);
+    const fit = g((a.fitFor && String(a.fitFor).trim()) || "");
+    const unfit = g((a.notFitFor && String(a.notFitFor).trim()) || "");
     if (!fit && !unfit) return "";
     return `<section class="v13-narrative fit" data-narr="fit"><h3>适合谁</h3>`
       + (fit ? `<p class="fit-yes">${esc(fit)}</p>` : "")
@@ -346,10 +352,36 @@
     const theme = (dna && dna.mainTheme) || a.storyPurpose || a.editorialTitle || a.title || "";
     /* P0-C：换风格生成的内容包优先决定 标题 / 副标题 / 导语 / 金句 —— 事实字段完全不参与重写 */
     const spack = (typeof editorialStylePackOf === "function") ? editorialStylePackOf(a) : null;
+    /* ===== v201 文学层「事实闸门」的两档用法 =====
+       老板反馈：「为什么文案里面老是出现时间、日期，我们要的文案是有语言美感的，
+       不是这种没有艺术的数字。」
+       ① 系统生成文案（风格包 pack：标题/副标题/导语/段落/金句）→ 完整闸门
+          sanitizeLiteraryText：剥离参数 + 丢弃参数播报行。作者是系统，改它没问题。
+       ② 老板可手写的字段（活动名称/导语/正文段落/金句/为什么值得去…）→ 轻量闸门
+          stripBroadcastLines：只丢弃「9月20日单日往返｜98元/人｜限15人」这种参数串，
+          其余一字不动 —— 不替老板改他自己写的句子。
+       事实层（数据条 / 决策速览 / DAY 时间轴 / 费用说明）不经过这里，数字原样保留。 */
+    const gateSys = (t) => (typeof sanitizeLiteraryText === "function") ? sanitizeLiteraryText(t) : String(t == null ? "" : t);
+    const gateOwn = (t) => (typeof stripBroadcastLines === "function") ? stripBroadcastLines(t) : String(t == null ? "" : t);
+    /* 标题类（活动标题 / 海报标语 / 金句）：走完整闸门，但**清成空就保留原文** ——
+       短标题最容易只剩一个日期（「9月20日 徒步」清完是空），留空会让 hero 出现空白标题，
+       比留一个日期更糟。长散文不用这条：那里整句丢弃是可接受的，凭空少一段不行。 */
+    const gateTitle = (t) => {
+      const o = String(t == null ? "" : t).trim();
+      if (!o) return "";
+      const g = gateSys(o);
+      return (g && g.trim()) ? g : o;
+    };
+    /* pack 段落指纹：判断某段落是否系统生成（→ 走完整闸门），其余走轻量闸门 */
+    const packParaSet = new Set();
+    if (spack && spack.paras && typeof spack.paras === "object") {
+      Object.keys(spack.paras).forEach((k) => (spack.paras[k] || []).forEach((t) => packParaSet.add(String(t))));
+    }
+    const gatePara = (t) => (packParaSet.has(String(t)) ? gateSys(t) : gateOwn(t));
     // 未显式「换风格」（自动生成包，spack._auto）时，hero 仍用老板原标题 a.title；
     // 只有换风格后的包（无 _auto）才用角度标题 —— 尊重老板原标题，避免一键生成就覆盖掉活动名。
-    const heroTitle = (spack && !spack._auto && spack.title) ? spack.title : a.title;
-    const sub = (spack && spack.subtitle) ? spack.subtitle : (a.posterTagline || a.hook || "");
+    const heroTitle = (spack && !spack._auto && spack.title) ? gateSys(spack.title) : gateTitle(a.title);
+    const sub = (spack && spack.subtitle) ? gateSys(spack.subtitle) : gateTitle(a.posterTagline || a.hook || "");
     const outline = (typeof buildEditorialOutline === "function") ? buildEditorialOutline(a, variant) : [];
     const caps = a.photoCaptions || [];
     const usedSet = new Set([coverIdx]);
@@ -378,7 +410,9 @@
     if (a.limit) kvs.push([a.limit, a.limitUnit || "人"]);
     const kvHtml = kvs.length ? `<div class="xh-ed-kvs">${kvs.map(([v, k]) => `<div class="xh-ed-kv"><b>${esc(String(v))}</b><span>${esc(k)}</span></div>`).join("")}</div>` : "";
 
-    const leadSrc = (spack && spack.lead) ? spack.lead : (a.intro || "");
+    /* 导语：pack 文案走完整闸门；老板手写的 a.intro 只丢参数播报行。
+       （闸门内部先按换行切段，所以这里 split 出来的段落数与原来一致） */
+    const leadSrc = (spack && spack.lead) ? gateSys(spack.lead) : gateOwn(a.intro || "");
     const leadParas = String(leadSrc).split(/\n+/).map((s) => s.trim()).filter(Boolean);
     const leadHtml = leadParas.length ? `<div class="xh-ed-lead">${leadParas.map((p) => `<p>${esc(p)}</p>`).join("")}</div>` : "";
 
@@ -394,12 +428,12 @@
       else if (idxs.length === 2) figs = `<div class="xh-ed-figs two${kindCls}${origCls}">${idxs.map((i) => xhFig(a, i, nextCap())).join("")}</div>`;
       else if (idxs.length >= 3) figs = `<div class="xh-ed-figs three${kindCls}${origCls}">${idxs.slice(0, 3).map((i) => xhFig(a, i, nextCap())).join("")}</div>`;
       const kindLabel = (typeof EDITORIAL_KIND_LABEL !== "undefined" && EDITORIAL_KIND_LABEL[sec.kind]) || "STORY";
-      return `<section class="xh-ed-sec" data-sec="${esc(sec.key)}" data-angle="${esc(sec.angle || variant.angle)}"><div class="xh-ed-num">${String(sec.num).padStart(2, "0")} / ${kindLabel}</div><h2 class="xh-ed-h">${esc(sec.heading)}</h2>${figs}<div class="xh-ed-paras">${sec.paras.map((p) => `<p>${esc(p)}</p>`).join("")}</div></section>`;
+      return `<section class="xh-ed-sec" data-sec="${esc(sec.key)}" data-angle="${esc(sec.angle || variant.angle)}"><div class="xh-ed-num">${String(sec.num).padStart(2, "0")} / ${kindLabel}</div><h2 class="xh-ed-h">${esc(sec.heading)}</h2>${figs}<div class="xh-ed-paras">${sec.paras.map(gatePara).filter(Boolean).map((p) => `<p>${esc(p)}</p>`).join("")}</div></section>`;
     }).join("\n");
 
     // P0-12：金句是否出现由「文案密度」决定（画册/纪实克制，杂志/转化强调）
     const dens = (typeof EDITORIAL_DENSITY !== "undefined" && EDITORIAL_DENSITY[variant.density]) || null;
-    const quoteText = (spack && spack.pullQuote) ? spack.pullQuote : a.pullQuote;
+    const quoteText = (spack && spack.pullQuote) ? gateSys(spack.pullQuote) : gateTitle(a.pullQuote);
     const quoteHtml = (dens && dens.quote && quoteText) ? `<section class="xh-ed-quote"><div class="xh-ed-quote-mark">${ICON("quote")}</div><p>${esc(quoteText)}</p></section>` : "";
 
     // 决策信息
@@ -638,6 +672,25 @@
     if (!a) return "";
     // P0-4：详情页支持两种输出——简洁报名详情（默认）/ AI 图文长页
     if (detailModeOf() === "editorial" && typeof renderActivityEditorial === "function") return renderActivityEditorial(a);
+    /* ===== v201 文学层「事实闸门」（简洁页同款两档）=====
+       老板反馈：「为什么文案里面老是出现时间、日期，我们要的文案是有语言美感的。」
+       ① 系统生成的文案（风格包 pack）→ 完整闸门 sanitizeLiteraryText；
+       ② 老板可能手写的字段（活动名称 / 导语 / 正文段落 / 金句）→ 轻量闸门
+          stripBroadcastLines：只丢「9月20日单日往返｜98元/人｜限15人」这种参数串，
+          其余一字不动 —— 不替老板改他自己写的句子；
+       ③ 标题类 gateTitle：走完整闸门，但**清成空就保留原文**（短标题清完常只剩空白，
+          留个空白标题比留一个日期更糟）。
+       事实层（决策速览 / DAY 时间轴 / 费用说明 / 报名结算）不经过这里，数字原样保留。
+       ⚠️ 简洁页与图文页是两个独立函数，各自的闸门必须在**本函数内**定义
+       （上轮补丁跨函数引用 gateOwn，直接 ReferenceError）。 */
+    const gateSys = (t) => (typeof sanitizeLiteraryText === "function") ? sanitizeLiteraryText(t) : String(t == null ? "" : t);
+    const gateOwn = (t) => (typeof stripBroadcastLines === "function") ? stripBroadcastLines(t) : String(t == null ? "" : t);
+    const gateTitle = (t) => {
+      const o = String(t == null ? "" : t).trim();
+      if (!o) return "";
+      const g = gateSys(o);
+      return (g && g.trim()) ? g : o;
+    };
     // P0-3/P0-4：注入页面级图片智能（自动筛图 / 角色 / 安全裁切），供媒体块与编排层消费
     if (typeof setPagePhotoIntel === "function") setPagePhotoIntel(a);
     const ac = styleAccent(a);
@@ -672,7 +725,7 @@
       return [String(h || ""), "star"];
     }).filter((x) => x && x[0]);
     const introTxt = (a.intro && String(a.intro).trim())
-      ? a.intro
+      ? gateOwn(a.intro)
       : "活动介绍将在事实确认后生成。";
 
     const blocks = {
@@ -734,7 +787,7 @@
       switch (b.type) {
         case "editorial_lead": {
           const title = editorialSectionTitle(a);
-          const hookTxt = (a.hook && a.hook.trim()) ? `<p class="story-hook">${esc(a.hook.trim())}</p>` : "";
+          const hookTxt = (a.hook && gateOwn(a.hook).trim()) ? `<p class="story-hook">${esc(gateOwn(a.hook).trim())}</p>` : "";
           const introParas = introTxt.split(/\n+/).map((p) => p.trim()).filter(Boolean);
           if (!title && !hookTxt && !introParas.length) return "";
           return `<section class="v13-story" id="sec-story">${title ? `<h3>${esc(title)}</h3>` : ""}${hookTxt}${introParas.map((p)=>`<p>${esc(p)}</p>`).join("")}</section>`;
@@ -745,7 +798,8 @@
         case "image_pair": return imgBlock(b.photos, "v2-pair", b.caption || "");
         case "image_sequence": return imgBlock(b.photos, "v2-seq", b.caption || "");
         case "text_block": {
-          const pt = (a.body && a.body[b.para]) ? String(a.body[b.para]).trim() : "";
+          /* 正文段落（老板可在编辑器里手写）→ 轻量闸门，只丢参数播报行 */
+      const pt = (a.body && a.body[b.para]) ? gateOwn(String(a.body[b.para]).trim()) : "";
           if (!pt) return "";
           return `<p class="v13-flow">${esc(pt)}</p>`;
         }
@@ -819,8 +873,8 @@
                 <span class="lead-tag-primary">${ICON("map-pin")}${esc(a.type)}</span>
                 ${core.map((t) => `<span class="lead-tag-secondary">${esc(t)}</span>`).join("")}
               </div>
-              <h1 class="lead-title">${esc(a.title)}</h1>
-              ${a.posterTagline || a.hook ? `<p class="lead-subtitle">${esc(a.posterTagline || a.hook)}</p>` : ""}
+              <h1 class="lead-title">${esc(gateTitle(a.title))}</h1>
+              ${gateOwn(a.posterTagline || a.hook) ? `<p class="lead-subtitle">${esc(gateOwn(a.posterTagline || a.hook))}</p>` : ""}
               ${leadHl.length ? `<div class="lead-highlights">${leadHl.map((h) => `<div class="lhl"><span class="lhl-dot"></span><span>${esc(h[0])}</span></div>`).join("")}</div>` : ""}
             </div>
           </div>

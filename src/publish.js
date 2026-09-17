@@ -916,9 +916,16 @@ function applyVisionBatch(map) {
 3. 地点语料只作背景：地点数据库不能决定内容主题，更不能复制成百科正文。先想清楚「这场活动为什么值得卖」，再决定地点怎么用。
 4. 动态章节标题：正文允许用 AI 自定的小标题（如「为什么值得专门来一次」「这一天下来，你会带走什么」），但必须克制，不堆砌文艺腔。
 5. hook 用只有这场活动才有的事实/画面/悬念开头，一句话 20-45 字。
-6. body 必须是一篇连贯长文：按上面的写作顺序展开，段与段之间有逻辑递进，不要各写一段再拼接；最后给决策信息。
+6. body 必须是一篇连贯长文：按上面的写作顺序展开，段与段之间有逻辑递进，不要各写一段再拼接；结尾回到感受与判断，**不要罗列参数**。日期、价格、名额、公里数、海拔、车程一律留在页面的事实信息区（信息卡/行程/费用说明），不要写进正文。
 7. marketingTitles 一次 5 个，像杂志专题标题一样短而完整，彼此明显不同（地点气质/季节体感/行动邀请/情绪画面/完成感）。严禁出现任何硬销信息：具体日期、人数限制、名额、价格、公里数、爬升米数、年龄、保险、集合时间、装备清单、报名/优惠/倒计时/仅限/只剩/只限等字样。标题表达的是「为什么想去」，不是「什么时候、多少人、多少钱」。
 8. highlights 每条「事实+好处」；sellingPoints 必须 4—6 条且角度明显不同（如稀缺场景/真实体验/服务保障/季节时机/人群匹配/完成感），禁止互相近义或空泛堆砌，desc 写清为什么重要。
+9. **正文类字段（body / intro / hook / heroHook / whyGo / experience / gain / pullQuote / subtitle / posterTagline / shareCopies）里禁止出现任何具体数字参数**：日期（9月20日、周六、本周日）、时刻（07:30、17:30）、价格（98元、¥98）、名额（限15人、仅收15人）、里程（25公里）、海拔（800米）、年龄（8-60岁）、车程（4小时）、天数（2天）。
+   - 需要指代时间时用文学说法：「这个周末」「出发那天」「一整天」「早发晚归」「当季」「换季之前」。
+   - 需要指代规模/强度时用感受说法：「小队伍」「不喧闹的规模」「走完会出汗的强度」，而不是「15人」「800米爬升」。
+   - 写作要求：读者读完正文记住的是画面和感受，不是一串可以抄进备忘录的参数。
+   - 数字只允许出现在专门的事实字段：itineraryDays / includedServices / gearAdvice / price / limit / distance / elevation / ageRange。
+
+10. 判断标准：把正文单独拿出来读，如果出现「｜」分隔的参数串（如「单日往返｜98元/人｜限15人」），或任何可以填进表格的数值，就是不合格，必须改写成有画面感的句子。
 
 请始终只返回一个严格符合给定 JSON Schema 的对象，不要输出任何额外文字或 Markdown 代码块。`;
 
@@ -978,11 +985,11 @@ function applyVisionBatch(map) {
       " \"subtitle\":\"副标题（一句话承接主题）\",",
       " \"marketingTitles\":[\"标题备选1\",\"标题备选2\",\"标题备选3\",\"标题备选4\",\"标题备选5\"],",
       " \"heroHook\":\"详情页 Hero 钩子，20-45字，用本场才有的事实/画面/悬念开头\",",
-      " \"intro\":\"120-220字导语：先事实定位，再写本场才有的具体画面，最后给决策信息\",",
+      " \"intro\":\"120-220字导语：先一句话定位这是什么活动，再写本场才有的具体画面与感受，收在为什么值得来（不要写日期/价格/名额/公里等参数）\",",
       " \"hook\":\"正文开场钩子（可与 heroHook 不同角度），20-45字\",",
-      " \"body\":[\"连贯长文第1段：为什么值得去\",\"第2段：来了会体验什么\",\"第3段：参加完能得到什么\",\"第4段：决策信息（适合谁/费用/名额）\"],",
+      " \"body\":[\"连贯长文第1段：为什么值得去\",\"第2段：来了会体验什么\",\"第3段：参加完能得到什么\",\"第4段：适合谁、以及为什么是这条线（纯文字，不要罗列日期/价格/名额/公里等参数）\"],",
       " \"editorialTitle\":\"详情页故事区小标题（动态、克制，禁止套固定句式）\",",
-      " \"posterTagline\":\"海报氛围标语，结合季节+时间+地点，16-36字\",",
+      " \"posterTagline\":\"海报氛围标语，结合季节+地点（时段可用清晨/傍晚/一整天这类说法，不要写具体日期或钟点），16-36字\",",
       " \"pullQuote\":\"记忆句/金句，8-20字\",",
       " \"storyPurpose\":\"照片故事主题，8-20字\",",
       " \"photoCaptions\":[\"配文1\",\"配文2\"],",
@@ -1001,7 +1008,7 @@ function applyVisionBatch(map) {
       " \"shareCopies\":{\"wechat\":\"\",\"moments\":\"\",\"xhs\":\"\",\"gzh\":\"\",\"voice\":\"\"}",
       "}"
     ].join("\n");
-    const userMsg = ["【已确认活动资料】", text, dnaPromptBlock({ raw: text }), "【内容策略（必须严格服从，所有渠道同一主主题）】", stratTxt, "请严格按 Schema 返回 JSON。要求：1) 必须返回 Schema 中所有字段，不得省略；2) 每个字段都必须有有效内容，禁止空字符串、null 或省略；3) 正文必须是一篇连贯长文，围绕上面的主传播主题展开，不得各写一段再拼接；4) 若某字段信息不足，可基于已确认事实合理推断，但字段必须存在且有内容。"].join("\n\n");
+    const userMsg = ["【已确认活动资料】", text, dnaPromptBlock({ raw: text }), "【内容策略（必须严格服从，所有渠道同一主主题）】", stratTxt, "请严格按 Schema 返回 JSON。要求：1) 必须返回 Schema 中所有字段，不得省略；2) 每个字段都必须有有效内容，禁止空字符串、null 或省略；3) 正文必须是一篇连贯长文，围绕上面的主传播主题展开，不得各写一段再拼接；4) 若某字段信息不足，可基于已确认事实合理推断，但字段必须存在且有内容；5) 正文类字段严禁出现具体日期/时刻/价格/名额/公里/海拔/年龄/车程等数字参数（用「这个周末」「出发那天」「一整天」「小队伍」这类说法代替），数字只放在专门的事实字段里。"].join("\n\n");
     try {
       return await clubLLM({ system: AI_SYSTEM_PROMPT, user: userMsg, json: true, temperature: 0.7 });
     } catch (e) { console.error("AI 叙事生成异常:", e); return null; }
@@ -1133,6 +1140,73 @@ function applyVisionBatch(map) {
     if (DIFFICULTY_VALID.includes(d)) return d;
     const map = { "简单": "轻松", "简易": "轻松", "易": "轻松", "中等": "适中", "中强度": "适中", "中等强度": "适中", "困难": "挑战", "较难": "挑战", "难": "挑战", "进阶段": "进阶", "进阶难度": "进阶" };
     return map[d] || "";
+  }
+
+  /* ================= v201 AI 落库闸门（文学层） =================
+     为什么必须在「落库时」而不是「渲染时」清一遍：
+       AI 不遵守 prompt 的情形真实存在。v201 的直接诱因就是 prompt 第 6 条
+       曾要求正文「最后给决策信息」，AI 于是在正文末尾播报出
+       「9月20日单日往返｜98元/人｜限15人｜4小时车程｜海拔800米」这样一整行参数
+       （老板截图之二）。在落库时清掉，localStorage 里存的、渲染出来的、
+       导出与分享用的就都是干净版本，不必依赖每个渲染点各自记得过滤。
+
+     ★ 只清「文学层」字段（标题/副标题/导语/正文/金句/段落/宣发文案/卖点文字）。
+       **事实层字段一律不碰**：itineraryDays（DAY 时间轴的真实时刻）、
+       price/limit/distance/elevation/ageRange（活动信息卡）、departures、
+       feeInclude/feeExclude、pipeline.details.refund（退改条款）、
+       gearAdvice —— 客户要据此做决策、下单、核对，改一个字符都是错的。 */
+  function sanitizeLiteraryFields(a) {
+    if (!a || typeof a !== "object") return a;
+    const T = (typeof sanitizeLiteraryText === "function") ? sanitizeLiteraryText : function (x) { return String(x == null ? "" : x); };
+    const L = (typeof sanitizeLiteraryList === "function") ? sanitizeLiteraryList : function (x) { return Array.isArray(x) ? x.filter(Boolean) : []; };
+    const STR_FIELDS = [
+      "title", "subtitle", "heroHook", "intro", "hook", "pullQuote", "posterTagline",
+      "editorialTitle", "whyGo", "experience", "gain", "fitFor", "notFitFor",
+      "socialCoreMessage", "storyPurpose",
+      "shareWechat", "shareMoments", "shareXhs", "shareGzh", "shareVoice",
+    ];
+    STR_FIELDS.forEach(function (k) {
+      if (typeof a[k] === "string" && a[k]) a[k] = T(a[k]);
+    });
+    ["body", "forewordTitles", "marketingTitles", "photoCaptions", "titleAlts"].forEach(function (k) {
+      if (Array.isArray(a[k]) && a[k].length) a[k] = L(a[k]);
+    });
+    // 章节小标题（对象形态：whyGo / experience / gain）
+    if (a.sectionTitles && typeof a.sectionTitles === "object") {
+      Object.keys(a.sectionTitles).forEach(function (k) {
+        if (typeof a.sectionTitles[k] === "string") a.sectionTitles[k] = T(a.sectionTitles[k]);
+      });
+    }
+    // 三个内容方向（名称 / 标题 / 理由 / 导语 / 海报语）
+    if (Array.isArray(a.contentDirections)) {
+      a.contentDirections.forEach(function (d) {
+        if (!d || typeof d !== "object") return;
+        ["name", "headline", "reason", "intro", "posterLine"].forEach(function (k) {
+          if (typeof d[k] === "string" && d[k]) d[k] = T(d[k]);
+        });
+      });
+      if (a.contentDirections[0] && (a.contentDirection == null || a.contentDirection === 0)) a.contentStrategy = a.contentDirections[0];
+    }
+    // 卖点：标题与说明都可能被 AI 写成参数播报
+    if (Array.isArray(a.sellingPoints)) {
+      a.sellingPoints.forEach(function (sp) {
+        if (!sp || typeof sp !== "object") return;
+        if (typeof sp.title === "string") sp.title = T(sp.title);
+        if (typeof sp.desc === "string") sp.desc = T(sp.desc);
+      });
+    }
+    // 内容计划里的叙事文字（策略层产出，部分是展示文案）
+    const cp = a.contentPlan;
+    if (cp && typeof cp === "object") {
+      ["consumerValue", "contentStrategy", "narrativePlan"].forEach(function (grp) {
+        const g = cp[grp];
+        if (!g || typeof g !== "object") return;
+        Object.keys(g).forEach(function (k) {
+          if (typeof g[k] === "string" && g[k]) g[k] = T(g[k]);
+        });
+      });
+    }
+    return a;
   }
 
   // 把 LLM JSON 映射到 state.activity，保持详情页渲染所需的字段形态
@@ -1277,6 +1351,9 @@ function applyVisionBatch(map) {
     const chk = contentConsistencyCheck(a);
     a.contentScore = chk.score;
     if (chk.notice) a.aiNotice = a.aiNotice ? a.aiNotice + " " + chk.notice : chk.notice;
+    /* v201：闸门放在最后 —— 此时所有派生字段（forewordTitles→title、contentDirections、
+       pipeline…）都已写定，清完就能直接落库，不需要渲染点各自过滤。 */
+    sanitizeLiteraryFields(a);
     return a;
   }
 
@@ -5358,6 +5435,17 @@ function applyVisionBatch(map) {
   };
   /* 事实切片：只放「canonical 字段 + DNA 事实层」里确实存在的东西。
      任何未确认的天气/景色/事件都不会被写进这里 —— 这是 P0-A 事实边界的落地。 */
+  /* 阿拉伯数字 → 中文数词（1–99）：文案例子里写「两天」而不是「2 天」。 */
+  function cnNumWordOf(n) {
+    n = Math.floor(+n || 0);
+    const w = ["零", "一", "两", "三", "四", "五", "六", "七", "八", "九"];
+    if (n <= 1) return "一天";
+    if (n < 10) return w[n] + "天";
+    if (n === 10) return "十天";
+    if (n < 20) return "十" + w[n - 10] + "天";
+    if (n < 100) return w[Math.floor(n / 10)] + "十" + (n % 10 ? w[n % 10] : "") + "天";
+    return "多天";
+  }
   function editorialFacts(a, dna) {
     a = a || {};
     const season = (dna && dna.season) || seasonOf(a) || "";
@@ -5386,7 +5474,8 @@ function applyVisionBatch(map) {
       elevation: (+a.elevation > 0) ? +a.elevation : 0,
       difficulty: dif, difficultyWord: difWord,
       days: (+a.days > 0) ? +a.days : 0,
-      dayWord: (+a.days > 1) ? (+a.days + " 天") : "一天",
+      /* v201：天数也用中文数词 —— 「两天」是文案，「2 天」是参数（文学层不许出现阿拉伯数字）。 */
+      dayWord: cnNumWordOf(+a.days),
       limit: (+a.limit > 0) ? +a.limit : 0,
       limitUnit: a.limitUnit || "人",
       price: (a.price != null && +a.price > 0) ? +a.price : 0,
@@ -5401,124 +5490,140 @@ function applyVisionBatch(map) {
       eleWord: (+a.elevation > 0) ? ("海拔 " + (+a.elevation) + " 米") : "",
     };
   }
-  /* 7 个角度的「表达声音」：动词/意象/结构句都不同 —— 保证连点换风格得到的不是换皮。 */
+  /* 7 个角度的「表达声音」：动词/意象/结构句都不同 —— 保证连点换风格得到的不是换皮。
+     ★ v201：文学层不许出现日期/时刻/价格/名额/里程/海拔 —— 下面所有模板一律不写
+     {D} / {startTime} / {endTime} / {distWord} / {eleWord} / {limit} / {limitUnit} / {price}，
+     时间指代改用「这个周末 / 出发那天 / 一整天 / 早发晚归」这类有质感的说法；
+     天数用中文数词（{dayWord} → 一天 / 两天），既是文案也不是参数。
+     （fillFrames 还会把这些事实占位符统一屏蔽成空串，属于第二道保险。） */
   const EDITORIAL_ANGLE_VOICE = {
     scenery: {
       label: "看风景", verb: "看", focus: "风景",
-      titles: ["{P}{D}，把视野一层层打开", "{P}这条线，看得比走得更远", "在{P}，把{seasonWord}的风景走完"],
-      leads: ["{P}这条路，风景不是背景，是主线。{D}出发，不赶点，把脚步交给山水。",
-              "从集合点出发走完{P}。{distWord}{eleWord}，一路都在换视野。"],
+      titles: ["{P}这条线，看得比走得更远", "在{P}，把{seasonWord}的风景走完", "去{P}，把视野一层层打开"],
+      leads: ["{P}这条路，风景不是背景，是主线。不赶点，把脚步交给山水。",
+              "从集合点出发走完{P}，一路都在换视野。"],
       paras: {
         why: ["去{P}，不是为了打卡，是为了把被楼宇切碎的视野重新接起来。", "这条路的价值在视野：走一段，就换一幅。", "风景不挑人，第一次来也能在转弯处遇见惊喜。"],
         experience: ["{difficultyWord}的强度配得上{dayWord}的路程，走完不会觉得赶。", "沿线以{envLabel}为主，节奏由自己和队伍一起决定。", "不赶时间，才有余力留意脚边的植物和远处的轮廓。"],
-        route: ["按行程走：{startTime}集合出发，{endTime}回到集合点。", "全程约{distWord}，沿途依据实际路况调整休息点。"],
-        gain: ["带走的不是照片数量，是一整天连续的视野。", "把{D}这一天的节奏完整地还给自己。", "回到城里，眼睛还留着山线的弧度。"],
-        fit: ["{audience}，以及想安安静静看一天风景的人。", "有基础体力、愿意按自己步频走的人都能跟上。", "一个人来也行，队伍里总有同频的人。"],
-        reasons: ["路线成熟、节奏可控，领队随队，把注意力留给风景。", "人数控制在{limit}{limitUnit}内，队形不散。"],
+        route: ["按行程走：早上从集合点出发，傍晚回到集合点。", "沿途依据实际路况调整休息点，不硬赶。"],
+        gain: ["带走的不是照片数量，是一整天连续的视野。", "把{dayWord}的节奏完整地还给自己。", "回到城里，眼睛还留着山线的弧度。"],
+        fit: ["有基础体力、愿意按自己步频走的人都能跟上。", "想安安静静看一天风景的人，这条线正合适。", "一个人来也行，队伍里总有同频的人。"],
+        reasons: ["路线成熟、节奏可控，领队随队，把注意力留给风景。", "小队伍同行，队形不容易散。"],
       },
-      quotes: ["风景不在终点，在每一段转弯之后。", "把{D}交给一条有视野的路。", "走完才知道，视野是需要一步步换来的。"],
+      quotes: ["风景不在终点，在每一段转弯之后。", "把{dayWord}交给一条有视野的路。", "走完才知道，视野是需要一步步换来的。"],
     },
     freedom: {
       label: "自由", verb: "松开", focus: "节奏",
-      titles: ["{D}，在{P}关掉闹钟", "把自己还给{P}", "{P}：{dayWord}不用赶路的走法"],
-      leads: ["{D}这天没有闹钟，只有{P}。走多快、停多久，自己说了算。",
-              "去{P}不是为了完成清单，是为了把节奏调回来。{distWord}，走成自己的样子。"],
+      titles: ["在{P}关掉闹钟", "把自己还给{P}", "{P}：不用赶路的走法"],
+      leads: ["这天没有闹钟，只有{P}。走多快、停多久，自己说了算。",
+              "去{P}不是为了完成清单，是为了把节奏调回来，走成自己的样子。"],
       paras: {
         why: ["城市里的时间被切得很碎，{P}能把它重新连成一条线。", "离开固定安排{dayWord}，节奏自然会慢下来。", "把{P}当成一次不给日程表留位置的练习。"],
         experience: ["不设打卡点，累了就停。{difficultyWord}的强度刚好留出喘息的余地。", "在{envLabel}里走，注意力从屏幕移回脚下。", "走到哪算哪，反而比按计划更记得清楚。"],
-        route: ["{startTime}出发，{endTime}回到集合点，中间的时间归自己安排。", "全程约{distWord}，不赶路，按队伍状态调整。"],
+        route: ["早上出发，傍晚回到集合点，中间的时间归自己安排。", "不赶路，按队伍状态调整节奏。"],
         gain: ["一天结束时，手里多出来的是一点松弛。", "把被日程表占据的注意力要回来。", "这种松弛会渗进接下来的一周。"],
-        fit: ["{audience}，以及最近想喘口气的人。", "不喜欢被行程推着走、愿意自己掌握节奏的人。", "哪怕只是想独自安静半天，也合适。"],
-        reasons: ["不设硬性打卡点，把时间还给参与者。", "限{limit}{limitUnit}，小队伍更好照顾各自的节奏。"],
+        fit: ["不喜欢被行程推着走、愿意自己掌握节奏的人。", "最近想喘口气的人，来走一趟就够。", "哪怕只是想独自安静半天，也合适。"],
+        reasons: ["不设硬性打卡点，把时间还给参与者。", "小队伍成行，更好照顾各自的节奏。"],
       },
-      quotes: ["真正的休息，是把时间从表格里拿回来。", "走慢一点，才听得见自己的节奏。", "把{D}还给不做计划的自己。"],
+      quotes: ["真正的休息，是把时间从表格里拿回来。", "走慢一点，才听得见自己的节奏。", "把{dayWord}还给不做计划的自己。"],
     },
     challenge: {
       label: "挑战", verb: "走完", focus: "体力",
-      titles: ["{eleWord}，{D}走完{P}这条线", "{P}{D}：走到累，也走到值", "在{P}，把体力用在该用的地方"],
-      leads: ["{D}这条线不轻松：{distWord}{eleWord}，{difficultyWord}的强度。走完它，答案自己出现。",
-              "{P}不是散步的路线。{distWord}走下来，需要的是节奏和坚持，而不是冲动。"],
+      titles: ["走完{P}这条线", "{P}：走到累，也走到值", "在{P}，把体力用在该用的地方"],
+      leads: ["这条线不轻松：{difficultyWord}的强度。走完它，答案自己出现。",
+              "{P}不是散步的路线。走下来，需要的是节奏和坚持，而不是冲动。"],
       paras: {
         why: ["难度是这条线的一部分：{difficultyWord}的强度，才配得上走完之后的踏实。", "选择{P}，是想用{dayWord}换一个明确的完成感。", "不是每条线都值得用力，这条算一条。"],
-        experience: ["前段爬升集中，中后段趋于稳定，身体会经历一个明确的临界点。", "{eleWord}的落差带来真实的体力消耗，也带来真实的消耗感。", "临界点之后，腿会找到自己的节奏。"],
-        route: ["{startTime}集合出发，{endTime}回到集合点，中途按体力设休息点。", "全程约{distWord}，{difficultyWord}；领队控速，禁止超越前队。"],
+        experience: ["前段爬升集中，中后段趋于稳定，身体会经历一个明确的临界点。", "连续的爬升带来真实的体力消耗，也带来真实的消耗感。", "临界点之后，腿会找到自己的节奏。"],
+        route: ["早上集合出发，傍晚回到集合点，中途按体力设休息点。", "领队控速，禁止超越前队。"],
         gain: ["得到的是一个自己能确认的完成度。", "把{dayWord}的体力完整地用在该用的地方。", "完成感比照片更经得住回头看。"],
-        fit: ["{audience}，以及有徒步基础、能接受{difficultyWord}强度的人。", "身体状态稳定、愿意按队伍节奏推进的人。", "没把握的人，可以先从更短的线练手。"],
-        reasons: ["路线难度与队伍配比经过匹配，不硬拼。", "限{limit}{limitUnit}，保证领队能照顾到队尾。"],
+        fit: ["有徒步基础、能接受{difficultyWord}强度的人。", "身体状态稳定、愿意按队伍节奏推进的人。", "没把握的人，可以先从更短的线练手。"],
+        reasons: ["路线难度与队伍配比经过匹配，不硬拼。", "小队伍成行，保证领队能照顾到队尾。"],
       },
       quotes: ["难的部分，往往才是记得住的部分。", "不是征服高度，是完整经历一天。", "走到累，才知道自己还剩多少。"],
     },
     companion: {
       label: "陪伴", verb: "陪着", focus: "一起",
-      titles: ["带他走一次{P}", "{P}{D}：陪孩子走完这一程", "在{P}，一起攒一段路"],
-      leads: ["{D}带孩子去{P}。{distWord}的强度适合第一次走长线的小朋友，家长在旁，一起走完。",
+      titles: ["带他走一次{P}", "{P}：陪孩子走完这一程", "在{P}，一起攒一段路"],
+      leads: ["带孩子去{P}。强度适合第一次走长线的小朋友，家长在旁，一起走完。",
               "把周末交给{P}：孩子在前面探路，大人跟在后面，{dayWord}就这样过。"],
       paras: {
         why: ["带孩子来{P}，是想让他知道路是要自己走完的。", "{difficultyWord}的路线对孩子友好，成就感来得刚刚好。", "山里的第一课，是不着急。"],
-        experience: ["孩子会经历从兴奋到疲惫再到坚持的完整过程，这比说教有用。", "一路上大人小孩同速前进，节奏由队伍里最慢的人决定。", "他记住的不会是公里数，是某块石头和某阵风。"],
-        route: ["{startTime}集合出发，{endTime}返回，途中的休息点按孩子状态调整。", "全程约{distWord}，留足玩耍与休息的时间。"],
+        experience: ["孩子会经历从兴奋到疲惫再到坚持的完整过程，这比说教有用。", "一路上大人小孩同速前进，节奏由队伍里最慢的人决定。", "他记住的不会是里程数字，是某块石头和某阵风。"],
+        route: ["早上集合出发，傍晚返回，途中的休息点按孩子状态调整。", "留足玩耍与休息的时间，不赶进度。"],
         gain: ["带回去的是一起完成一件事的记忆。", "孩子得到一次自己走完的经验，家长得到一天不被打扰的相处。", "这段路会成为以后提起就笑的素材。"],
-        fit: ["{audience}，以及愿意陪孩子慢慢走的家庭。", "孩子能独立走完短程、家长愿意全程陪同的家庭。", "二胎或朋友结伴也很好，孩子有伴更敢走。"],
-        reasons: ["路线难度对亲子友好，不设置硬性挑战段。", "限{limit}{limitUnit}，保证每家的孩子都在视野内。"],
+        fit: ["愿意陪孩子慢慢走的家庭。", "孩子能独立走完短程、家长愿意全程陪同的家庭。", "二胎或朋友结伴也很好，孩子有伴更敢走。"],
+        reasons: ["路线难度对亲子友好，不设置硬性挑战段。", "小队伍成行，保证每家的孩子都在视野内。"],
       },
       quotes: ["第一次走完全程，是他自己挣来的。", "陪他走的路，比替他走的路长。", "一起走完，才算一起出发。"],
     },
     social: {
       label: "社交", verb: "约", focus: "同频",
-      titles: ["{D}，把朋友约到{P}", "{P}：一场不用会议室的聚会", "和同频的人去{P}走{dayWord}"],
-      leads: ["{D}不做室内局，约在{P}。{distWord}边走边聊，比坐在桌前更容易说开。",
+      titles: ["把朋友约到{P}", "{P}：一场不用会议室的聚会", "和同频的人去{P}走一天"],
+      leads: ["不做室内局，约在{P}。边走边聊，比坐在桌前更容易说开。",
               "把聚会搬到{P}：一起出发、一起走完、一起吃个饭。"],
       paras: {
-        why: ["换掉会议室，{P}里并排走一段，话题自然就有了。", "一起走过一段路，比交换名片更容易记住彼此。", "约人这件事，放在路上比放在群里容易得多。"],
-        experience: ["队伍规模控制在{limit}{limitUnit}，不喧闹，也不至于冷场。", "{difficultyWord}的强度刚好：有点喘，但不影响说话。", "边走边聊，尴尬会被风景接住。"],
-        route: ["{startTime}集合，热身之后出发，{endTime}左右回到集合点。", "全程约{distWord}，中间设一次集体休息。"],
+        why: ["换掉会议室，在{P}里并排走一段，话题自然就有了。", "一起走过一段路，比交换名片更容易记住彼此。", "约人这件事，放在路上比放在群里容易得多。"],
+        experience: ["队伍规模不喧闹，也不至于冷场。", "{difficultyWord}的强度刚好：有点喘，但不影响说话。", "边走边聊，尴尬会被风景接住。"],
+        route: ["早上集合，热身之后出发，傍晚回到集合点。", "中途设一次集体休息，边走边聊。"],
         gain: ["多认识几个能一起走路的人。", "把{dayWord}的相处时间换成一段共同经历。", "说不定下次的活动，就是这趟认识的谁发起的。"],
-        fit: ["{audience}，以及想找人一起出去走走的你。", "愿意和陌生人并排走一段路、聊几句的人。", "社恐也没关系，走路时沉默也很自然。"],
-        reasons: ["小队伍制，限{limit}{limitUnit}，保证每个人都插得上话。", "路线强度适中，注意力可以留给同伴。"],
+        fit: ["想找人一起出去走走的你。", "愿意和陌生人并排走一段路、聊几句的人。", "社恐也没关系，走路时沉默也很自然。"],
+        reasons: ["小队伍制，保证每个人都插得上话。", "路线强度适中，注意力可以留给同伴。"],
       },
       quotes: ["并排走过一段路，比并排坐一天更有用。", "同频的人，是在路上遇到的。", "聚会不必有桌子，有路就够了。"],
     },
     season: {
       label: "季节", verb: "赶", focus: "时令",
-      titles: ["{seasonWord}的{P}，值得赶一趟", "{P}{D}：只有这一季才有的样子", "踩准{seasonWord}的步点去{P}"],
-      leads: ["{seasonWord}的{P}，一年只有这一段时间。{D}出发，把这一季收进脚步里。",
-              "{D}去{P}。{seasonWord}的时令不等人，{distWord}走完，正好赶上这一季。"],
+      titles: ["{seasonWord}的{P}，值得赶一趟", "{P}：只有这一季才有的样子", "踩准{seasonWord}的步点去{P}"],
+      leads: ["{seasonWord}的{P}，一年只有这一段时间。出发，把这一季收进脚步里。",
+              "{seasonWord}的时令不等人。走完{P}，正好赶上这一季。"],
       paras: {
-        why: ["{seasonWord}有明确的窗口期，错过就要等一年。", "选在{D}，是为了赶上{P}这一季才成立的状态。", "时令不等人，这一季的{P}只属于现在。"],
+        why: ["{seasonWord}有明确的窗口期，错过就要等一年。", "选在这个时候，是为了赶上{P}这一季才成立的状态。", "时令不等人，这一季的{P}只属于现在。"],
         experience: ["{seasonWord}的体感与其它季节不同，出发前按当季准备衣物更稳妥。", "{difficultyWord}的强度配{seasonWord}的天气，节奏需要按当季调整。", "当季的光线和颜色，过完这阵就调不回来了。"],
-        route: ["{startTime}集合出发，{endTime}返回，预留应对当季日照的时间。", "全程约{distWord}，按当季路况安排休息。"],
+        route: ["早上集合出发，傍晚返回，预留应对当季日照的时间。", "按当季路况安排休息，不硬赶。"],
         gain: ["把{seasonWord}的这一段留在记忆里。", "等到换季，你手里有一段别人没有的记录。", "错过今年，要等下一次轮回。"],
-        fit: ["{audience}，以及想踩准时令走一趟的人。", "愿意按当季准备、不介意天气变化的人。", "想拍到当季样子的人，这趟最值。"],
-        reasons: ["{D}落在{seasonWord}窗口内，时令是这场的核心价值。", "限{limit}{limitUnit}，保证当季队伍不拥挤。"],
+        fit: ["想踩准时令走一趟的人。", "愿意按当季准备、不介意天气变化的人。", "想拍到当季样子的人，这趟最值。"],
+        reasons: ["这趟落在{seasonWord}窗口内，时令是这场的核心价值。", "小队伍成行，当季的路线不拥挤。"],
       },
       quotes: ["时令不等人，路也不会一直等。", "一年只有一段时间，值得为它腾出一天。", "赶在换季之前，把这一程走完。"],
     },
     lifestyle: {
       label: "生活方式", verb: "过成", focus: "日常",
-      titles: ["把{dayWord}过成{P}的样子", "{P}{D}：另一种过法", "在{P}，换一种节奏生活"],
-      leads: ["如果{dayWord}可以不用通勤和会议开头，它会是什么样？{D}的{P}是一种回答。",
-              "{D}把生活搬到{P}：走路、吃饭、聊天，节奏比平时慢一档。"],
+      titles: ["把{dayWord}过成{P}的样子", "{P}：另一种过法", "在{P}，换一种节奏生活"],
+      leads: ["如果一天可以不用通勤和会议开头，它会是什么样？{P}是一种回答。",
+              "把生活搬到{P}：走路、吃饭、聊天，节奏比平时慢一档。"],
       paras: {
-        why: ["户外不是假期特供，它可以是一种常规的过法。", "把{D}交给{P}，是给日常换一个参照。", "不必等长假，一个周末就够重启一次。"],
+        why: ["户外不是假期特供，它可以是一种常规的过法。", "把{dayWord}交给{P}，是给日常换一个参照。", "不必等长假，一个周末就够重启一次。"],
         experience: ["{difficultyWord}的强度不会打乱生活，反而让第二天更清醒。", "在{envLabel}里走{dayWord}，身体会重新记住什么是舒展。", "走完回来，周一没那么难熬了。"],
-        route: ["{startTime}出发，{endTime}回到集合点，不影响第二天的安排。", "全程约{distWord}，属于可以放进常规日程的强度。"],
+        route: ["早上出发，傍晚回到集合点，不影响第二天的安排。", "属于可以放进常规日程的强度，不用特意请假。"],
         gain: ["带回去的是一种可以重复的生活节奏。", "把户外从「偶尔」变成「可以安排」。", "这种节奏攒多了，就成了生活方式。"],
-        fit: ["{audience}，以及想把户外变成日常的人。", "工作日节奏紧、周末想换一种过法的人。", "独行或约朋友都行，关键是走出去。"],
-        reasons: ["单日行程，前后不占额外时间。", "限{limit}{limitUnit}，把体验控制在舒服的规模。"],
+        fit: ["想把户外变成日常的人。", "工作日节奏紧、周末想换一种过法的人。", "独行或约朋友都行，关键是走出去。"],
+        reasons: ["单日行程，前后不占额外时间。", "小队伍成行，把体验控制在舒服的规模。"],
       },
       quotes: ["把日子过成户外，比把户外当假期更耐用。", "生活方式不需要远行，需要一天。", "重复得起来，才算生活方式。"],
     },
   };
   function angleVoice(angle) { return EDITORIAL_ANGLE_VOICE[angle] || EDITORIAL_ANGLE_VOICE.scenery; }
-  /* 事实填充：{P} 地点 / {D} 日期 / {seasonWord} 季节 / 其余为可选事实，缺省时整句降级为中性表述。
-     只做字符串替换，不引入任何未确认信息。 */
+  /* 事实填充：{P} 地点 / {seasonWord} 季节 / {dayWord} 天数 / 其余为可选事实，
+     缺省时整句降级为中性表述。只做字符串替换，不引入任何未确认信息。
+
+     ★ v201：这里是「文学层」唯一的填充入口，所以也是**事实闸门的落点**。
+     下面这张表里的占位符一律填成空串 —— 它们全是硬参数（日期/时刻/价格/名额/里程/
+     海拔），一旦落进标题、导语、正文或金句，读起来就是行程单而不是文案
+     （老板原话：「没有语言美感的、没有艺术的数字」）。
+     比「记住别在模板里写 {D}」可靠得多：将来谁写了 {D}，也漏不出数字来。 */
+  const LITERARY_BLOCKED_PLACEHOLDERS = {
+    D: 1, dateShort: 1, startTime: 1, endTime: 1,
+    distWord: 1, distance: 1, eleWord: 1, elevation: 1,
+    limit: 1, limitUnit: 1, price: 1, days: 1,
+  };
   function fillFrames(frames, f) {
     const one = (tpl) => String(tpl || "").replace(/\{(\w+)\}/g, function (_, k) {
+      if (LITERARY_BLOCKED_PLACEHOLDERS[k]) return "";    // 硬参数：文学层一律为空
       const v = (f && f[k] != null) ? String(f[k]) : "";
       if (k === "P") return v || "这条路线";
-      if (k === "D") return v || "这一天";
       if (k === "seasonWord") return v || "当季";
-      if (k === "distWord" || k === "eleWord") return v ? v : "";
+      if (k === "dayWord") return v || "一天";
       return v;
     }).replace(/\s{2,}/g, " ").replace(/，\s*，/g, "，").replace(/。\s*。/g, "。").trim();
     return (frames || []).map(one).filter(Boolean);
@@ -5537,8 +5642,10 @@ function applyVisionBatch(map) {
     const quotes = fillFrames(V.quotes, f);
     const paras = {};
     Object.keys(V.paras || {}).forEach(function (k) { paras[k] = fillFrames(V.paras[k], f); });
-    // 副标题：角度 label + 事实骨架，不含任何未确认画面
-    const subtitle = [V.label, f.dateShort ? f.dateShort : "", f.distWord ? f.distWord : "", f.difficultyWord ? f.difficultyWord + "强度" : ""]
+    /* 副标题（v201）：角度 label + 季节点缀，**不含日期与里程**。
+       旧实现是「社交 · 9月20日 · 25 公里 · 适中强度」—— 一行全是参数，
+       正是老板截图里那句「没有艺术感的数字」。 */
+    const subtitle = [V.label, f.seasonWord ? f.seasonWord : "", f.difficultyWord ? f.difficultyWord + "强度" : ""]
       .filter(Boolean).join(" · ");
     // 图片叙事策略（风格轴决定，但不改 sec.imgCount 这一 P0-12 契约）
     const ps = EDITORIAL_STYLE_PHOTO[variant.style] || { name: "标准", galleryBias: 1, perSectionBias: 1 };
@@ -5743,7 +5850,12 @@ function applyVisionBatch(map) {
     }
 
     make("gain", "gain", "people", st.gain || "参加完能得到什么", pkPick("gain", a.gain, fb.gain));
-    make("fit", "fit", "people", "适合谁", pkPick("fit", a.fitFor, fb.fitFor || (a.targetAudience ? a.targetAudience + "，都能找到自己的步频。" : "")));
+    /* v201：适合人群属事实层 —— 文学层模板已不再掺入 {audience}（老板要的是没有参数的文案），
+       但不能因此丢信息：只要活动填了目标人群，就在这里显式补一句（去重后追加）。 */
+    const fitLines = pkPick("fit", a.fitFor, fb.fitFor || "").slice();
+    const audTxt = String(a.targetAudience || "").trim();
+    if (audTxt && fitLines.join("\n").indexOf(audTxt) < 0) fitLines.push(audTxt + "，都能找到自己的步频。");
+    make("fit", "fit", "people", "适合谁", fitLines);
 
     // Case 4：昼夜节奏 —— 白天+夜晚素材齐备时，注入「入夜」章节（kind=night），
     //   排序位于 route 之后、gain 之前，长页自然呈现 白天→夜晚 的情绪弧。
