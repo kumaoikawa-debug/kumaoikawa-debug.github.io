@@ -1494,7 +1494,7 @@ function applyVisionBatch(map) {
   }
 
   const REGEN_FIELDS = {
-    posterTagline: { label: "海报氛围标语", kind: "text", rule: "海报主标题下方的氛围标语。结合季节+时间+地点，16-36字，有户外向往感，不出现公里/价格/保险/年龄/人数等硬数据" },
+    posterTagline: { label: "海报氛围标语", kind: "text", rule: "海报主标题下方的氛围标语。结合季节+地点，16-36字，有户外向往感。不出现公里/价格/保险/年龄/人数等硬数据，也不要写具体日期与钟点（用清晨/傍晚/这个周末这类说法）" },
     editorialTitle: { label: "故事区小标题", kind: "text", rule: "详情页故事区小标题（H2）。根据本次活动事实独创，禁止套用固定句式" },
     pullQuote: { label: "记忆句/金句", kind: "text", rule: "一句能让人记住的具体画面或判断，8-20字，不喊口号" },
     storyPurpose: { label: "照片故事主题", kind: "text", rule: "一句话说明这组照片应该呈现什么，8-20字，紧扣本次活动" },
@@ -1586,11 +1586,11 @@ function applyVisionBatch(map) {
 
   // 单渠道分享文案重生成：只重写微信/朋友圈/小红书/公众号/口播中的一项
   const SHARE_COPY_CHANNELS = {
-    wechat: { label: "微信群招募文案", style: "口语化，像发给微信群的招募通知。包含时间、地点、价格、报名召唤，不用标题党，不喊口号。" },
-    moments: { label: "朋友圈文案", style: "适合配图发朋友圈，有画面感和轻微情绪，但不油腻、不堆砌形容词。" },
-    xhs: { label: "小红书文案", style: "带 2-4 个相关话题标签（#xxx），口吻年轻、有场景感，避免过度营销感。" },
-    gzh: { label: "公众号摘要", style: "正式一点的公众号摘要/导语，1-2 个短段落，有信息密度。" },
-    voice: { label: "口播文案", style: "口语化，适合短视频口播或直播话术，自然、有节奏感。" }
+    wechat: { label: "微信群招募文案", style: "口语化，像发给微信群的招募通知。推荐用「标签：值」独立成行给出时间/地点/费用，但**句子正文里不要写日期、价格、名额、公里、年龄等数字**；不用标题党，不喊口号。" },
+    moments: { label: "朋友圈文案", style: "适合配图发朋友圈，有画面感和轻微情绪，但不油腻、不堆砌形容词。**不写日期、价格、名额、公里、年龄等数字**。" },
+    xhs: { label: "小红书文案", style: "带 2-4 个相关话题标签（#xxx），口吻年轻、有场景感，避免过度营销感。信息可用「· 标签：值」独立成行，正文句子**不写日期、价格、名额、公里、年龄等数字**。" },
+    gzh: { label: "公众号摘要", style: "正式一点的公众号摘要/导语，1-2 个短段落，有信息密度。**不写日期、价格、名额、公里、年龄等数字。**" },
+    voice: { label: "口播文案", style: "口语化，适合短视频口播或直播话术，自然、有节奏感。**不播报日期、价格、名额、公里、年龄等数字。**" }
   };
   async function regenShareCopy(a, type) {
     if (!a || !SHARE_COPY_CHANNELS[type]) return false;
@@ -6712,10 +6712,10 @@ function ctaShortOf(a) {
 function ctaText(a) {
   a = a || {};
   const c = confirmedCTAOf(a);
-  const when = a.dateMD || a.date || "近期";
-  const capLine = c.capacity ? (c.capacity + (a.limitUnit || "人") + "名额") : "";
   const urg = urgencyTextOf(c);
-  return "报名方式：" + ctaShortOf(a) + "。" + when + " 出发" + (capLine ? "，" + capLine : "") + "。" + urg;
+  /* v203：CTA 属文学层。原实现拼了「9月20日 出发，15人名额」——
+     正是老板说的「没有艺术的数字」（日期与名额在事实卡里另有呈现）。 */
+  return "报名方式：" + ctaShortOf(a) + "。" + urg;
 }
 /* ===== P0-B（v193）Safe Crop：统一 CropPolicy =====
    图片渲染优先级固定，不可被任何「版式美观 / 容器填满」需求推翻：
@@ -7419,6 +7419,7 @@ async function genStrategy(a, photos, notes, scenario) {
   if (aiAuthMode()) {
     const sys = `你是 ClubOS 的户外内容主编兼视觉指导。基于"已确认事实"产出一份 Editorial Direction（编辑方向），它将同时驱动文案写作与视觉排版。
 原则：允许创造表达，禁止创造事件——只能基于给定事实（活动名称/地点/日期/强度/价格/领队/照片分类等），不得虚构天气、领队行为、用户感受、具体人数、未提供的价格。
+★ 文案风格硬约束：你产出的 angle / hook / structure 章节名会被直接用作对外文案，**不得含具体日期、时刻、价格、名额、公里、海拔、年龄、天数、车程小时数**（时间用「这个周末/出发那天/一整天」这类说法）。
 返回 JSON：{
   angle: 一句话编辑角度（≤18字，带观点而非硬销），
   tone: 语气关键词,
@@ -7461,6 +7462,11 @@ function sectionBody(h, a, m) {
   // scenicValue/experienceValue/participationValue 当作现场事实写入。
   const f = m.confirmedFacts;
   const T = h || "";
+  /* v203：「怎么报名」原本与「真实信息」渲染同一张信息表 —— 两段一字不差地重复。
+     现在真正的信息表只留在信息章节，报名章节给报名方式。 */
+  if (/报名/.test(T) && !/信息|详情|费用|时间|地点|出行/.test(T)) {
+    return `<p>报名方式：${ctaShortOf(a)}。${urgencyTextOf(confirmedCTAOf(a))}</p>`;
+  }
   if (/信息|详情|报名|费用|时间|地点|怎么报名|出行/.test(T)) {
     const rows = infoRows(a).map((r) => `<b>${r.k}</b> ${r.v}`);
     return `<p>${rows.length ? rows.join("；") + "。" : "活动详情以发布页为准。"}</p>`;
@@ -7494,7 +7500,7 @@ function sectionBody(h, a, m) {
     if (f.activityType) parts.push("活动类型：" + f.activityType);
     if (f.place) parts.push("地点在" + f.place);
     if (f.photosCount > 0) parts.push("已上传 " + f.photosCount + " 张活动照，可在详情页查看");
-    if (f.date) parts.push(f.date + " 出发");
+    /* v203：原实现在这里播报「9月20日 出发」—— 属参数播报，日期在事实信息章节里。 */
     return `<p>${parts.length ? parts.join("；") + "。" : "活动亮点与实拍见详情页。"}</p>`;
   }
   if (/得到|收获|意义|价值|陪伴|成长/.test(T)) {
@@ -7502,6 +7508,79 @@ function sectionBody(h, a, m) {
   }
   if (/预告|下一期|集结/.test(T)) return "更多活动信息可关注机构后续发布。";
   return `<p>${(f.place ? "在" + f.place + "的" : "") + (f.date || "近期") + "这场活动，信息以发布页为准。"}</p>`;
+}
+
+/* ================= v203 宣发出口闸门：把 v201 的文案分层推广到「所有宣传文案」 =================
+   基元在 core.js 的 v203 块（isPublishInfoSeg / sanitizePublishCopy / sanitizePublishHtml）。
+   本函数按**宣发产物结构**逐平台逐字段处理：
+
+   事实层（一个字都不动）：
+     · gzh.info[].k/.v、gzh.fee（结构化信息表：时间/地点/集合/名额/费用…）
+     · gzh.sections 中**标题命中事实词**的章节（真实信息 / 怎么报名 / 费用…）—— 整段保留
+     · xhs.body、wechat.recruit 里的标签行（「· 时间：9月20日」「🗓 地点：…」）
+     · poster 的 title / place / points / time / price（海报是信息载体）
+
+   文学层（过闸门：句中参数剥离、参数播报句丢弃）：
+     · gzh.title / subtitle / summary / cta / next / sections[].h 与其余章节 html
+     · xhs.titles / coverText 与 body 的非标签行
+     · moments.* / wechat.* / voice.* / poster.sub
+     · 键名兜底：out 顶层键命中 LITERARY_FIELDS 的字符串/数组（防将来新增字段漏接闸门）
+   ------------------------------------------------------------------------- */
+const PUBLISH_FACT_SECTION_RE = /信息|详情|报名|费用|时间|地点|出行|交通|集合|须知|怎么去/;
+function gatePublishOut(out, scenario) {
+  if (!out || typeof out !== "object") return out;
+  const C = (t) => (typeof sanitizePublishCopy === "function") ? sanitizePublishCopy(t) : String(t == null ? "" : t);
+  const H = (t) => (typeof sanitizePublishHtml === "function") ? sanitizePublishHtml(t) : C(t);
+  /* 标题类保护：清完为空 → 保留原文。
+     宁可留着老板自己的字样（哪怕它含日期），也不要交出一个空标题。 */
+  const TS = (orig) => { const g = C(orig); return (g && g.trim()) ? g : String(orig == null ? "" : orig); };
+
+  const gzh = out.gzh;
+  if (gzh && typeof gzh === "object") {
+    ["title", "subtitle", "summary", "cta", "next"].forEach((k) => { if (gzh[k] != null) gzh[k] = (k === "title") ? TS(gzh[k]) : C(gzh[k]); });
+    if (Array.isArray(gzh.sections)) {
+      gzh.sections.forEach((sec) => {
+        if (!sec || typeof sec !== "object") return;
+        const isFactSection = PUBLISH_FACT_SECTION_RE.test(String(sec.h || ""));
+        if (sec.h != null) sec.h = TS(sec.h);
+        /* 事实章节（真实信息/怎么报名）整段保留；表达章节才净化。
+           ★ 这一刀很关键：`<p><b>时间</b> 9月20日；<b>名额</b> 15人</p>` 的值写在标签**外面**，
+             若按文本节点净化会被逐条剥掉 —— 那正是读者要拿来核对的信息。 */
+        if (sec.html != null && !isFactSection) sec.html = H(sec.html);
+      });
+    }
+    // gzh.info / gzh.fee 是事实层，不动
+  }
+
+  const xhs = out.xhs;
+  if (xhs && typeof xhs === "object") {
+    if (Array.isArray(xhs.titles)) xhs.titles = xhs.titles.map(TS).filter(Boolean);
+    if (xhs.body != null) xhs.body = C(xhs.body);
+    if (xhs.coverText != null) xhs.coverText = C(xhs.coverText);
+  }
+
+  if (typeof out.moments === "string") out.moments = C(out.moments);
+  else if (out.moments && typeof out.moments === "object") ["warm", "formal", "last"].forEach((k) => { if (out.moments[k] != null) out.moments[k] = C(out.moments[k]); });
+
+  if (typeof out.wechat === "string") out.wechat = C(out.wechat);
+  else if (out.wechat && typeof out.wechat === "object") ["recruit", "brief"].forEach((k) => { if (out.wechat[k] != null) out.wechat[k] = C(out.wechat[k]); });
+
+  if (out.voice && typeof out.voice === "object") ["s30", "s60"].forEach((k) => { if (out.voice[k] != null) out.voice[k] = C(out.voice[k]); });
+
+  if (out.poster && typeof out.poster === "object") { if (out.poster.sub != null) out.poster.sub = C(out.poster.sub); }
+
+  if (out.next != null) out.next = C(out.next);
+
+  // 键名兜底：将来新增的文学字段只要名字进白名单，就会被自动覆盖
+  if (typeof LITERARY_FIELDS !== "undefined" && Array.isArray(LITERARY_FIELDS)) {
+    Object.keys(out).forEach((k) => {
+      if (LITERARY_FIELDS.indexOf(k) < 0) return;
+      const v = out[k];
+      if (typeof v === "string") out[k] = TS(v);
+      else if (Array.isArray(v)) out[k] = v.map(TS).filter(Boolean);
+    });
+  }
+  return out;
 }
 
 function fallbackRecruitCopy(a, m, dir) {
@@ -7514,7 +7593,11 @@ function fallbackRecruitCopy(a, m, dir) {
   const angle = dir.angle || (f.activityName || "这场活动"); // 表达方向（标题/邀约语气），非事实断言
   const infoData = infoRows(a);
   const feeTxt = f.price != null ? `¥${f.price}/${f.limitUnit || "人"}${f.limit ? `，限 ${f.limit}${f.limitUnit || "人"}` : ""}` : "详询";
-  const summary = [f.activityName || "这场活动", (f.place ? "在" + f.place : ""), (f.date || "近期") + "出发"].filter(Boolean).join("，") + "。以下基于已确认的活动信息整理，具体以发布页为准。";
+  /* v203：摘要属文学层 —— 去掉了原有的「9月20日出发」（日期在下面的事实信息里）。
+     同时避免「青城后山一日徒步，在青城后山。」这种把活动名里的地名再说一遍。 */
+  const sumName = f.activityName || "这场活动";
+  const sumPlace = (f.place && sumName.indexOf(f.place) < 0) ? ("在" + f.place) : "";
+  const summary = [sumName, sumPlace].filter(Boolean).join("，") + "。以下基于已确认的活动信息整理，具体以发布页为准。";
   const xhsInfo = [
     "· 时间：" + (f.date || "近期"),
     "· 地点：" + (f.place || "集合点群内发"),
@@ -7526,7 +7609,8 @@ function fallbackRecruitCopy(a, m, dir) {
   return {
     gzh: {
       title: `${f.activityName || "这场活动"}｜${angle}`,
-      subtitle: `${dir.hook ? dir.hook + " · " : ""}${f.place ? "在" + f.place + "的" : ""}${f.season ? f.season : ""}${f.date || "近期"}出发`,
+      /* v203：副标题属文学层 —— 去掉了原有的「9月20日出发」。 */
+      subtitle: `${dir.hook ? dir.hook + " · " : ""}${f.place ? "在" + f.place + "的" : ""}${f.season || ""}这一场`,
       summary: summary,
       sections: sections,
       info: infoData,
@@ -7548,17 +7632,17 @@ function fallbackRecruitCopy(a, m, dir) {
       imageOrder: ["cover", "scenic", "people", "action", "detail"],
     },
     moments: {
-      warm: `${dir.hook ? dir.hook + " " : ""}${f.place ? "在" + f.place + "的" : ""}${f.season || ""}这一场已开放报名，${f.date || ""} 出发。${ctaShortOf(a)}。${urgencyTextOf(confirmedCTAOf(a))}`,
-      formal: `【招募】${f.activityName || "本周活动"} · ${f.date || "近期"} 出发\n${summary}\n${ctaShortOf(a)}。${urgencyTextOf(confirmedCTAOf(a))}`,
-      last: `【提醒】${f.activityName || "本周活动"} ${f.date || ""} 出发。${urgencyTextOf(confirmedCTAOf(a)) || "活动信息以发布页为准。"}`,
+      warm: `${dir.hook ? dir.hook + " " : ""}${f.place ? "在" + f.place + "的" : ""}${f.season || ""}这一场已开放报名。${ctaShortOf(a)}。${urgencyTextOf(confirmedCTAOf(a))}`,
+      formal: `【招募】${f.activityName || "本周活动"}\n${summary}\n${ctaShortOf(a)}。${urgencyTextOf(confirmedCTAOf(a))}`,
+      last: `【提醒】${f.activityName || "本周活动"}这一场很快就要出发了。${urgencyTextOf(confirmedCTAOf(a)) || "活动信息以发布页为准。"}`,
     },
     wechat: {
       recruit: `各位群友好👋 ${f.activityName || "本周活动"} 开始招募啦：\n🗓 时间：${f.date || "近期"}\n📍 地点：${f.place || "集合点群内发"}\n💰 ${f.price != null ? "费用：¥" + f.price + "/" + (f.limitUnit || "人") : "费用详询"}${f.difficulty ? "\n🔥 强度：" + f.difficulty : ""}\n\n${ctaShortOf(a)}。${urgencyTextOf(confirmedCTAOf(a))}`,
-      brief: `【一句话】${f.activityName || "活动"} ${f.date || ""} 出发｜${ctaShortOf(a)}`,
+      brief: `【一句话】${f.activityName || "活动"}｜${ctaShortOf(a)}`,
     },
     voice: {
       s30: `大家好，这周末咱们去${f.place || "山里"}，主题是${angle}。${f.price != null ? "费用" + f.price + "一人" : "费用详询"}${f.difficulty ? "，强度" + f.difficulty : ""}。${ctaShortOf(a)}。${urgencyTextOf(confirmedCTAOf(a))}`,
-      s60: `大家好，给大伙说个周末的活动。咱们${f.date || "这周末"}去${f.place || "山里"}，这场活动的主题是${angle}。${f.price != null ? "费用" + f.price + "一人" : "费用详询"}${f.includedServices && f.includedServices.length ? "，含" + f.includedServices.join("、") : ""}${f.difficulty ? "，强度" + f.difficulty : ""}。${ctaShortOf(a)}。${urgencyTextOf(confirmedCTAOf(a))}`,
+      s60: `大家好，给大伙说个周末的活动。咱们这周末去${f.place || "山里"}，这场活动的主题是${angle}。${f.price != null ? "费用" + f.price + "一人" : "费用详询"}${f.includedServices && f.includedServices.length ? "，含" + f.includedServices.join("、") : ""}${f.difficulty ? "，强度" + f.difficulty : ""}。${ctaShortOf(a)}。${urgencyTextOf(confirmedCTAOf(a))}`,
     },
     poster: {
       title: f.activityName || "户外活动",
@@ -7587,7 +7671,15 @@ async function genRecruit(a, m, strategy) {
 - wechat：微信群 {recruit,brief}
 - voice：口播 {s30,s60}
 - poster：海报 {title,sub,place,points:[2],time,price,cta}
-所有标题/正文/章节标题/摘要/图片说明/CTA 由你创作，不要使用固定模板句式；章节标题参考 Editorial Direction.structure，但可根据事实调整。`;
+所有标题/正文/章节标题/摘要/图片说明/CTA 由你创作，不要使用固定模板句式；章节标题参考 Editorial Direction.structure，但可根据事实调整。
+
+★ 文案硬约束（适用**全部平台**，违反即视为不合格）：
+1) 标题 / 副标题 / 摘要 / 正文段落 / 朋友圈 / 口播 / 海报标语里，**一律不得出现**具体日期与时刻、
+   价格、名额人数、公里数、海拔、年龄、天数、车程小时数 —— 这些数字不是文案，读起来像参数播报。
+   需要表达时间就用「这个周末 / 出发那天 / 一整天 / 早发晚归」这类说法。
+2) **唯一例外**：以「标签：值」形式独立成行的结构化信息（如「· 时间：…」「🗓 地点：…」「费用：…」）
+   可以保留精确值 —— 那是给读者报名用的信息区，不是文案。
+3) 章节正文里不要复述活动参数；参数由信息区统一呈现。`;
   const user = `Editorial Direction：${JSON.stringify(dir)}
 confirmedFacts：${JSON.stringify(f)}
 价值：${m.scenicValue} / ${m.experienceValue} / ${m.participationValue}
@@ -7619,7 +7711,8 @@ confirmedFacts：${JSON.stringify(f)}
   if (!out || !out.gzh || !out.gzh.sections) out = fallbackRecruitCopy(a, m, dir);
   out = qualityCheck(out, dir, "recruit", f) || out;
   if (out && out.xhs) out.xhs = normalizeXhs(out.xhs);
-  return out;
+  /* v203：AI 与本地回退两条来源都要过闸门 —— 出口统一，不依赖上游自觉。 */
+  return gatePublishOut(out, "recruit");
 }
 
 /* ---------- 活动回顾 阶段二 ---------- */
@@ -7763,7 +7856,8 @@ async function genRecap(a, m, strategy, photos, notes) {
     q.note = (q.note || "") + " 已阻断无来源的现场事件叙述（" + fabEvents.join("、") + "）。";
   }
   if (out && out.xhs) out.xhs = normalizeXhs(out.xhs);
-  return out;
+  /* v203：回顾同样是宣传文案（朋友圈/微信群/小红书都会转发）—— 一并过闸门。 */
+  return gatePublishOut(out, "recap");
 }
 
 /* ---------- 质量检查（§39 ContentQualityCheck / §40 EditorialQualityCheck） ---------- */
@@ -8205,7 +8299,7 @@ function xhsTitle(a, m, n, dir) {
     `${name}｜${(f.place ? f.place + "·" : "") + (publishSeason(a) || "周末")}招募`,
     `周末去哪？${name}报名信息一览`,
     `${f.place || "户外"}的${publishSeason(a) || ""}行程，报名看这里`,
-    `${name}｜${(f.date || "近期")}出发，详情见内文`,
+    `${name}｜这个周末出发，详情见内文`,
     `${name}活动信息：时间、地点、费用一次说清`,
   ];
   return arr[(n - 1) % arr.length];
@@ -8222,9 +8316,10 @@ function recapType(a, photos) {
 function nextText(a) {
   const next = nextActivityOf(a);
   if (next) {
-    const when = next.dateMD || next.date || "";
+    /* v203：预告也是文案 —— 原实现把下一场的日期括进句中（「下一场：X（9月27日）」），
+       属参数播报，日期在下一场的发布页里。 */
     const place = next.place || next.title || "下一场活动";
-    return "下一场：" + place + (when ? "（" + when + "）" : "") + "，活动信息以发布页为准。";
+    return "下一场：" + place + "，活动信息以发布页为准。";
   }
   return "更多活动信息可关注机构后续发布。";
 }
@@ -8716,6 +8811,8 @@ function sectionRegen(xf) {
 function recruitResult() {
   const xf = publishState();
   const o = xf.out;
+  /* v203：渲染前再兜一次 —— 老板 localStorage 里可能存着闸门上线**之前**生成的文案。 */
+  gatePublishOut(o, "recruit");
   if (xf.genState === "loading") return `<div class="xf-loading">${ICON("sparkles")} 正在生成宣传内容…</div>`;
   return `
   <div class="xf-back"><button class="btn btn-ghost btn-sm" data-action="publishReset">${ICON("chevron-left")} 重新选择</button></div>
@@ -9186,6 +9283,7 @@ function posterPanel(p, xf) {
 function recapResult() {
   const xf = publishState();
   const o = xf.recap;
+  gatePublishOut(o, "recap");
   if (xf.genState === "loading") return `<div class="xf-loading">${ICON("sparkles")} 正在生成活动回顾…</div>`;
   return `
   <div class="xf-back"><button class="btn btn-ghost btn-sm" data-action="publishReset">${ICON("chevron-left")} 重新选择</button></div>

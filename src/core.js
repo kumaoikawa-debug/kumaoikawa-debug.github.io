@@ -1199,7 +1199,11 @@
 const FACT_LITERAL_RULES = [
   { key: "date", re: /(?:\d{4}\s*年\s*)?\d{1,2}\s*月份?(?:\s*\d{1,2}\s*[日号]?)?|\d{4}\s*[-/.]\s*\d{1,2}\s*[-/.]\s*\d{1,2}|\d{1,2}\s*[\/／]\s*\d{1,2}(?!\d)/g },
   { key: "time", re: /(?:上午|下午|早上|傍晚|晚上|中午|凌晨)?\s*\d{1,2}\s*[:：]\s*\d{2}(?:\s*[-–~至]\s*\d{1,2}\s*[:：]\s*\d{2})?/g },
-  { key: "price", re: /(?:价格|人均|每人|只需|只要|仅需|仅|费用)?\s*(?:¥|￥|RMB)?\s*\d+(?:\.\d+)?\s*(?:元|块钱|块)(?:\s*\/\s*[人位份次])?/g },
+  /* ★ v203 补漏：原规则只认「数字+元/块」，于是本地模板里的
+     「费用98一人」完全漏网（没有「元」字）。改为「引导词 + 数字」即可命中，
+     并保留「数字+元/块」「¥+数字」两条老分支。引导词是硬要求 —— 没有引导词时
+     必须带货币符号或单位，否则「长 25」这种正常词组会被误判成价格。 */
+  { key: "price", re: /(?:价格|人均|每人|只需|只要|仅需|仅|费用|收费|团费|总价)\s*(?:¥|￥|RMB)?\s*\d+(?:\.\d+)?\s*(?:元|块钱|块)?(?:\s*\/\s*[人位份次])?|(?:¥|￥|RMB)\s*\d+(?:\.\d+)?(?:\s*\/\s*[人位份次])?|\d+(?:\.\d+)?\s*(?:元|块钱|块)(?:\s*\/\s*[人位份次])?/g },
   { key: "dist", re: /(?:全程|单程|全长|距离|累计|长约|大约|约|共|达)?\s*\d+(?:\.\d+)?\s*(?:公里|千米|km|KM|Km)/g },
   { key: "elev", re: /(?:海拔|累计爬升|爬升|上升|下降|落差)?\s*\d+(?:\.\d+)?\s*米(?![兰克])/g },
   { key: "quota", re: /(?:限|仅限|限额|人数|控制在|仅收)?\s*\d+\s*(?:人|位|名)(?![们民生])/g },
@@ -1374,7 +1378,74 @@ function stripBroadcastList(list) {
 }
 
 /* 文学层字段白名单 —— AI 落库时按这张表过闸门（事实层字段不在此列，绝不动）。 */
-const LITERARY_FIELDS = ["body", "intro", "hook", "pullQuote", "whyGo", "experience", "gain", "marketingTitles"];
+/* 文学层字段白名单 —— 按**键名**通用闸门（事实层字段不在此列，绝不动）。
+   v201 只登记了活动详情页的字段；v203 把宣发产物的文学字段也纳入（gatePublishOut
+   会先按结构逐平台精确处理，最后再按本表做一次键名兜底 —— 防止将来新增字段漏网）。 */
+const LITERARY_FIELDS = ["body", "intro", "hook", "pullQuote", "whyGo", "experience", "gain",
+  "marketingTitles", "title", "subtitle", "summary", "coverText", "headline", "posterLine",
+  "titles", "warm", "formal", "last", "recruit", "brief", "s30", "s60", "next", "sub", "reason"];
+
+/* ================= v203 宣发出口闸门（把 v201 的分层推广到「所有宣传文案」） =================
+   老板反馈：「所有宣传文案中都不要出现日期、年龄、这些字段呀。」
+   v201 只覆盖了活动详情页（长页 + 简洁页）；AI 宣发中心另有 6 个出口
+   （公众号 / 小红书 / 朋友圈 / 微信群 / 口播 / 海报）**一条都没过闸门** ——
+   本地回退模板在正文里播报日期与公里数，AI prompt 甚至明确要求微信群文案
+   「包含时间、地点、价格」。
+
+   判据与 v201 完全一致，只是把它**结构化**成两种可判定的形态：
+     · 事实层 = 「带标签的信息」——
+         ① 标签行（整行）：「🗓 时间：9月20日」「· 地点：青城后山」「💰 费用：¥98/人」
+         ② 标签分句（冒号前 ≤8 字的短标签）：「活动类型：徒步」「集合：天府广场 07:30」
+       → 原样保留，一个字不动（读者据此报名、决策与核对）。
+     · 文学层 = 其余一切句子（标题 / 副标题 / 摘要 / 正文段落 / 朋友圈 / 口播 / 海报标语）
+       → 过 sanitizeLiteraryPass：句中参数剥离、参数播报句丢弃。
+   ------------------------------------------------------------------------- */
+
+/* 「短标签 + 冒号」= 标签信息。开头允许 emoji / 圆点 / 星号等装饰符号。
+   ★ 为什么必须要求「冒号」：
+     「时间」是标签（时间是 9月20日 —— 事实），但「适合 16—55岁」是**播报**
+     （没有标签、直勾勾一串数字），必须走文学层净化 —— 这正是老板要清的。
+   ★ 标签长度限 8 字：再长就不是字段名而是句子了
+     （「各位群友好，这场活动开始招募：」不该被当成字段行整行放行）。 */
+function isPublishInfoSeg(seg) {
+  const s = String(seg == null ? "" : seg).replace(/^[^\u4e00-\u9fa5A-Za-z0-9]+/, "");
+  return /^[^\s：:，。；、]{1,8}\s*[：:]/.test(s);
+}
+
+/* 宣发文案净化：逐行 → 逐句。标签行/标签分句原样保留，其余走完整闸门。 */
+function sanitizePublishCopy(text) {
+  const src = String(text == null ? "" : text);
+  if (!src.trim()) return "";
+  return src.split(/\n+/).map(function (line) {
+    const parts = splitLiterarySentences(line);
+    const out = [];
+    for (let i = 0; i < parts.length; i++) {
+      const sent = parts[i].trim();
+      if (!sent) continue;
+      if (isPublishInfoSeg(sent)) { out.push(sent); continue; }   // 事实层：标签信息，原样保留
+      const clean = sanitizeLiteraryPass(sent);
+      if (clean) out.push(clean);
+    }
+    return out.join("").replace(/\s{2,}/g, " ").trim();
+  }).filter(function (l) { return l && l.trim(); }).join("\n");
+}
+
+/* HTML 版：**只净化标签之外的文本节点**，`<p>/<b>/<br>` 等标签与结构原样保留。
+   ★ 为什么不能整段当纯文本净化：公众号正文段落形如
+     `<p><b>时间</b> 9月20日；<b>地点</b> 青城后山；</p>` —— 值在标签**外面**，
+     整段净化会把 `<b>` 也算作汉字，残句判定（汉字 <4 丢弃）与剥离边界全乱。
+   注意：调用方（gatePublishOut）已按**章节标题**把「真实信息」这类事实章节整体排除，
+   所以这里只处理表达段落。 */
+function sanitizePublishHtml(html) {
+  const src = String(html == null ? "" : html);
+  if (!src.trim()) return "";
+  if (src.indexOf("<") < 0) return sanitizePublishCopy(src);
+  const out = src.replace(/(^|>)([^<]+)/g, function (all, pre, txt) {
+    if (!txt || !txt.trim()) return all;
+    return pre + sanitizePublishCopy(txt);
+  });
+  return out.replace(/<p>\s*<\/p>/g, "");
+}
 
 /* ---------------- v193 模块完整性清单（P0-5） ----------------
    「UI 有入口但函数不存在」是最难查的一类线上问题：按钮点下去才报错。
@@ -1400,6 +1471,8 @@ const REQUIRED_MODULE_FILES = {
   /* v201 文案事实闸门：publish.js（模板/AI 落库）与 activities.js（渲染兜底）都直接调 */
   sanitizeLiteraryText: "core.js",
   sanitizeLiteraryList: "core.js",
+  sanitizePublishCopy: "core.js",
+  sanitizePublishHtml: "core.js",
   stripBroadcastLines: "core.js",
   stripBroadcastList: "core.js",
   factBroadcastHits: "core.js",
