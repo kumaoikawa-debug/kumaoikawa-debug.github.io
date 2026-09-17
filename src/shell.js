@@ -2367,17 +2367,40 @@
       const el = $(`#sf_custom_${f.id}`);
       if (el) custom[f.id] = el.value.trim();
     });
+    /* v199：报名即结算 —— 会员价 / 优惠券 / 积分抵现在这里真正落库并产生副作用。
+       旧实现只写姓名电话：三个营销开关在成交环节完全没有参与（老板反馈「都没有实现」）。 */
+    const dep = (a.departures || []).find((d) => d.id === departureId) || null;
+    const bk = (typeof signupBreakdown === "function")
+      ? signupBreakdown(a)
+      : orderBreakdown(a, { dep: dep, adults: +($("#sf_adults").value || 1), children: +($("#sf_children").value || 0), couponId: "", usePoints: false });
     const s = {
       id: uid(), activityId: id, departureId,
       name, phone, idType, idNumber,
-      adults: +($("#sf_adults").value || 1), children: +($("#sf_children").value || 0),
+      adults: bk.adults, children: bk.children,
       childName: $("#sf_childName").value.trim(), childAge: $("#sf_childAge").value.trim(),
       note: $("#sf_note").value.trim(), custom,
       paid: false, createdAt: Date.now(),
+      /* 结算快照：金额与优惠全部留档 —— 活动日后改价不应让历史订单金额漂移 */
+      unitPrice: bk.unit, rawUnitPrice: bk.rawUnit,
+      memberTierId: bk.tier ? bk.tier.id : "",
+      memberTierName: bk.tier ? bk.tier.name : "",
+      memberSaved: bk.memberSaved,
+      couponId: bk.coupon ? bk.coupon.id : "",
+      couponTitle: bk.coupon ? bk.coupon.title : "",
+      couponDiscount: bk.couponDiscount,
+      pointsUsed: bk.pointsUsed, pointsDiscount: bk.pointsDiscount,
+      amountBase: bk.rawSubtotal, amountPaid: bk.payable,
+      pointsEarned: bk.pointsEarned,
     };
+    /* 副作用顺序：先扣积分与券，再按实付金额赠分 —— 赠分绝不基于抵扣前金额（否则等于刷分） */
+    if (s.pointsUsed > 0 && typeof redeemMemberPoints === "function") redeemMemberPoints(s.pointsUsed, "积分抵现 · " + (a.title || ""), s.id);
+    if (s.couponId) {
+      const cp = (state.coupons || []).find((x) => x.id === s.couponId);
+      if (cp) { cp.used = (+cp.used || 0) + 1; cp.claimed = Math.max(+cp.claimed || 0, +cp.used || 0); }
+    }
+    if (s.pointsEarned > 0 && typeof grantMemberPoints === "function") grantMemberPoints(s.pointsEarned, "报名赠送 · " + (a.title || ""), s.id);
     state.signups.unshift(s);
     a.signups = (a.signups || 0) + 1;
-    const dep = (a.departures || []).find((d) => d.id === departureId);
     if (dep) dep.signups = (dep.signups || 0) + 1;
     saveState();
     showView("success", { id, signupId: s.id });
@@ -3093,6 +3116,21 @@
     handleClick(el.dataset.action, el);
   });
   document.addEventListener("change", (e) => {
+    /* radio（换优惠券）与 checkbox（积分抵现）在部分浏览器只稳定触发 change */
+    if (e.target.closest && e.target.closest("[data-su-settle]")) {
+      const sa = (state.view === "signup") ? getActivity(state.params && state.params.id) : null;
+      if (sa && typeof refreshSignupSettle === "function") refreshSignupSettle(sa);
+      return;
+    }
+    const mmc2 = e.target.closest && e.target.closest("[data-mm-cfg]");
+    if (mmc2) {
+      const k2 = mmc2.dataset.mmCfg;
+      state.memberMarketing = Object.assign((typeof defaultMemberMarketing === "function") ? defaultMemberMarketing() : {}, state.memberMarketing || {});
+      state.memberMarketing[k2] = mmc2.type === "checkbox" ? !!mmc2.checked : (mmc2.value === "" ? 0 : Math.max(0, +mmc2.value || 0));
+      saveState();
+      if (typeof refreshPreview === "function") refreshPreview();
+      return;
+    }
     const sel = e.target.closest("[data-action]");
     if (sel && sel.tagName === "SELECT") handleClick(sel.dataset.action, sel);
   });
@@ -3120,6 +3158,24 @@
     });
   })();
   document.addEventListener("input", (e) => {
+    /* v199：报名结算受控项（人数 / 选券 / 积分开关）→ 只重刷结算块与按钮文案，
+       绝不重渲染整个表单（否则用户填了一半的姓名电话会被清空）。 */
+    if (e.target.closest && e.target.closest("[data-su-settle]")) {
+      const sa = (state.view === "signup") ? getActivity(state.params && state.params.id) : null;
+      if (sa && typeof refreshSignupSettle === "function") refreshSignupSettle(sa);
+      return;
+    }
+    /* v199：会员营销规则（俱乐部级）—— 写 state.memberMarketing，并只重刷编辑器预览 */
+    const mmc = e.target.closest && e.target.closest("[data-mm-cfg]");
+    if (mmc) {
+      const key = mmc.dataset.mmCfg;
+      state.memberMarketing = Object.assign((typeof defaultMemberMarketing === "function") ? defaultMemberMarketing() : {}, state.memberMarketing || {});
+      if (mmc.type === "checkbox") state.memberMarketing[key] = !!mmc.checked;
+      else state.memberMarketing[key] = mmc.value === "" ? 0 : Math.max(0, +mmc.value || 0);
+      saveState();
+      if (typeof refreshPreview === "function") refreshPreview();
+      return;
+    }
     const mallSearchEl = e.target.closest("#mallSearchInput");
     if (mallSearchEl) {
       state.mallFilter = state.mallFilter || { keyword: "", category: "all", gear: "all", tag: "all", sort: "default" };

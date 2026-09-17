@@ -3661,12 +3661,48 @@ function applyVisionBatch(map) {
     </div>`;
   }
 
+  /* v199：会员与营销面板 —— 从「只有三个开关」改成「开关 + 规则 + 生效预览」。
+     老板反馈「会员价格这一套营销包括积分，这些都没有实现」，根因之一是：
+     面板不告诉他填的价客户到底看到什么 —— 普通档与活动价相同时，页面确实没有任何会员痕迹，
+     面板上却看不出问题。这里把「生效预览」直接摆在输入框下面。 */
   function memberMarketingEditHtml(a) {
     const tiers = state.memberTiers || [];
+    const cfg = (typeof memberMarketingCfg === "function") ? memberMarketingCfg() : { pointsEnabled: true, pointsPerYuan: 100, maxRedeemPercent: 20, minRedeemPoints: 100, earnPerYuan: 1 };
+    const base = (a.price != null && isFinite(+a.price)) ? +a.price : null;
     const priceRows = tiers.map((t) => {
       const price = (a.tierPrices || {})[t.id];
       return `<div class="tier-price-row"><span class="tier-name" style="color:${esc(t.color)}">${ICON(t.icon)} ${esc(t.name)}</span><input type="number" class="input input-sm" data-bind-tier="${t.id}" value="${price != null ? price : ""}" placeholder="默认 ¥${a.price || 0}"></div>`;
     }).join("");
+
+    /* 生效预览：每一档客户实际看到的价格、相比活动价省多少、以及「等于活动价」的诚实提醒 */
+    const preview = tiers.map((t) => {
+      const tp = (a.tierPrices || {})[t.id];
+      let final = null;
+      if (tp != null && isFinite(+tp)) final = +tp;
+      else if (t.discount && t.discount < 100 && base != null) final = Math.round(base * t.discount / 100);
+      else final = base;
+      const diff = (base != null && final != null) ? base - final : 0;
+      const tag = diff > 0
+        ? `<span class="mm-pv-save">省 ¥${diff}</span>`
+        : `<span class="mm-pv-same">与活动价相同</span>`;
+      /* 等级 pointsRate（元/积分）此前只存不用 —— 把「每 ¥1 累积多少积分」直接算给老板看 */
+      const ppy = (typeof pointsPerYuanOf === "function") ? pointsPerYuanOf(t) : 1;
+      const earnTag = ppy > 0 ? `<span class="mm-pv-earn">每 ¥1 累积 ${ppy} 积分</span>` : `<span class="mm-pv-same">未开启送积分</span>`;
+      return `<div class="mm-pv-row"><span class="tier-name" style="color:${esc(t.color)}">${ICON(t.icon)} ${esc(t.name)}</span>${earnTag}<b class="mm-pv-v">${final != null ? "¥" + final : "—"}</b>${tag}</div>`;
+    }).join("");
+    const benefitCount = tiers.filter((t) => {
+      const tp = (a.tierPrices || {})[t.id];
+      const final = (tp != null && isFinite(+tp)) ? +tp : (t.discount && t.discount < 100 && base != null ? Math.round(base * t.discount / 100) : base);
+      return base != null && final != null && final < base;
+    }).length;
+    const previewWarn = (base == null)
+      ? `<div class="mm-pv-warn">还没填活动价格，会员价无法生效。</div>`
+      : (benefitCount === 0
+        ? `<div class="mm-pv-warn">当前 ${tiers.length} 档会员价均与活动价（¥${base}）相同 —— 客户在详情页看不到任何会员优惠。至少让一档低于活动价。</div>`
+        : `<div class="mm-pv-ok">${benefitCount} 档会员价低于活动价，客户会看到「会员价 + 原价划线」。</div>`);
+
+    const cfgNum = (key, label, unit, hint) => `<div class="mm-cfg-row"><label>${label}</label><input type="number" class="input input-sm" data-mm-cfg="${key}" value="${cfg[key]}" min="0"><span class="mm-cfg-unit">${unit}</span><span class="mm-cfg-hint">${hint}</span></div>`;
+
     return `<div class="panel">
       <div class="panel-head"><h3>会员与营销</h3><span class="tiny muted">每个俱乐部可独立设定会员体系与活动优惠规则</span></div>
       <div class="panel-body">
@@ -3676,21 +3712,39 @@ function applyVisionBatch(map) {
             <span>执行会员价</span>
           </label>
           <p class="tiny muted">开启后，不同等级会员报名时显示对应价格；不填则自动 fallback 到活动基础价</p>
-          ${a.useMemberPrice ? `<div class="tier-price-list">${priceRows}</div>` : ""}
+          ${a.useMemberPrice ? `<div class="tier-price-list">${priceRows}</div>
+          <div class="mm-preview"><div class="mm-preview-h">客户实际看到的价格</div>${preview}${previewWarn}</div>` : ""}
         </div>
         <div class="opt-row">
           <label class="switch-label">
             <input type="checkbox" ${a.allowPoints ? "checked" : ""} data-action="toggleActOpt" data-key="allowPoints">
             <span>接受会员积分抵现</span>
           </label>
-          <p class="tiny muted">开启后会员可用积分抵扣部分报名费用</p>
+          <p class="tiny muted">开启后会员可在报名结算时用积分抵扣部分应付金额</p>
+        </div>
+        <div class="mm-cfg">
+          <div class="mm-cfg-h">积分规则（俱乐部级，作用于全部活动）</div>
+          <label class="switch-label mm-cfg-switch">
+            <input type="checkbox" ${cfg.pointsEnabled ? "checked" : ""} data-mm-cfg="pointsEnabled">
+            <span>启用积分抵现</span>
+          </label>
+          ${cfgNum("pointsPerYuan", "抵现比例", "积分 = ¥1", "多少积分可抵扣 1 元")}
+          ${cfgNum("maxRedeemPercent", "单笔上限", "%", "一笔订单最多抵扣的百分比")}
+          ${cfgNum("minRedeemPoints", "起抵积分", "积分", "低于该积分的零头不让抵，避免碎抵扣")}
+          ${cfgNum("earnPerYuan", "报名赠分", "积分 / 元", "按实付金额累积，再乘会员等级倍率")}
+          <div class="mm-cfg-hint-line">会员中心当前积分余额：<b>${(typeof memberPointsBalance === "function") ? memberPointsBalance() : 0}</b> 积分（可在 C 端「会员中心」查看流水）</div>
         </div>
         <div class="opt-row">
           <label class="switch-label">
             <input type="checkbox" ${a.allowCoupons ? "checked" : ""} data-action="toggleActOpt" data-key="allowCoupons">
             <span>接受优惠券</span>
           </label>
-          <p class="tiny muted">开启后会员可在报名时使用本俱乐部发放的优惠券</p>
+          <p class="tiny muted">开启后会员可在报名结算时使用本俱乐部发放的「全场通用」券（满减 / 折扣）</p>
+          ${a.allowCoupons ? (() => {
+            const usable = (typeof usableCouponsFor === "function") ? usableCouponsFor(a, base || 0) : [];
+            const all = state.coupons || [];
+            return `<div class="mm-coupon-hint">按当前活动价 ¥${base != null ? base : 0}，本次可用券 ${usable.length} 张${usable.length ? "：" + usable.map((c) => esc(c.title)).join("、") : "（其余券未达门槛或为装备专用券）"}；俱乐部共 ${all.length} 张券。</div>`;
+          })() : ""}
         </div>
       </div>
     </div>`;

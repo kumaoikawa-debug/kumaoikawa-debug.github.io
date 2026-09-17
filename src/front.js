@@ -29,23 +29,24 @@
       </div>`).join("")}</div>
     </div>`;
   }
-  // C 端价格展示：优先显示当前会员等级价；未登录/无等级时显示会员价区间；未开会员价显示基础价
+  /* v199：C 端价格统一走引擎 —— 只在会员价「真的低于原价」时才标会员价 + 原价划线。
+     旧实现只要档位价 ≠ 基础价就标会员价，且档位价等于原价时还会打「会员」标签，
+     客户看到的是与定价毫无区别的数字 —— 这正是「看起来没实现」的观感来源之一。 */
   function activityPriceHtml(a, compact) {
-    const cur = currentMemberTier();
-    const my = memberPriceForTier(a, cur);
-    const range = memberPriceRange(a);
-    if (a.useMemberPrice && my != null && my !== a.price) {
-      return `<b>¥${my}</b><small>/${esc(a.limitUnit)}</small>${compact ? "" : `<span class="price-tag">${esc(cur.name)}</span>`}`;
+    const ben = memberBenefitOf(a, null);
+    if (ben.hasBenefit) {
+      return `<b class="pp-mem">¥${ben.member}</b><small>/${esc(a.limitUnit)}</small>`
+        + (compact ? "" : `<span class="price-tag">${esc((ben.tier && ben.tier.name) || "会员")}价</span>`)
+        + `<s class="pp-base">¥${ben.base}</s>`;
     }
-    if (a.useMemberPrice && range) {
-      return `<b>¥${range.min}起</b><small>/${esc(a.limitUnit)}</small>${compact ? "" : `<span class="price-tag">会员</span>`}`;
-    }
-    return a.price ? `<b>¥${a.price}</b><small>/${esc(a.limitUnit)}</small>` : "详询";
+    const base = priceBaseOf(a, null);
+    if (base == null) return "详询";
+    const best = compact ? null : memberBestPriceOf(a, null);
+    return `<b>¥${base}</b><small>/${esc(a.limitUnit)}</small>` + (best != null ? `<span class="price-tag">会员价 ¥${best} 起</span>` : "");
   }
   function activityPriceText(a) {
-    const cur = currentMemberTier();
-    const my = memberPriceForTier(a, cur);
-    if (a.useMemberPrice && my != null) return "¥" + my;
+    const ben = memberBenefitOf(a, null);
+    if (ben.hasBenefit) return "¥" + ben.member;
     return a.price ? "¥" + a.price : "详询";
   }
   function szFeedCard(a) {
@@ -447,20 +448,112 @@
     </div>`;
   }
 
+  /* ================= v199：报名结算（会员价 / 优惠券 / 积分抵现） =================
+     老板反馈「会员价格这一套营销包括积分，这些都没有实现」：报名页此前只有姓名电话，
+     既不显示会员价，也不给用券，更没有积分抵扣 —— 三个开关在成交环节全部失效。
+     这里把「读表单 → 算钱 → 渲染」收敛成一组函数，金额计算一律落在 core.js 的 orderBreakdown()，
+     页面只负责展示与收集输入，避免前后端两套算法对不上。 */
+
+  /* 读取报名表单当前输入（团期 / 人数 / 选中的券 / 是否用积分） */
+  function signupFormState() {
+    const depEl = document.querySelector ? document.querySelector('input[name="sf_departure"]:checked') : null;
+    const aEl = document.getElementById("sf_adults");
+    const cEl = document.getElementById("sf_children");
+    const cpEl = document.querySelector ? document.querySelector('input[name="sf_coupon"]:checked') : null;
+    const ptEl = document.getElementById("sf_usePoints");
+    return {
+      depId: depEl ? depEl.value : "",
+      /* 成人默认 1 人（表单初始 value="1"）：读到空值/非法值时回落 1，
+         否则结算金额会算成 ¥0 —— 这是 v199 契约测试在空 DOM 上暴露出来的真实缺陷。 */
+      adults: (aEl && isFinite(+aEl.value) && +aEl.value > 0) ? Math.floor(+aEl.value) : 1,
+      children: (cEl && isFinite(+cEl.value) && +cEl.value > 0) ? Math.floor(+cEl.value) : 0,
+      couponId: (cpEl && typeof cpEl.value === "string") ? cpEl.value : "",
+      usePoints: !!(ptEl && ptEl.checked),
+    };
+  }
+  function signupBreakdown(a) {
+    const fs = signupFormState();
+    const dep = (a.departures || []).find((d) => d.id === fs.depId) || null;
+    return orderBreakdown(a, { dep: dep, adults: fs.adults, children: fs.children, couponId: fs.couponId, usePoints: fs.usePoints });
+  }
+  /* 结算明细（含优惠券与积分控件）—— 独立成函数是为了「改人数/换券/勾积分」只重刷这一块，
+     不重渲染整个表单（否则用户填了一半的姓名电话会被清空）。 */
+  function signupSettleInnerHtml(a) {
+    const fs = signupFormState();
+    const bk = signupBreakdown(a);
+    const cfg = memberMarketingCfg();
+    const money = (n) => (Math.round(n * 100) / 100).toFixed(2).replace(/\.00$/, "");
+
+    let couponBlock = "";
+    if (a.allowCoupons) {
+      const usable = usableCouponsFor(a, bk.subtotal);
+      const noneChecked = fs.couponId ? "" : "checked";
+      couponBlock = '<div class="su-coupon">'
+        + '<div class="su-row-k">优惠券</div>'
+        + (usable.length
+          ? '<div class="su-coupons">'
+            + '<label class="su-coupon-opt"><input type="radio" name="sf_coupon" value="" ' + noneChecked + ' data-su-settle="1"><span>不使用优惠券</span></label>'
+            + usable.map((cp) => '<label class="su-coupon-opt"><input type="radio" name="sf_coupon" value="' + esc(cp.id) + '" ' + (fs.couponId === cp.id ? "checked" : "") + ' data-su-settle="1"><span>' + esc(cp.title) + '</span><b>-' + money(couponDiscountOf(cp, bk.subtotal)) + ' 元</b><small>' + (cp.threshold > 0 ? "满 " + cp.threshold + " 可用" : "无门槛") + '</small></label>').join("")
+            + '</div>'
+          : '<div class="su-coupon-empty">本单暂无可用优惠券（未达到使用门槛，或券不适用于活动报名）</div>')
+        + '</div>';
+    }
+
+    let pointsBlock = "";
+    if (a.allowPoints) {
+      const bal = bk.pointsBalance;
+      const capYuan = Math.round(bk.subtotal * cfg.maxRedeemPercent) / 100;
+      const capPts = Math.floor(capYuan * cfg.pointsPerYuan);
+      const maxPts = Math.min(bal, capPts);
+      const canUse = cfg.pointsEnabled && maxPts >= cfg.minRedeemPoints;
+      if (!cfg.pointsEnabled) {
+        pointsBlock = '<div class="su-points"><div class="su-row-k">积分抵现</div><div class="su-coupon-empty">俱乐部当前未开启积分抵现</div></div>';
+      } else if (bal <= 0) {
+        pointsBlock = '<div class="su-points"><div class="su-row-k">积分抵现</div><div class="su-coupon-empty">当前账号积分为 0，参加活动后会按消费累积</div></div>';
+      } else {
+        pointsBlock = '<div class="su-points"><div class="su-row-k">积分抵现</div>'
+          + '<label class="su-points-toggle' + (canUse ? "" : " disabled") + '">'
+          + '<input type="checkbox" id="sf_usePoints" ' + (fs.usePoints && canUse ? "checked" : "") + (canUse ? "" : " disabled") + ' data-su-settle="1">'
+          + '<span>使用积分抵扣 <b>-' + money(pointsToYuan(bk.pointsUsed)) + ' 元</b></span></label>'
+          + '<div class="su-points-note">余额 ' + bal + ' 积分 · ' + cfg.pointsPerYuan + ' 积分 = ¥1 · 本单最多抵 ¥' + money(capYuan) + '（单笔上限 ' + cfg.maxRedeemPercent + '%）'
+          + (canUse ? "" : '；未达到 ' + cfg.minRedeemPoints + ' 积分的起抵线') + '</div></div>';
+      }
+    }
+
+    const rows = [];
+    rows.push('<div class="su-line"><span>' + esc(bk.tier ? bk.tier.name : "会员") + '价 × ' + bk.adults + ' 成人' + (bk.children ? ' + ' + bk.children + ' 儿童' : '') + '</span><b>¥' + money(bk.subtotal) + '</b></div>');
+    if (bk.memberSaved > 0) rows.push('<div class="su-line su-line-save"><span>会员优惠（原价 ¥' + money(bk.rawSubtotal) + '）</span><b>-¥' + money(bk.memberSaved) + '</b></div>');
+    if (bk.couponDiscount > 0) rows.push('<div class="su-line su-line-save"><span>' + esc(bk.coupon ? bk.coupon.title : "优惠券") + '</span><b>-¥' + money(bk.couponDiscount) + '</b></div>');
+    if (bk.pointsDiscount > 0) rows.push('<div class="su-line su-line-save"><span>积分抵现 ' + bk.pointsUsed + ' 积分</span><b>-¥' + money(bk.pointsDiscount) + '</b></div>');
+
+    return rows.join("")
+      + couponBlock + pointsBlock
+      + '<div class="su-line su-line-total"><span>应付</span><b>¥' + money(bk.payable) + '</b></div>'
+      + '<div class="su-earn">完成后预计获得 <b>' + bk.pointsEarned + '</b> 积分</div>';
+  }
+  function refreshSignupSettle(a) {
+    const box = document.getElementById("suSettle");
+    if (box) box.innerHTML = signupSettleInnerHtml(a);
+    const btn = document.getElementById("suSubmitBtn");
+    if (btn) btn.innerHTML = "提交报名 · 应付 ¥" + (Math.round(signupBreakdown(a).payable * 100) / 100).toFixed(2).replace(/\.00$/, "");
+  }
+
   function renderSignupPage(id) {
     const a = getActivity(id);
     if (!a) return `<div class="front"><div class="empty">活动不存在</div></div>`;
     syncDepartures(a);
     const deps = (a.departures || []).filter((d) => d.status !== "closed");
     const depSelect = deps.length > 1 ? `<div class="field"><label>选择团期 <span class="req">*</span></label><div class="departure-options">${deps.map((d, i) => {
-      const base = d.price != null ? d.price : a.price;
-      const myP = a.useMemberPrice ? memberPriceForTier(a, currentMemberTier()) : null;
-      const price = myP != null ? myP : base;
+      /* v199：团期价也要走会员价 —— 旧实现 isMember 时只把「会员等级名」贴上去，
+         金额本身（d.price）没变，等于没打折。 */
+      const raw = priceBaseOf(a, d);
+      const ben = memberBenefitOf(a, d);
+      const price = ben.member != null ? ben.member : raw;
       const disabled = d.status === "full";
-      return `<label class="dep-option ${disabled ? "disabled" : ""}"><input type="radio" name="sf_departure" value="${d.id}" ${disabled ? "disabled" : (i === 0 ? "checked" : "")}>
+      return `<label class="dep-option ${disabled ? "disabled" : ""}"><input type="radio" name="sf_departure" value="${d.id}" ${disabled ? "disabled" : (i === 0 ? "checked" : "")} data-price="${raw != null ? raw : ""}" data-member-price="${ben.member != null ? ben.member : ""}">
         <span class="dep-option-body">
           <span class="dep-option-date">${esc(d.weekDay)} ${esc(formatDepartureSlash(d.date))}</span>
-          <span class="dep-option-price">${price != null ? "¥" + price : "详询"}${a.useMemberPrice && currentMemberTier() ? `<small>/${esc(currentMemberTier().name)}</small>` : ""}${disabled ? " · 已满员" : ""}</span>
+          <span class="dep-option-price">${price != null ? "¥" + price : "详询"}${ben.hasBenefit ? `<small>/${esc((ben.tier && ben.tier.name) || "会员")}价</small><s class="pp-base">¥${raw}</s>` : ""}${disabled ? " · 已满员" : ""}</span>
         </span>
       </label>`;
     }).join("")}</div></div>` : "";
@@ -470,7 +563,7 @@
       <div class="su-hero">
         <div class="su-pattern"></div>
         <div class="tiny" style="opacity:.9;position:relative;z-index:1">报名 · ${esc(a.title)}</div>
-        <div style="font-size:20px;font-weight:700;margin-top:4px;position:relative;z-index:1">${(() => { const cur = currentMemberTier(); const depP = deps.length === 1 && firstDep.price != null ? firstDep.price : a.price; const myP = a.useMemberPrice ? memberPriceForTier(a, cur) : null; if (myP != null && myP !== depP) return `<b>¥${myP}</b><small>/${esc(a.limitUnit)}</small><span class="price-base">¥${depP}</span>`; return depP != null ? `<b>¥${depP}</b><small>/${esc(a.limitUnit)}</small>` : "详询"; })()}</div>
+        <div style="font-size:20px;font-weight:700;margin-top:4px;position:relative;z-index:1">${(() => { const dep = deps.length === 1 ? firstDep : null; const ben = memberBenefitOf(a, dep); if (ben.hasBenefit) return `<b class="pp-mem">¥${ben.member}</b><small>/${esc(a.limitUnit)}</small><span class="price-base">¥${ben.base}</span>`; const base = priceBaseOf(a, dep); return base != null ? `<b>¥${base}</b><small>/${esc(a.limitUnit)}</small>` : "详询"; })()}</div>
       </div>
       <div class="signup-form">
         ${depSelect}
@@ -496,8 +589,9 @@
         </div>
         ${customFieldsHtml(a.customFields)}
         <div class="field"><label>备注</label><textarea class="textarea" id="sf_note" placeholder="过敏史、特殊需求等"></textarea></div>
+        ${(a.useMemberPrice || a.allowCoupons || a.allowPoints) ? `<div class="su-settle" id="suSettle">${signupSettleInnerHtml(a)}</div>` : ""}
         <label class="consent"><input type="checkbox" id="sf_agree"> <span>我已阅读并同意《活动须知与退改规则》，知晓活动风险。</span></label>
-        <button class="btn btn-primary btn-lg btn-block" data-action="submitSignup" data-id="${a.id}">提交报名</button>
+        <button class="btn btn-primary btn-lg btn-block" id="suSubmitBtn" data-action="submitSignup" data-id="${a.id}">提交报名 · 应付 ¥${signupBreakdown(a).payable}</button>
         <p class="tiny muted center" style="margin-top:12px">Demo：提交后显示报名成功，暂不接入真实支付</p>
       </div>
     </div>`;
@@ -518,7 +612,16 @@
           <div class="row between" style="padding:8px 0"><span class="muted small">时间</span><b class="small">${esc(dateText)}</b></div>
           <div class="row between" style="padding:8px 0"><span class="muted small">集合</span><b class="small">${esc(a ? a.meeting : "")} ${esc(a ? a.meetTime : "")}</b></div>
           <div class="row between" style="padding:8px 0"><span class="muted small">联系人</span><b class="small">${esc(s ? s.name : "")}</b></div>
+          ${(s && s.amountPaid != null) ? `<div class="row between" style="padding:8px 0"><span class="muted small">应付</span><b class="small su-done-pay">¥${s.amountPaid}</b></div>` : ""}
         </div>
+        ${(s && (s.memberSaved > 0 || s.couponDiscount > 0 || s.pointsDiscount > 0 || s.pointsEarned > 0)) ? `<div class="card card-pad su-done-bill" style="text-align:left;margin:0 0 14px">
+          <div class="su-done-h">费用明细</div>
+          ${s.memberSaved > 0 ? `<div class="su-line su-line-save"><span>会员优惠${s.memberTierName ? "（" + esc(s.memberTierName) + "）" : ""}</span><b>-¥${s.memberSaved}</b></div>` : ""}
+          ${s.couponDiscount > 0 ? `<div class="su-line su-line-save"><span>${esc(s.couponTitle || "优惠券")}</span><b>-¥${s.couponDiscount}</b></div>` : ""}
+          ${s.pointsDiscount > 0 ? `<div class="su-line su-line-save"><span>积分抵现 ${s.pointsUsed} 积分</span><b>-¥${s.pointsDiscount}</b></div>` : ""}
+          <div class="su-line su-line-total"><span>实付</span><b>¥${s.amountPaid}</b></div>
+          <div class="su-earn">本次获得 <b>${s.pointsEarned || 0}</b> 积分${s.pointsUsed ? "，已扣减 " + s.pointsUsed + " 积分" : ""}</div>
+        </div>` : ""}
         <div class="tiny muted">扫码加入活动群（Demo 占位）</div>
         <div class="qr-box"></div>
         <div class="col gap-10" style="margin-top:8px">

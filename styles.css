@@ -5718,3 +5718,95 @@ body{
   .econ-cost-modes { grid-template-columns: 1fr; }
   .ops-prep-sum .ops-prep-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+
+/* ================= v199 会员价 / 积分抵现 / 优惠券 =================
+   老板反馈「会员价格这一套营销包括积分，这些都没有实现」—— 除了逻辑缺失，
+   还有一个观感问题：界面从未把「会员省了多少」讲出来。这一层样式专门服务于
+   「会员价 + 原价划线 + 省额」「积分可抵多少」「本单能用哪张券」三件事的可读性。
+
+   ⚠️ 写在文件末尾、且不包进任何 @media —— 本文件有过「桌面规则被误包进
+   @media(max-width:480px) 导致整页失样式」的旧账（见 v197 根因修复），
+   新增规则一律贴着文件尾追加。 */
+
+/* ---- 价格展示：会员价 + 等级标签 + 原价划线 ---- */
+.pp-mem { color: var(--brand); }
+.pp-tier { display: inline-block; margin-left: 5px; font-size: 10.5px; font-weight: 700; line-height: 1.5; color: var(--brand-700); background: var(--brand-soft); border-radius: 4px; padding: 1px 5px; vertical-align: 1px; }
+.pp-tier-plain { color: var(--muted); background: var(--surface-2); font-weight: 600; }
+.pp-base { margin-left: 5px; font-size: 11.5px; font-weight: 500; color: var(--muted); text-decoration: line-through; }
+.pp-base-only { }
+s.pp-base, .dm-v s.pp-base { text-decoration: line-through; }
+
+/* ---- 费用说明：会员价一行 + 积分类补充行 ---- */
+.fee-mem-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); }
+.fee-mem-tag { font-size: 10.5px; font-weight: 700; color: var(--brand-700); background: var(--brand-soft); border-radius: 4px; padding: 2px 6px; }
+.fee-mem-v { font-family: var(--display); font-size: 18px; font-weight: 800; color: var(--brand); letter-spacing: -.02em; }
+.fee-mem-base { font-size: 12px; color: var(--muted); text-decoration: line-through; }
+.fee-mem-save { font-size: 11.5px; font-weight: 700; color: var(--ok); }
+.fee-note-soft { display: flex; align-items: flex-start; gap: 7px; margin-top: 8px; padding: 9px 11px; font-size: 12px; line-height: 1.6; color: var(--ink-2); background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.fee-note-soft .fn-ic { flex: none; display: inline-flex; width: 15px; height: 15px; margin-top: 1px; color: var(--brand); }
+.fee-note-soft .fn-ic svg { width: 15px; height: 15px; }
+.fee-note-soft b { color: var(--brand); }
+
+/* ---- 报名结算面板 ---- */
+.su-settle { margin: 14px 0 4px; padding: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.su-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 5px 0; font-size: 13px; color: var(--ink-2); }
+.su-line b { font-variant-numeric: tabular-nums; }
+.su-line-save { color: var(--ok); }
+.su-line-save b { color: var(--ok); font-weight: 700; }
+.su-line-total { margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 14px; font-weight: 700; color: var(--ink); }
+.su-line-total b { font-family: var(--display); font-size: 21px; font-weight: 800; color: var(--brand); letter-spacing: -.02em; }
+.su-earn { margin-top: 4px; font-size: 11.5px; color: var(--muted); }
+.su-earn b { color: var(--brand-700); }
+.su-row-k { font-size: 12px; font-weight: 700; color: var(--ink-2); margin-bottom: 7px; }
+.su-coupons { display: flex; flex-direction: column; gap: 6px; }
+.su-coupon-opt { display: flex; align-items: center; gap: 8px; padding: 9px 10px; font-size: 12.5px; color: var(--ink-2); background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-sm); cursor: pointer; }
+.su-coupon-opt input { flex: none; }
+.su-coupon-opt span { flex: 1; }
+.su-coupon-opt b { color: var(--brand); font-variant-numeric: tabular-nums; }
+.su-coupon-opt small { flex: none; font-size: 10.5px; color: var(--muted); }
+.su-coupon-empty { font-size: 11.5px; line-height: 1.6; color: var(--muted); padding: 8px 10px; background: var(--surface-2); border-radius: var(--radius-sm); }
+.su-coupon, .su-points { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line); }
+.su-points-toggle { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-2); cursor: pointer; }
+.su-points-toggle.disabled { opacity: .6; cursor: not-allowed; }
+.su-points-toggle b { color: var(--brand); }
+.su-points-note { margin-top: 6px; font-size: 11px; line-height: 1.6; color: var(--muted); }
+.su-done-h { font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+.su-done-pay { color: var(--brand); }
+
+/* ---- 后台「会员与营销」：生效预览 + 积分规则 ---- */
+.mm-preview { margin-top: 12px; padding: 12px; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.mm-preview-h { font-size: 12px; font-weight: 700; color: var(--ink-2); margin-bottom: 8px; }
+.mm-pv-row { display: flex; align-items: center; gap: 10px; padding: 5px 0; font-size: 12.5px; border-bottom: 1px dashed var(--line-2); }
+.mm-pv-row:last-of-type { border-bottom: 0; }
+.mm-pv-row .tier-name { flex: 1; display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
+.mm-pv-v { font-variant-numeric: tabular-nums; font-weight: 700; }
+.mm-pv-save { font-size: 11px; font-weight: 700; color: var(--ok); }
+.mm-pv-same { font-size: 11px; color: var(--muted); }
+.mm-pv-warn { margin-top: 9px; padding: 8px 10px; font-size: 11.5px; line-height: 1.6; color: #8A5A16; background: #FDF6E7; border: 1px solid #F0DFBE; border-radius: var(--radius-xs); }
+.mm-pv-ok { margin-top: 9px; font-size: 11.5px; color: var(--ok); }
+.mm-cfg { margin: 14px 0; padding: 13px; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.mm-cfg-h { font-size: 12px; font-weight: 700; color: var(--ink-2); margin-bottom: 9px; }
+.mm-cfg-switch { margin-bottom: 10px; }
+.mm-cfg-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 5px 0; font-size: 12.5px; color: var(--ink-2); }
+.mm-cfg-row > label { flex: none; width: 68px; font-weight: 600; }
+.mm-cfg-row .input { width: 88px; }
+.mm-cfg-unit { flex: none; font-size: 11.5px; color: var(--muted); }
+.mm-cfg-hint { flex: 1 1 160px; font-size: 11px; color: var(--muted); }
+.mm-cfg-hint-line { margin-top: 9px; font-size: 11.5px; color: var(--muted); }
+.mm-cfg-hint-line b { color: var(--brand-700); }
+.mm-coupon-hint { margin-top: 8px; font-size: 11.5px; line-height: 1.6; color: var(--muted); }
+
+/* ---- 会员中心：积分可抵现金额 + 积分明细 ---- */
+.mc-points-cash { margin-left: 8px; font-size: 12px; font-weight: 700; color: var(--brand); background: var(--brand-soft); border-radius: 999px; padding: 2px 9px; }
+.mc-pts-rule { font-size: 11.5px; line-height: 1.7; color: var(--muted); margin-bottom: 10px; }
+.mc-pts-empty { font-size: 12px; line-height: 1.7; color: var(--muted); padding: 12px; background: var(--surface-2); border-radius: var(--radius-sm); }
+.mc-pts-list { display: flex; flex-direction: column; }
+.mc-pts-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line-2); }
+.mc-pts-row:last-child { border-bottom: 0; }
+.mc-pts-main { display: flex; flex-direction: column; gap: 2px; }
+.mc-pts-main b { font-size: 12.5px; font-weight: 600; color: var(--ink); }
+.mc-pts-main span { font-size: 11px; color: var(--muted); }
+.mc-pts-val { font-family: var(--display); font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.mc-pts-val.in { color: var(--ok); }
+.mc-pts-val.out { color: var(--brand); }

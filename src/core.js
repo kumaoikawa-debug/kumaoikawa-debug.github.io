@@ -388,7 +388,18 @@
         s.detailMode = "editorial"; // v196：详情页统一为图文长页（「简洁报名 / 图文长页」二选一已下线，不再暴露给老板）
         s.clubStatus = s.clubStatus || "approved";
         s.clubInfo = s.clubInfo || {};
-        s.points = s.points || 0;
+        s.points = s.points == null ? 0 : +s.points;
+        s.pointsLedger = s.pointsLedger || [];
+        s.memberMarketing = Object.assign(defaultMemberMarketing(), s.memberMarketing || {});
+        /* v199 一次性种子：老数据里 points 恒为 0 且券都对活动不可用，
+           会让「会员价 / 积分抵现 / 优惠券」在 C 端完全看不出效果。只补一次，不覆盖更高余额。 */
+        if (!s._mmSeedV199) {
+          s._mmSeedV199 = true;
+          if (!(s.points > 0)) { s.points = 2600; s.pointsLedger.unshift({ id: uid(), type: "earn", points: 2600, reason: "历史活动累积", refId: "", at: Date.now() - 86400000 * 12 }); }
+          if (!(s.coupons || []).some((c) => c && c.seedV199)) {
+            (s.coupons = s.coupons || []).push({ id: uid(), title: "会员满 100 减 20", type: "reduce", threshold: 100, value: 20, scope: "all", total: 800, claimed: 156, used: 73, status: "active", createdAt: Date.now() - 86400000 * 2, seedV199: true });
+          }
+        }
         s.memberExpire = s.memberExpire || null;
         s.aiCredit = s.aiCredit || { base: 1000, gift: 0, paid: 0, month: curYM() };
         s.aiCredit.base = s.aiCredit.base || 0; s.aiCredit.gift = s.aiCredit.gift || 0; s.aiCredit.paid = s.aiCredit.paid || 0; s.aiCredit.month = s.aiCredit.month || curYM(); s.aiCredit.milestones = s.aiCredit.milestones || {};
@@ -600,7 +611,13 @@
       plan: "club",
       clubStatus: "approved",
       clubInfo: {},
-      points: 0,
+      /* v199：演示账号给一档「金卡会员」的积分（2000 起），否则会员价/积分抵现
+         在 C 端永远看不到效果（余额 0 → 普通等级 → 档位价等于原价 → 视觉上「没实现」）。 */
+      points: 2600,
+      pointsLedger: [
+        { id: uid(), type: "earn", points: 2600, reason: "历史活动累积", refId: "", at: Date.now() - 86400000 * 12 }
+      ],
+      memberMarketing: defaultMemberMarketing(),
       memberExpire: null,
       aiCredit,
       mallSalesMonth: 0,
@@ -630,7 +647,8 @@
       coupons: [
         { id: uid(), title: "新人满 200 减 50", type: "reduce", threshold: 200, value: 50, scope: "all", total: 500, claimed: 120, used: 64, status: "active", createdAt: Date.now() - 86400000 * 6 },
         { id: uid(), title: "老会员 9 折券", type: "discount", threshold: 0, value: 90, scope: "gear", total: 300, claimed: 88, used: 41, status: "active", createdAt: Date.now() - 86400000 * 3 },
-        { id: uid(), title: "生日专享满 300 减 80", type: "reduce", threshold: 300, value: 80, scope: "all", total: 100, claimed: 23, used: 9, status: "active", createdAt: Date.now() - 86400000 }
+        { id: uid(), title: "生日专享满 300 减 80", type: "reduce", threshold: 300, value: 80, scope: "all", total: 100, claimed: 23, used: 9, status: "active", createdAt: Date.now() - 86400000 },
+        { id: uid(), title: "会员满 100 减 20", type: "reduce", threshold: 100, value: 20, scope: "all", total: 800, claimed: 156, used: 73, status: "active", createdAt: Date.now() - 86400000 * 2 }
       ],
       referral: { enabled: true, inviterPoints: 200, inviteePoints: 100, totalInvites: 36, successInvites: 12 },
       mmTab: "tiers",
@@ -897,6 +915,257 @@
     return "";
   }
 
+  /* ================= v199 会员营销引擎（会员价 / 积分抵现 / 优惠券） =================
+     为什么要有这一层：老板反馈「会员价格这一套营销包括积分，这些都没有实现」。
+     实测根因三条 ——
+       ① 会员价只作用于 a.price，档位价若等于基础价，客户眼里「什么都没变」；
+       ② 积分只有 state.points 一个数字：没有任何地方发放，也没有任何地方抵扣；
+       ③ 优惠券后台能建、首页能领，报名流程完全不读它。
+     所以这里把三者收敛成可计算的规则，详情页 / C 端 / 报名结算共用同一份实现。 */
+
+  /* 默认规则用「函数声明」而非 const —— seedState() 在文件前部定义并被提前调用，
+     而 const 存在 TDZ，声明在后面的常量在 seedState 执行时读不到。 */
+  function defaultMemberMarketing() {
+    return {
+      pointsEnabled: true,     // 会员积分抵现总开关
+      pointsPerYuan: 100,      // 100 积分 = 1 元
+      maxRedeemPercent: 20,    // 单笔最多抵扣订单额的 20%
+      minRedeemPoints: 100,    // 单笔起抵积分（不足则不让抵，避免 0.01 元的碎抵扣）
+      earnPerYuan: 1,          // 每消费 1 元累积 1 积分（再乘会员等级 pointsRate 倍率）
+    };
+  }
+
+  function memberMarketingCfg() {
+    const m = (state && state.memberMarketing) || {};
+    const d = defaultMemberMarketing();
+    const n = (v, fb) => (typeof v === "number" && isFinite(v) && v >= 0 ? v : (isFinite(+v) && +v >= 0 && v !== "" ? +v : fb));
+    return {
+      pointsEnabled: m.pointsEnabled == null ? d.pointsEnabled : !!m.pointsEnabled,
+      pointsPerYuan: Math.max(1, n(m.pointsPerYuan, d.pointsPerYuan)),
+      maxRedeemPercent: Math.min(100, n(m.maxRedeemPercent, d.maxRedeemPercent)),
+      minRedeemPoints: n(m.minRedeemPoints, d.minRedeemPoints),
+      earnPerYuan: n(m.earnPerYuan, d.earnPerYuan),
+    };
+  }
+
+  /* 积分余额：单一真源是 state.points；流水（state.pointsLedger）只做审计展示，不反算余额。 */
+  function memberPointsBalance() {
+    const p = state && state.points;
+    return (typeof p === "number" && isFinite(p) && p > 0) ? Math.floor(p) : (isFinite(+p) && +p > 0 ? Math.floor(+p) : 0);
+  }
+  function pointsToYuan(pts) {
+    const c = memberMarketingCfg();
+    return Math.floor(Math.max(0, +pts || 0) / c.pointsPerYuan * 100) / 100;
+  }
+  /* 等级 pointsRate 的单位是「几元赠送 1 积分」（见会员等级编辑面板文案「___ 元赠送1积分」，
+     默认 普通1 / 银卡1 / 金卡0.8 / 黑卡0.5 —— 数值越小越慷慨）。它不是「倍率」：
+     等级 benefits 文案写「报名积分 1.5 倍」而字段存 0.8，两者只有在
+     「0.8 元 = 1 积分 = 1.25 积分/元」的解释下才自洽，故此处按元/积分换算。
+     顺带把这个字段从「只存不用」变成真正参与计算。 */
+  function pointsRateOf(tier) {
+    return (tier && +tier.pointsRate > 0) ? +tier.pointsRate : 1;
+  }
+  function pointsPerYuanOf(tier) {
+    const c = memberMarketingCfg();
+    if (tier && tier.pointsEnabled === false) return 0;   // 该等级未开启「消费送积分」
+    return Math.round((c.earnPerYuan / pointsRateOf(tier)) * 1000) / 1000;
+  }
+  function yuanToPoints(y, tier) {
+    return Math.floor(Math.max(0, +y || 0) * pointsPerYuanOf(tier));
+  }
+  function pointsLedgerOf() { return (state && Array.isArray(state.pointsLedger)) ? state.pointsLedger : []; }
+  function pushPointsLedger(entry) {
+    if (!state) return;
+    state.pointsLedger = Array.isArray(state.pointsLedger) ? state.pointsLedger : [];
+    state.pointsLedger.unshift(Object.assign({ id: "pl_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), at: Date.now() }, entry));
+    state.pointsLedger = state.pointsLedger.slice(0, 200);
+  }
+  /* 发放积分（消费赠分 / 等级赠分 / 邀请奖励）—— 写余额并留痕 */
+  function grantMemberPoints(pts, reason, refId) {
+    const n = Math.floor(Math.max(0, +pts || 0));
+    if (!n) return 0;
+    state.points = memberPointsBalance() + n;
+    pushPointsLedger({ type: "earn", points: n, reason: reason || "累积积分", refId: refId || "" });
+    return n;
+  }
+  /* 扣减积分 —— 余额不足则整体不扣（不产生负数余额） */
+  function redeemMemberPoints(pts, reason, refId) {
+    const n = Math.floor(Math.max(0, +pts || 0));
+    const bal = memberPointsBalance();
+    if (!n || n > bal) return 0;
+    state.points = bal - n;
+    pushPointsLedger({ type: "spend", points: n, reason: reason || "积分抵现", refId: refId || "" });
+    return n;
+  }
+
+  /* ---------- 价格真源：会员价 > 团期价 > 活动基础价 ---------- */
+  function priceBaseOf(a, dep) {
+    if (dep && dep.price != null && isFinite(+dep.price)) return +dep.price;
+    return (a && a.price != null && isFinite(+a.price)) ? +a.price : null;
+  }
+  function effectiveUnitPrice(a, dep, tier) {
+    const base = priceBaseOf(a, dep);
+    if (base == null) return null;
+    if (!a || !a.useMemberPrice) return base;
+    const t = tier || currentMemberTier();
+    if (!t) return base;
+    const tp = (a.tierPrices || {})[t.id];
+    if (tp != null && isFinite(+tp)) return +tp;
+    if (t.discount && t.discount < 100) return Math.round(base * t.discount / 100);
+    return base;
+  }
+  /* 会员权益：hasBenefit 只在「会员价真的低于原价」时为 true。
+     这一条是防「假优惠」的关键 —— 档位价等于基础价时页面不该出现任何会员价字样，
+     否则老板看到的就是「普通会员价 ¥180」，与没有会员价毫无区别。 */
+  function memberBenefitOf(a, dep) {
+    const base = priceBaseOf(a, dep);
+    const member = effectiveUnitPrice(a, dep);
+    const tier = (typeof currentMemberTier === "function") ? currentMemberTier() : null;
+    const hasBenefit = !!(a && a.useMemberPrice && base != null && member != null && member < base);
+    return { base: base, member: member, tier: tier, hasBenefit: hasBenefit, savePerUnit: hasBenefit ? base - member : 0 };
+  }
+  /* 跨等级最低会员价（未登录/未定级时展示「会员价 ¥X 起」） */
+  function memberBestPriceOf(a, dep) {
+    if (!a || !a.useMemberPrice) return null;
+    const base = priceBaseOf(a, dep);
+    const prices = (state.memberTiers || []).map(function (t) {
+      const tp = (a.tierPrices || {})[t.id];
+      if (tp != null && isFinite(+tp)) return +tp;
+      if (t.discount && t.discount < 100 && base != null) return Math.round(base * t.discount / 100);
+      return null;
+    }).filter(function (p) { return p != null; });
+    if (!prices.length) return null;
+    const min = Math.min.apply(null, prices);
+    return (base != null && min < base) ? min : null;
+  }
+  /* 详情页/列表统一价格 HTML：有真优惠才展示会员价与原价划线 */
+  function priceDisplayHtml(a, dep, opts) {
+    opts = opts || {};
+    const unit = esc((a && a.limitUnit) || "人");
+    const base = priceBaseOf(a, dep);
+    if (base == null) return "详询";
+    const ben = memberBenefitOf(a, dep);
+    const suffix = opts.bare ? "" : "<small>/" + unit + "</small>";
+    if (!ben.hasBenefit) {
+      const best = opts.showRange === false ? null : memberBestPriceOf(a, dep);
+      if (best != null) return '<b class="pp-base-only">¥' + base + "</b>" + suffix + '<span class="pp-tier pp-tier-plain">会员价 ¥' + best + " 起</span>";
+      return "¥" + base + suffix;
+    }
+    const tierName = (ben.tier && ben.tier.name) ? ben.tier.name : "会员";
+    return '<b class="pp-mem">¥' + ben.member + "</b>" + suffix
+      + '<span class="pp-tier">' + esc(tierName) + "价</span>"
+      + '<s class="pp-base">¥' + base + "</s>";
+  }
+  function memberPriceNoteText(a, dep) {
+    const ben = memberBenefitOf(a, dep);
+    if (ben.hasBenefit) return (ben.tier ? ben.tier.name : "会员") + "省 ¥" + ben.savePerUnit + (a.limitUnit ? "/" + a.limitUnit : "");
+    return "";
+  }
+
+  /* ---------- 优惠券：可用性 / 抵扣额 ---------- */
+  /* 活动报名只认「全场通用」券；scope=gear（装备专用）属于商城，不在报名里打折。 */
+  function couponUsableFor(cp, amount, a) {
+    if (!cp || cp.status !== "active") return false;
+    if (cp.scope && cp.scope !== "all") return false;
+    if (cp.total != null && cp.claimed != null && +cp.claimed >= +cp.total) return false;
+    if (+cp.threshold > 0 && +amount < +cp.threshold) return false;
+    return true;
+  }
+  function couponDiscountOf(cp, amount) {
+    const amt = Math.max(0, +amount || 0);
+    if (!cp) return 0;
+    if (cp.type === "discount") {
+      const rate = +cp.value > 0 ? +cp.value : 100;            // value=90 → 打 9 折
+      return Math.round(amt * (100 - rate) / 100 * 100) / 100;
+    }
+    return Math.min(+cp.value || 0, amt);                       // 满减券不超过订单额
+  }
+  function usableCouponsFor(a, amount) {
+    if (!a || !a.allowCoupons) return [];
+    return (state.coupons || []).filter(function (cp) { return couponUsableFor(cp, amount, a); });
+  }
+  function couponTitleOf(cp) {
+    if (!cp) return "";
+    return cp.type === "discount" ? ((cp.value / 10) + " 折券") : ("¥" + cp.value + " 满减券");
+  }
+
+  /* 详情页「费用说明」下方的营销补充行：积分抵现额度 + 本单可用券。
+     诚实原则：余额不足 / 无可用券时给明确说法，不写「名额有限」之类无法验证的紧迫话术。 */
+  function memberMarketingExtrasHtml(a, amount) {
+    if (!a) return "";
+    const rows = [];
+    const cfg = memberMarketingCfg();
+    if (a.allowPoints && cfg.pointsEnabled) {
+      const bal = memberPointsBalance();
+      const capYuan = Math.round(Math.max(0, +amount || 0) * cfg.maxRedeemPercent) / 100;
+      if (bal <= 0) {
+        rows.push('<div class="fee-note fee-note-soft"><span class="fn-ic">' + ICON("gift") + '</span><span>本活动支持积分抵现（' + cfg.pointsPerYuan + ' 积分 = ¥1，单笔最多抵 ' + cfg.maxRedeemPercent + '%）；当前账号暂无可用积分</span></div>');
+      } else {
+        const usable = Math.min(bal, Math.floor(capYuan * cfg.pointsPerYuan));
+        const canUse = usable >= cfg.minRedeemPoints;
+        rows.push('<div class="fee-note fee-note-soft"><span class="fn-ic">' + ICON("gift") + '</span><span>积分抵现：可用 ' + bal + ' 积分'
+          + (canUse ? '，本单最多抵 <b>¥' + pointsToYuan(usable) + '</b>（单笔上限 ' + cfg.maxRedeemPercent + '%）' : '，暂未达到 ' + cfg.minRedeemPoints + ' 积分的起抵线')
+          + '</span></div>');
+      }
+    }
+    if (a.allowCoupons) {
+      const cps = usableCouponsFor(a, amount);
+      if (cps.length) {
+        rows.push('<div class="fee-note fee-note-soft"><span class="fn-ic">' + ICON("ticket") + '</span><span>本单可用优惠券：' + cps.map(function (c) { return esc(c.title); }).join("、") + '</span></div>');
+      } else {
+        rows.push('<div class="fee-note fee-note-soft"><span class="fn-ic">' + ICON("ticket") + '</span><span>本单暂无可用优惠券（未达到券的使用门槛，或券不适用于活动报名）</span></div>');
+      }
+    }
+    return rows.join("");
+  }
+
+  /* ---------- 统一结算：会员价 → 优惠券 → 积分抵现 → 应付 ---------- */
+  function orderBreakdown(a, opts) {
+    opts = opts || {};
+    const cfg = memberMarketingCfg();
+    const dep = opts.dep || null;
+    const adults = Math.max(0, Math.floor(+opts.adults || 0));
+    const children = Math.max(0, Math.floor(+opts.children || 0));
+    const ben = memberBenefitOf(a, dep);
+    const unit = ben.member != null ? ben.member : (a && a.price != null ? +a.price : 0);
+    const rawUnit = ben.base != null ? ben.base : unit;
+    const childRaw = (a && a.childPrice != null) ? +a.childPrice : rawUnit;
+    const childUnit = ben.hasBenefit && rawUnit > 0 ? Math.round(childRaw * unit / rawUnit) : childRaw;
+
+    const rawSubtotal = adults * rawUnit + children * childRaw;
+    const subtotal = adults * unit + children * childUnit;
+    const memberSaved = Math.max(0, Math.round((rawSubtotal - subtotal) * 100) / 100);
+
+    let coupon = null, couponDiscount = 0;
+    if (a && a.allowCoupons && opts.couponId) {
+      const cp = (state.coupons || []).find(function (x) { return x.id === opts.couponId; });
+      if (cp && couponUsableFor(cp, subtotal, a)) { coupon = cp; couponDiscount = couponDiscountOf(cp, subtotal); }
+    }
+    const afterCoupon = Math.max(0, Math.round((subtotal - couponDiscount) * 100) / 100);
+
+    let pointsUsed = 0;
+    const balance = memberPointsBalance();
+    if (a && a.allowPoints && cfg.pointsEnabled && opts.usePoints) {
+      const capYuan = Math.round(afterCoupon * cfg.maxRedeemPercent) / 100;
+      const capPts = Math.floor(capYuan * cfg.pointsPerYuan);
+      const maxPts = Math.min(balance, capPts);
+      if (maxPts >= cfg.minRedeemPoints) pointsUsed = maxPts;
+    }
+    const pointsDiscount = Math.min(pointsToYuan(pointsUsed), afterCoupon);
+    const payable = Math.max(0, Math.round((afterCoupon - pointsDiscount) * 100) / 100);
+    const pointsEarned = yuanToPoints(payable, ben.tier);
+
+    return {
+      tier: ben.tier, hasMemberBenefit: ben.hasBenefit,
+      unit: unit, rawUnit: rawUnit, childUnit: childUnit, adults: adults, children: children, qty: adults + children,
+      rawSubtotal: rawSubtotal, subtotal: subtotal, memberSaved: memberSaved,
+      coupon: coupon, couponDiscount: couponDiscount,
+      pointsBalance: balance, pointsUsed: pointsUsed, pointsDiscount: pointsDiscount,
+      payable: payable, pointsEarned: pointsEarned,
+      maxRedeemPercent: cfg.maxRedeemPercent, pointsPerYuan: cfg.pointsPerYuan,
+    };
+  }
+
 /* ---------------- v193 模块完整性清单（P0-5） ----------------
    「UI 有入口但函数不存在」是最难查的一类线上问题：按钮点下去才报错。
    这里把「必须存在」的模块集中登记；boot.js 在启动时调用 checkRequiredModules() 自检，
@@ -908,6 +1177,16 @@ const REQUIRED_MODULE_FILES = {
   renderPrepSummary: "ops.js",
   renderEconCostPanel: "economics.js",
   econAnswer: "economics.js",
+  /* v199 会员营销引擎：报名结算与详情页都直接调它们，缺一个就是「点下去才报错」 */
+  orderBreakdown: "core.js",
+  effectiveUnitPrice: "core.js",
+  memberBenefitOf: "core.js",
+  priceDisplayHtml: "core.js",
+  memberPointsBalance: "core.js",
+  grantMemberPoints: "core.js",
+  redeemMemberPoints: "core.js",
+  usableCouponsFor: "core.js",
+  couponDiscountOf: "core.js",
 };
 const REQUIRED_MODULES = Object.keys(REQUIRED_MODULE_FILES);
 /* 返回「缺失的模块名 → 应在文件」清单；全部就绪返回空数组 */

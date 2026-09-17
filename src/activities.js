@@ -339,7 +339,9 @@
       ? Math.min(bestCoverIndex(a), maxIdx)
       : Math.max(0, Math.min(+(a.coverIndex || 0), maxIdx));
     const coverSrc = photos[coverIdx];
-    const priceTxt = a.price ? `¥${a.price}<small>/${esc(a.limitUnit)}</small>` : "详询";
+    /* v199：价格统一走引擎 —— 会员价真的低于原价时才展示，并同时给等级标签与原价划线。
+       （旧实现固定写 a.price，所以老板开着「执行会员价」看到的仍是 ¥180，判定为「没实现」） */
+    const priceTxt = priceDisplayHtml(a, null, {});
     const eyebrow = [a.type, a.place, (dna && dna.season)].filter(Boolean).join(" · ");
     const theme = (dna && dna.mainTheme) || a.storyPurpose || a.editorialTitle || a.title || "";
     /* P0-C：换风格生成的内容包优先决定 标题 / 副标题 / 导语 / 金句 —— 事实字段完全不参与重写 */
@@ -409,10 +411,19 @@
       ["users", "名额", a.limit ? a.limit + (a.limitUnit || "人") : "不限"],
       ["tag", "价格", a.price ? "¥" + a.price + (a.limitUnit ? "/" + a.limitUnit : "") : "详询"],
     ];
-    const metaHtml = `<div class="decision-meta">${metaRows.map((r) => `<div class="dm-item"><span class="dm-ic">${ICON(r[0])}</span><div class="dm-t"><span class="dm-k">${r[1]}</span><span class="dm-v">${esc(String(r[2]))}</span></div></div>`).join("")}</div>`;
+    /* v199：价格行可能含「会员价 + 原价划线」（由 priceDisplayHtml 产出，本身已转义），
+       该行直出 HTML；其余行仍走 esc。 */
+    const metaHtml = `<div class="decision-meta">${metaRows.map((r) => `<div class="dm-item"><span class="dm-ic">${ICON(r[0])}</span><div class="dm-t"><span class="dm-k">${r[1]}</span><span class="dm-v">${r && r._raw ? String(r[2]) : esc(String(r[2]))}</span></div></div>`).join("")}</div>`;
 
     const fee = a.feeInclude || [];
-    const feeHtml = `<div class="dsec" id="ed-fee"><div class="dsec-h"><h3>费用说明</h3></div><div class="fee-card"><div class="fee-hero"><div class="fee-hero-l"><span class="fee-hero-k">活动价格</span><b class="fee-hero-v">${a.price ? "¥" + a.price : "详询"}</b>${a.price ? `<span class="fee-hero-u">/ ${esc(a.limitUnit)}</span>` : ""}</div></div>`
+    /* v199：图文长页的「费用说明」此前只有一个活动价 —— 会员价 / 积分抵现 / 优惠券三项
+       在图文长页完全不存在（老板反馈的正是「这一套都没有实现」）。这里补齐三行。 */
+    const feeBen = memberBenefitOf(a, null);
+    const feeMemHtml = feeBen.hasBenefit
+      ? `<div class="fee-mem-row"><span class="fee-mem-tag">${esc((feeBen.tier && feeBen.tier.name) || "会员")}价</span><b class="fee-mem-v">¥${feeBen.member}</b><s class="fee-mem-base">¥${feeBen.base}</s><span class="fee-mem-save">省 ¥${feeBen.savePerUnit}${esc(a.limitUnit || "")}</span></div>`
+      : "";
+    const feeExtraHtml = (typeof memberMarketingExtrasHtml === "function") ? memberMarketingExtrasHtml(a, a.price || 0) : "";
+    const feeHtml = `<div class="dsec" id="ed-fee"><div class="dsec-h"><h3>费用说明</h3></div><div class="fee-card"><div class="fee-hero"><div class="fee-hero-l"><span class="fee-hero-k">活动价格</span><b class="fee-hero-v">${a.price ? "¥" + a.price : "详询"}</b>${a.price ? `<span class="fee-hero-u">/ ${esc(a.limitUnit)}</span>` : ""}</div>${feeMemHtml}</div>${feeExtraHtml}`
       + (fee.length ? `<div class="fee-sec"><div class="fee-sec-h"><span class="fee-sec-ic ok">${ICON("check")}</span>费用包含</div><div class="fee-grid">${fee.map((f) => `<div class="fee-cell"><span class="fee-cell-ic">${ICON("check")}</span><span>${esc(f)}</span></div>`).join("")}</div></div>` : "")
       + ((a.feeExclude || []).length ? `<div class="fee-sec"><div class="fee-sec-h"><span class="fee-sec-ic no">${ICON("x")}</span>费用不含</div><div class="fee-grid">${a.feeExclude.map((f) => `<div class="fee-cell fee-cell-no"><span class="fee-cell-ic no">${ICON("x")}</span><span>${esc(f)}</span></div>`).join("")}</div></div>` : "")
       + `</div></div>`;
@@ -621,7 +632,7 @@
     const composition = pageComposition(a);
     const fee = a.feeInclude || [];
     const isFamily = isFamilyActivity(a);
-    const priceTxt = a.price ? `¥${a.price}<small>/${a.limitUnit}</small>` : "详询";
+    const priceTxt = priceDisplayHtml(a, null, {});   // v199：会员价/原价划线统一在此产出
     const routeDifficultyConflict = a.difficulty === "轻松" && ((+a.distance >= 10) || (+a.elevation >= 800 && a.type !== "高海拔登山"));
 
     // 保障项：依据 AI 真实勾选生成，可能为空（下方已守卫）
@@ -672,8 +683,9 @@
       fee: `<div class="dsec decision-fee" id="sec-notes"><div class="dsec-h"><h3>费用说明</h3></div><div class="fee-card">
         <div class="fee-hero">
           <div class="fee-hero-l"><span class="fee-hero-k">活动价格</span><b class="fee-hero-v">${a.price ? "¥" + a.price : "详询"}</b>${a.price ? `<span class="fee-hero-u">/ ${esc(a.limitUnit)}</span>` : ""}</div>
-          ${a.useMemberPrice && memberPriceRange(a) ? `<span class="fee-hero-mem">${esc(formatMemberPriceNote(a))}</span>` : ""}
+          ${(() => { const fb = memberBenefitOf(a, null); return fb.hasBenefit ? `<div class="fee-mem-row"><span class="fee-mem-tag">${esc((fb.tier && fb.tier.name) || "会员")}价</span><b class="fee-mem-v">¥${fb.member}</b><s class="fee-mem-base">¥${fb.base}</s><span class="fee-mem-save">省 ¥${fb.savePerUnit}${esc(a.limitUnit || "")}</span></div>` : ""; })()}
         </div>
+        ${(typeof memberMarketingExtrasHtml === "function") ? memberMarketingExtrasHtml(a, a.price || 0) : ""}
         ${fee.length ? `<div class="fee-sec"><div class="fee-sec-h"><span class="fee-sec-ic ok">${ICON("check")}</span>费用包含</div><div class="fee-grid">${fee.map((f)=>`<div class="fee-cell"><span class="fee-cell-ic">${ICON("check")}</span><span>${esc(f)}</span></div>`).join("")}</div></div>` : ""}
         ${(a.feeExclude||[]).length ? `<div class="fee-sec"><div class="fee-sec-h"><span class="fee-sec-ic no">${ICON("x")}</span>费用不含</div><div class="fee-grid">${(a.feeExclude||[]).map((f)=>`<div class="fee-cell fee-cell-no"><span class="fee-cell-ic no">${ICON("x")}</span><span>${esc(f)}</span></div>`).join("")}</div></div>` : ""}
         ${a.feeSummary ? `<div class="fee-note">${ICON("clipboard")}<span>${esc(a.feeSummary)}</span></div>` : ""}
@@ -698,7 +710,7 @@
         { ic: "mountain", k: "地点", v: esc(a.place || a.type || "待定") },
         { ic: "activity", k: "强度", v: esc(routeDifficultyConflict ? "待机构确认" : ((a.difficulty && !/missing/i.test(a.difficulty)) ? a.difficulty : "待确认")) },
         { ic: "users", k: "名额", v: esc(a.limit ? a.limit + a.limitUnit : "不限") },
-        { ic: "tag", k: "价格", v: a.price ? "¥" + a.price + (a.limitUnit ? "/" + esc(a.limitUnit) : "") : "详询" },
+        { ic: "tag", k: "价格", v: (typeof priceDisplayHtml === "function") ? priceDisplayHtml(a, null, { bare: true, showRange: false }) : (a.price ? "¥" + a.price : "详询"), _raw: 1 },
       ];
       return `<div class="decision-meta">${rows.map((r) => `<div class="dm-item"><span class="dm-ic">${ICON(r.ic)}</span><div class="dm-t"><span class="dm-k">${r.k}</span><span class="dm-v">${r.v}</span></div></div>`).join("")}</div>`;
     })();
@@ -2581,7 +2593,7 @@ function channelMeta(ch) {
     const gearOrders = (state.mallOrders || []).filter((o) => !o.refunded);
     const gearSpend = gearOrders.reduce((n, o) => n + (o.amount || 0), 0);
     const name = mineName();
-    const points = state.points || 0;
+    const points = (typeof memberPointsBalance === "function") ? memberPointsBalance() : (state.points || 0);
     const tiers = (state.memberTiers || []).slice().sort((a, c) => (a.minPoints || 0) - (c.minPoints || 0));
     let curIdx = 0;
     tiers.forEach((t, i) => { if (points >= (t.minPoints || 0)) curIdx = i; });
@@ -2609,7 +2621,7 @@ function channelMeta(ch) {
         <div class="mc-card">
           <div class="mc-card-h"><span>${esc(b.name || "俱乐部")}会员</span>${ICON("crown")}</div>
           <div class="mc-card-name">${esc(name)}</div>
-          <div class="mc-points-row"><span class="mc-points-num">${points}</span><span class="mc-points-label">会员积分</span></div>
+          <div class="mc-points-row"><span class="mc-points-num">${points}</span><span class="mc-points-label">会员积分</span>${points > 0 ? `<span class="mc-points-cash">可抵 ¥${(typeof pointsToYuan === "function") ? pointsToYuan(points) : Math.floor(points / 100)}</span>` : ""}</div>
           <div class="mc-card-sub">已参加 ${joined} 场活动 · 装备消费 ¥${gearSpend} · 有效期 ${expireText}${curTier ? " · " + esc(curTier.name) : ""}</div>
         </div>
         <div class="fr-section">
@@ -2629,6 +2641,21 @@ function channelMeta(ch) {
               : `<div class="mc-grow done">已是最高会员等级</div>`}
             <button class="btn btn-primary btn-block" data-action="memberUpgrade">${nextTier ? "升级会员" : "查看会员权益"}</button>
           </div>
+        </div>
+        <div class="fr-section">
+          <div class="fr-section-h"><h3>积分明细</h3><span class="more">${points} 积分</span></div>
+          ${(() => {
+            const cfg = (typeof memberMarketingCfg === "function") ? memberMarketingCfg() : { pointsPerYuan: 100, maxRedeemPercent: 20, minRedeemPoints: 100, earnPerYuan: 1, pointsEnabled: true };
+            const rule = '<div class="mc-pts-rule">' + cfg.pointsPerYuan + ' 积分 = ¥1 · 单笔最多抵 ' + cfg.maxRedeemPercent + '% · 消费每 ¥1 累积 ' + cfg.earnPerYuan + ' 积分（再乘等级倍率）</div>';
+            const led = (typeof pointsLedgerOf === "function") ? pointsLedgerOf() : [];
+            if (!led.length) return rule + '<div class="mc-pts-empty">还没有积分记录。参加活动或完成订单后会在这里留下明细 —— 平台不会凭空生成积分。</div>';
+            return rule + '<div class="mc-pts-list">' + led.slice(0, 20).map((it) => {
+              const d = new Date(it.at || Date.now());
+              const md = (d.getMonth() + 1) + "月" + d.getDate() + "日";
+              return '<div class="mc-pts-row"><div class="mc-pts-main"><b>' + esc(it.reason || (it.type === "spend" ? "积分抵现" : "累积积分")) + '</b><span>' + md + '</span></div>'
+                + '<div class="mc-pts-val ' + (it.type === "spend" ? "out" : "in") + '">' + (it.type === "spend" ? "-" : "+") + (it.points || 0) + '</div></div>';
+            }).join("") + '</div>';
+          })()}
         </div>
         <div class="fr-section">
           <div class="fr-section-h"><h3>本俱乐部推荐</h3><span class="more" data-action="openMall">去商城</span></div>
