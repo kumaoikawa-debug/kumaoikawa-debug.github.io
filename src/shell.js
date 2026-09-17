@@ -2050,6 +2050,33 @@
 
   /* 第 1 步「一句话创建」的照片上传：先暂存，生成活动时带进 draft.photos（§七：输入一句话 → 上传图片） */
   function bindCreateExtras() {
+    /* v204：回到「描述活动」这一屏时，若描述框是空的、而上一轮的解析结果还在，
+       就把整理出的描述填回去 —— 否则面板上写着「已填到下面的输入框」而框里是空的（自相矛盾）。 */
+    if (state._intake && state._intake.description && !state._intake.busy) {
+      const ta = $("#createInput");
+      if (ta && !String(ta.value || "").trim()) ta.value = state._intake.description;
+    }
+    /* v204：方案文件（Word / PPT / PDF / 图片海报）上传。
+       ★ 与「活动照片」是两件事，刻意不共用：方案只用来**读信息**，
+         照片才作为配图 —— 否则老板发一张海报当方案，封面就变成一张字满为患的图。 */
+    const di = $("#createDocInput");
+    if (di) {
+      di.onchange = (e) => {
+        const files = Array.from(e.target.files || []);
+        e.target.value = "";   // 清空 value，同一个文件才能再选一次
+        if (files.length) intakeRunFiles(files);
+      };
+    }
+    const drop = $("#intakeDrop");
+    if (drop) {
+      drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("on"); };
+      drop.ondragleave = () => drop.classList.remove("on");
+      drop.ondrop = (e) => {
+        e.preventDefault(); drop.classList.remove("on");
+        const files = Array.from((e.dataTransfer && e.dataTransfer.files) || []);
+        if (files.length) intakeRunFiles(files);
+      };
+    }
     const inp = $("#createPhotoInput");
     if (!inp) return;
     // v192：改用 onchange 赋值 + readPhotoFile（含 onerror/超时兜底），

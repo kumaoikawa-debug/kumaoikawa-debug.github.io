@@ -5816,3 +5816,31 @@ s.pp-base, .dm-v s.pp-base { text-decoration: line-through; }
 .mc-pts-val { font-family: var(--display); font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .mc-pts-val.in { color: var(--ok); }
 .mc-pts-val.out { color: var(--brand); }
+
+/* ---- v204：上传活动方案（Word / PPT / PDF / 图片海报）→ 自动整理成活动描述 ----
+   只描述「第 1 步 / 描述活动」里的方案导入区；与 .xf-photos（活动照片）刻意分开。 */
+.intake-tag { margin-left: 6px; padding: 1px 7px; font-size: 10.5px; font-weight: 700; color: var(--brand-700); background: var(--brand-soft); border-radius: 999px; vertical-align: 1px; }
+.intake-drop { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 20px 16px; text-align: center; border: 1.5px dashed var(--line); border-radius: var(--radius-sm); background: var(--surface-2); cursor: pointer; transition: border-color .15s ease, background .15s ease; }
+.intake-drop:hover, .intake-drop.on { border-color: var(--brand); background: var(--brand-soft); }
+.intake-drop.on { border-style: solid; }
+.intake-drop-ic { color: var(--brand); display: inline-flex; }
+.intake-drop-ic svg { width: 22px; height: 22px; }
+.intake-drop-t { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.intake-drop-h { font-size: 11.5px; line-height: 1.65; color: var(--muted); max-width: 440px; }
+.intake-panel { margin-top: 2px; padding: 11px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); display: flex; flex-direction: column; gap: 7px; }
+.intake-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; min-width: 0; }
+.intake-row-ic { flex: none; color: var(--muted); display: inline-flex; }
+.intake-row-ic svg { width: 15px; height: 15px; }
+.intake-row-n { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); font-weight: 600; }
+.intake-row-s { flex: none; font-size: 11.5px; color: var(--muted); }
+.intake-row-s.ok { color: var(--ok); }
+.intake-row-s.bad { color: var(--danger); }
+.intake-row-busy { color: var(--muted); }
+.intake-spin { flex: none; width: 13px; height: 13px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--brand); animation: intakeSpin .8s linear infinite; }
+@keyframes intakeSpin { to { transform: rotate(360deg); } }
+.intake-warn { display: flex; align-items: flex-start; gap: 7px; padding: 8px 10px; font-size: 11.5px; line-height: 1.65; color: #8A5A16; background: #FDF6E7; border: 1px solid #F0DFBE; border-radius: var(--radius-xs); }
+.intake-warn svg { width: 14px; height: 14px; flex: none; margin-top: 1px; }
+.intake-desc { padding: 9px 11px; background: var(--brand-soft); border-radius: var(--radius-xs); }
+.intake-desc-h { display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700; color: var(--brand-700); margin-bottom: 5px; }
+.intake-desc-h svg { width: 13px; height: 13px; }
+.intake-desc-b { font-size: 12.5px; line-height: 1.75; color: var(--ink-2); white-space: pre-wrap; max-height: 150px; overflow: auto; }

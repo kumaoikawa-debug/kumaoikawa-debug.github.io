@@ -1848,6 +1848,16 @@ function channelMeta(ch) {
         <div class="eyebrow">第 1 步 / 描述活动</div>
         <h2 class="section-title" style="margin:8px 0 4px">说一句话，剩下的交给我们</h2>
         <p class="muted small" style="margin:0 0 18px">支持一句话输入，也可以粘贴聊天记录、旧文案或零散信息，AI 会自动整理。</p>
+        <div class="field intake-field">
+          <label>上传活动方案 <span class="intake-tag">更省事</span></label>
+          <label class="intake-drop" id="intakeDrop">
+            <span class="intake-drop-ic">${ICON("upload")}</span>
+            <span class="intake-drop-t">把方案文件拖到这里，或点这里选文件</span>
+            <span class="intake-drop-h">Word（.docx）· PPT（.pptx）· PDF · 图片海报 · 纯文本 —— 系统会读出其中的内容，自动整理成下面的「活动描述」</span>
+            <input type="file" id="createDocInput" accept="${esc(INTAKE_ACCEPT)}" multiple hidden>
+          </label>
+          ${intakePanelHtml()}
+        </div>
         <div class="field"><label>活动描述</label>
           <textarea id="createInput" style="min-height:150px" placeholder="例如：本周六赵公山轻装徒步，12公里爬升1100米，168元/人，限25人，早上7:30天府广场集合……">${esc(state.draft && state.draft.raw ? state.draft.raw : "")}</textarea>
           <div class="hint">支持粘贴微信聊天、旧活动文案、简单行程。</div>

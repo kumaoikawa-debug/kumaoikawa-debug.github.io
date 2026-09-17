@@ -427,6 +427,77 @@ async function visionViaBackend(src) {
   } catch (e) { return "__fallback__"; }
 }
 
+/* ================= v204：读「海报 / 方案截图」的文字（与照片分析不同：这里要的是文本，不是 JSON 画像） =================
+   visionDirect 的 prompt 是固定的「照片画像」，问不出活动信息。这里提供通用的「带图提问」入口：
+   ★ 只支持**直连**（provider Key 在本机）。走总平台代理时服务端 prompt 固定为照片画像，
+     读不了海报 —— 这种情况如实返回 reason，由上层提示「把海报里的文字粘贴过来 / 用文档上传」。 */
+const VISION_DOC_SYSTEM = [
+  "你在读一张户外活动的宣传海报、活动方案截图或行程图。",
+  "请只做「抄录 + 归纳」：把图上**确实出现**的文字信息整理成一段中文活动描述，供俱乐部老板核对并生成招募页。",
+  "硬规则：",
+  "1. 只能写图上真实出现的文字信息，图上没有的一律不写；绝不猜测、绝不补全、绝不按常识脑补（地点、日期、价格、名额、装备都不许编）。",
+  "2. 看不清的内容直接跳过，不要写「疑似」「大概」「可能是」这类猜测。",
+  "3. 精确数字（日期、集合时间、价格、名额、公里、海拔、天数、适合年龄）必须原样保留，不要改写成含糊说法。",
+  "4. 忽略二维码、水印、logo、页码、广告位、以及纯装饰文字。",
+  "5. 直接输出整理后的中文描述（可分段），不要 JSON、不要 markdown 标题、不要解释你在做什么、不要复述本规则。",
+  "6. 如果这张图不是活动海报、或上面读不到任何活动信息，只输出四个字：无法识别。"
+].join("\n");
+
+/* 通用「图 + 提问」：返回模型纯文本（失败/未配置返回 null） */
+async function visionAsk(src, systemPrompt, userText) {
+  const key = visionKey();
+  if (!key) return null;
+  const kind = visionKind();
+  const model = visionModel();
+  const ask = userText || "请按约定输出。";
+  try {
+    if (kind === "gemini") {
+      const inline = await visionToInline(src);
+      if (!inline) return null;
+      const url = visionBase() + "/models/" + encodeURIComponent(model) + ":generateContent?key=" + encodeURIComponent(key);
+      const body = {
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: "user", parts: [{ text: ask }, { inline_data: inline }] }],
+        generationConfig: { temperature: 0.1 },
+      };
+      const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (!res.ok) return null;
+      const d = await res.json().catch(function () { return {}; });
+      const parts = d && d.candidates && d.candidates[0] && d.candidates[0].content && d.candidates[0].content.parts;
+      const t = (parts || []).map(function (p) { return p.text || ""; }).join("").trim();
+      return t || null;
+    }
+    const res = await fetch(visionBase() + "/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + key },
+      body: JSON.stringify({
+        model: model,
+        temperature: 0.1,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: [{ type: "text", text: ask }, { type: "image_url", image_url: { url: src } }] },
+        ],
+      }),
+    });
+    if (!res.ok) return null;
+    const d = await res.json().catch(function () { return {}; });
+    const t = d && d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content;
+    return (typeof t === "string" && t.trim()) ? t.trim() : null;
+  } catch (e) { return null; }
+}
+
+/* 海报 / 方案图 → 活动文字。返回 { text } 或 { text:"", reason }（reason 是给老板看的人话） */
+async function visionReadPoster(src) {
+  const mode = visionAuthMode();
+  if (!mode) return { text: "", reason: "还没配置视觉 AI，读不了图上的文字。请在「AI 设置」里填一个视觉模型 Key，或改用文档上传 / 手动粘贴文字" };
+  if (mode !== "key") return { text: "", reason: "读图需要本机直连的视觉模型 Key（当前走总平台后端代理，暂不支持读图）。替代办法：把海报里的文字粘贴到「活动描述」" };
+  const raw = await visionAsk(src, VISION_DOC_SYSTEM, "请按约定，把这张海报/方案图上的活动信息整理成一段描述。");
+  if (!raw) return { text: "", reason: "视觉 AI 没能返回结果（可能是网络或额度问题），可以再试一次或改用文档上传" };
+  const t = (typeof intakeCleanText === "function") ? intakeCleanText(raw) : String(raw).trim();
+  if (!t || /^无法识别$/.test(t) || t.length < 6) return { text: "", reason: "这张图上没有读出可用的活动信息（可能只是配图，不是活动海报）" };
+  return { text: t.slice(0, INTAKE_MAX_FILE_CHARS) };
+}
+
 /* ================= P1：统一 visionResult 接口 + 降级 + 素材证据 ================= */
 /* 把「字符串 / 数组」统一成数组（文档 P1 Schema 里 scene/activity/environment/textSafeArea 都是数组） */
 function asArr(v) {

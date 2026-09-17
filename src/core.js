@@ -1478,6 +1478,12 @@ const REQUIRED_MODULE_FILES = {
   factBroadcastHits: "core.js",
   /* v202 参与人群单一真源：publish.js 的 editorialFacts 与「适合谁」补充句都走它 */
   activityAudienceText: "publish.js",
+  /* v204 上传方案解析：renderCreate 的入口与 shell.js 的解析编排都直接调它们 */
+  intakeKindOf: "intake.js",
+  intakePanelHtml: "intake.js",
+  intakeRunFiles: "intake.js",
+  intakeFromOoxml: "intake.js",
+  visionReadPoster: "vision.js",
 };
 const REQUIRED_MODULES = Object.keys(REQUIRED_MODULE_FILES);
 /* 返回「缺失的模块名 → 应在文件」清单；全部就绪返回空数组 */
