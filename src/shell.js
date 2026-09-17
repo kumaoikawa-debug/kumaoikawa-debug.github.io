@@ -498,7 +498,7 @@
       }
       case "finishPublish": { closePublishSuccess(); break; }
       case "openFront": { const mm = document.querySelector(".modal-mask"); if (mm) mm.remove(); if (d.id) showView("detail", { id: d.id }); break; }
-      case "openActivityPage": { const mm = document.querySelector(".modal-mask"); if (mm) mm.remove(); if (d.id) showView("activityPage", { id: d.id }); break; }
+      case "openActivityPage": { const mm = document.querySelector(".modal-mask"); if (mm) mm.remove(); const aa = getActivity(d.id); if (aa) backfillItineraryFromPlan(aa); if (d.id) showView("activityPage", { id: d.id }); break; }
       case "openPrep": { if (d.id) showView("prep", { id: d.id }); break; }
       /* ---- v191 AI 经营分析 ---- */
       case "econAsk": {
@@ -518,7 +518,14 @@
       }
       case "openFrontHome": showView("frontHome"); break;
       case "focusSearch": { const inp = $("#frontSearchInput"); if (inp) { inp.focus(); toast("输入关键词，AI 将推荐相关活动"); } break; }
-      case "edit": { const a = getActivity(d.id); if (a) { state.draft = JSON.parse(JSON.stringify(a)); showView("editor"); } break; }
+      case "edit": {
+        const a = getActivity(d.id);
+        if (!a) { toast("这条活动找不到了，刷新页面后再试"); break; }
+        backfillItineraryFromPlan(a);
+        state.draft = JSON.parse(JSON.stringify(a));
+        showView("editor");
+        break;
+      }
       case "copy": {
         const a = getActivity(d.id); if (!a) break;
         const c = JSON.parse(JSON.stringify(a)); c.id = uid(); c.title = a.title + "（副本）"; c.status = "draft"; c.signups = 0; c.createdAt = Date.now();
@@ -1827,6 +1834,7 @@
     if (state._intake && state._intake._fresh) {
       if (state._intake.fields) state.draft._planFields = state._intake.fields;
       if (state._intake.itinerary && state._intake.itinerary.length) state.draft._planItinerary = state._intake.itinerary;
+      if (state._intake.planText) state.draft._planText = state._intake.planText;
       state._intake._fresh = false;
     }
     showGenerating();
@@ -1856,6 +1864,30 @@
       if (sims.length) state.draft._similarList = sims.map((s) => ({ id: s.id, title: s.title }));
       showView("factConfirm");
     });
+  }
+  /* v207：旧草稿自愈 —— v205 时期生成的活动没有结构化行程（详情页/编辑器都没有行程可看）。
+     打开详情页或编辑器时按需补：优先 _planItinerary，其次用保存的方案全文 _planText，
+     最后用描述 raw 重新抽一次按天行程。补到就落库，下次不再补。 */
+  function backfillItineraryFromPlan(a) {
+    if (!a || a._itineraryBackfilled) return false;
+    const has = (a.itineraryDays || []).some(function (d) { return (d.items || []).some(function (t) { return t && (t.time || t.text); }); });
+    if (has) { a._itineraryBackfilled = true; saveState(); return false; }
+    let days = null;
+    if (a._planItinerary && a._planItinerary.length) days = a._planItinerary.slice();
+    if (!days && typeof intakeParseItinerary === "function") {
+      const text = a._planText || a.raw || "";
+      if (text) days = intakeParseItinerary(text);
+    }
+    a._itineraryBackfilled = true;
+    if (days && days.length) {
+      a.itineraryDays = days;
+      const n = days.length;
+      if (n && (!a.days || (+a.days) < n)) a.days = n;
+      saveState();
+      return true;
+    }
+    saveState();
+    return false;
   }
   /* v206：方案里抽出的按天行程是行程页的原材料 —— 优先于 AI 生成，且防被空数组覆盖。
      必须在 ensureItineraryFields 之前调用（它见到非空行程就不再调 AI 生成）。 */

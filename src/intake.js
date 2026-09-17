@@ -695,6 +695,7 @@ async function intakeRunFiles(files) {
   const merged = intakeMergeTexts(texts);
   const comp = await intakeComposeDescription(merged);
   /* v205：结构化事实（集合地点/时间/价格/日期/人数/天数/路线）——确认卡「按你上传的方案」预填的来源 */
+  it.planText = merged;   /* v207：全量方案原文随行，供旧草稿自愈回填行程 */
   it.fields = intakeParseFields(merged);
   /* v206：按天行程直接抽成结构化数组（行程页的原材料，不再只靠描述文本传递） */
   it.itinerary = intakeParseItinerary(merged);
