@@ -559,7 +559,21 @@
     const coverKeep = !!(coverPolicy && (coverPolicy.riskLevel === "high" || coverPolicy.mode === "aspect_preserved"
       || (coverPolicy.realAspect && coverPolicy.realAspect < 0.95)));
     const heroCls = (imgCfg.hero === "band" ? " band" : "") + (coverKeep ? " keep" : "");
+    /* v200：keep 模式必须把「照片本体」渲染成**独立图层**（.xh-ed-hero-fig），
+       不能继续把它画在 header 自身的 background 上 —— 绝对定位的模糊垫图层
+       （.xh-ed-hero-backdrop）永远绘制在父元素背景**之上**，v198 把它的 opacity
+       从 .55 提到 .92 之后，整幅 hero 就只剩这层糊图，照片本体彻底看不见了
+       （老板反馈：「视觉管理里任选一张图做封面，详情页出现虚化」）。
+       层序固定为：backdrop(0) → fig(1) → mask(2) → txt(3)。
+       几何写进内联 style 是有意的：即便 styles.css 被 CDN 缓存住旧版，
+       层序也不会塌回原来那个「模糊盖住照片」的样子。 */
     const heroBackdrop = (coverKeep && coverSrc) ? `<div class="xh-ed-hero-backdrop" style="background-image:url('${coverSrc}')"></div>` : "";
+    const heroFig = (coverKeep && coverSrc)
+      ? `<div class="xh-ed-hero-fig" style="position:absolute;inset:0;z-index:1;background-image:url('${coverSrc}');background-size:contain;background-repeat:no-repeat;background-position:center"></div>`
+      : "";
+    const heroStyleAttr = coverKeep
+      ? `style="background-image:none"`          /* keep：主图交给 .xh-ed-hero-fig，header 自身不再画一层看不见的图 */
+      : (coverSrc ? `style="background-image:url('${coverSrc}')"` : `style="background:${ac.grad}"`);
     const edTheme = edThemeOf(a);
     /* v196：顶部吸顶 Tab 下线。老板反馈「放顶部不对、体验不好」——它压住 Hero、
        第 5 项「报名」在小屏被裁掉、且与页面暖色底割裂（贴在 .activity-page 之外）。
@@ -579,8 +593,9 @@
       <div class="activity-page xh-ed typo-${esc(layout.typo)} tone-${esc(style.family)}${ac.warm ? " warm-tone" : ""} ed-theme-${edTheme}">
       <div class="ps-topbar">${psLogo()}</div>
       ${showInlineDetailChrome() ? editorialVariantSwitch(a) : ""}
-      <header class="xh-ed-hero${heroCls}" ${coverSrc ? `style="background-image:url('${coverSrc}')"` : `style="background:${ac.grad}"`}>
+      <header class="xh-ed-hero${heroCls}" ${heroStyleAttr}>
         ${heroBackdrop}
+        ${heroFig}
         <div class="xh-ed-hero-mask"></div>
         ${!coverSrc ? `<div class="xh-ed-hero-empty">${isAdminMode() ? "待上传主视觉" : "活动图片待机构补充"}</div>` : ""}
         <div class="xh-ed-hero-txt">

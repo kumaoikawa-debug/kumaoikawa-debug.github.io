@@ -5305,10 +5305,16 @@ body{
    原比例两侧留白用同图模糊底图垫住（.xh-ed-hero-backdrop），避免「一块脏留白」。
    v198：垫图 opacity .55→.92 + 提亮 —— 旧参数下深色照片的两侧垫图近乎纯黑，
    老板判「照片不能自动适配到最佳，两边出现黑屏」；现在两侧是清晰可见的同图模糊延展。 */
-.xh-ed-hero.keep { background-size: contain; background-repeat: no-repeat; background-position: center; background-color: #2a2620; }
+/* v200：keep 模式新增「overflow:hidden」收掉垫图 inset:-24px 的外溢（否则模糊会糊到上方导航条）。 */
+.xh-ed-hero.keep { overflow: hidden; background-size: contain; background-repeat: no-repeat; background-position: center; background-color: #2a2620; }
 .xh-ed-hero-backdrop { position: absolute; inset: -24px; background-size: cover; background-position: center; filter: blur(26px) saturate(1.05) brightness(1.12); opacity: .92; z-index: 0; }
-.xh-ed-hero.keep .xh-ed-hero-mask { z-index: 1; }
-.xh-ed-hero.keep .xh-ed-hero-txt { z-index: 2; }
+/* v200：keep 模式的「照片本体」图层 —— 垫图层(z-index 0)在下，面具与文字在上。
+   旧实现把照片画在 header 自身 background 上，而绝对定位的垫图层永远盖在父元素背景之上，
+   opacity 提到 .92 后整幅 Hero 只剩一层糊图（老板反馈「任选一张图做封面 → 详情页虚化」）。
+   层序：backdrop 0 → fig 1 → mask 2 → txt 3。 */
+.xh-ed-hero-fig { position: absolute; inset: 0; background-size: contain; background-repeat: no-repeat; background-position: center; z-index: 1; }
+.xh-ed-hero.keep .xh-ed-hero-mask { z-index: 2; }
+.xh-ed-hero.keep .xh-ed-hero-txt { z-index: 3; }
 /* P0-B：整组原比例时的不对称排版（原比例 Solo / PortraitPair），不再硬裁成统一格子 */
 .xh-ed-figs.orig.two { grid-template-columns: 1fr 1fr; gap: 6px; align-items: start; }
 .xh-ed-figs.orig.three { grid-template-columns: repeat(2, 1fr); gap: 6px; align-items: start; }
