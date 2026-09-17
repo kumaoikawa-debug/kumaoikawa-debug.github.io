@@ -1781,6 +1781,24 @@ function applyVisionBatch(map) {
     return "通用";
   }
 
+  /* v202：参与人群的**单一真源**。
+     ★ 老板唯一能填的字段是 a.audience（数组，编辑器 data-bind="audience"，顿号分隔）；
+       a.targetAudience 是历史遗留的字符串键 —— 全仓 0 个写入点、编辑器无绑定，
+       只有 buildContentMaster 的内部对象才有这个键。读它必然拿到空串。
+     历史上 editorialFacts().audience 与「适合谁」补充句都读了这个野键 → 静默失效。
+     凡是要展示「参与人群」的地方一律走本函数。 */
+  function activityAudienceText(a) {
+    a = a || {};
+    const arr = a.audience;
+    if (Array.isArray(arr)) {
+      const t = arr.filter(function (x) { return x && String(x).trim(); }).map(function (x) { return String(x).trim(); }).join("、");
+      if (t) return t;
+    } else if (typeof arr === "string" && arr.trim()) {
+      return arr.split(/[、,，\/]+/).map(function (x) { return String(x).trim(); }).filter(Boolean).join("、");
+    }
+    return String(a.targetAudience || "").trim();
+  }
+
   function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
 
@@ -5480,7 +5498,7 @@ function applyVisionBatch(map) {
       limitUnit: a.limitUnit || "人",
       price: (a.price != null && +a.price > 0) ? +a.price : 0,
       services: svc,
-      audience: String(a.targetAudience || "").trim(),
+      audience: activityAudienceText(a),
       startTime: firstTime,
       endTime: (last && last.time) || "",
       ground: ground,
@@ -5815,12 +5833,15 @@ function applyVisionBatch(map) {
 
     // 各章节先按固定逻辑生成内容，再按 variant 做「角度化标题 / 密度裁剪 / 取图数量」
     const byGroup = {};
+    /* v202：make 返回章节对象（被密度裁掉时返回 null）—— 便于在章节定稿后补事实句。 */
     const make = (group, key, kind, baseHeading, paras) => {
       const list = editorialDensityTrim(vDens, paras || []);
-      if (!list.length) return;
+      if (!list.length) return null;
       const ic = editorialImgCount(vImg, key);
       byGroup[group] = byGroup[group] || [];
-      byGroup[group].push({ group: group, key: key, kind: kind, heading: heads[key] || baseHeading || theme, paras: list, imgCount: ic.count, imgKind: ic.kind, angle: vAngle, density: vDens, typo: vTypo, family: vFamily });
+      const sec = { group: group, key: key, kind: kind, heading: heads[key] || baseHeading || theme, paras: list, imgCount: ic.count, imgKind: ic.kind, angle: vAngle, density: vDens, typo: vTypo, family: vFamily };
+      byGroup[group].push(sec);
+      return sec;
     };
 
     make("why", "why", "scenic", st.whyGo || "为什么值得去", pkPick("why", a.whyGo, fb.whyGo));
@@ -5851,11 +5872,17 @@ function applyVisionBatch(map) {
 
     make("gain", "gain", "people", st.gain || "参加完能得到什么", pkPick("gain", a.gain, fb.gain));
     /* v201：适合人群属事实层 —— 文学层模板已不再掺入 {audience}（老板要的是没有参数的文案），
-       但不能因此丢信息：只要活动填了目标人群，就在这里显式补一句（去重后追加）。 */
-    const fitLines = pkPick("fit", a.fitFor, fb.fitFor || "").slice();
-    const audTxt = String(a.targetAudience || "").trim();
-    if (audTxt && fitLines.join("\n").indexOf(audTxt) < 0) fitLines.push(audTxt + "，都能找到自己的步频。");
-    make("fit", "fit", "people", "适合谁", fitLines);
+       但不能因此丢信息：只要活动填了「参与人群」，就显式补一句（去重）。
+
+       ★ v202 修正两处「静默失效」：
+         ① 人群来源读 activityAudienceText(a)（= a.audience 数组，老板唯一能填的字段）；
+            旧代码读 a.targetAudience —— 全仓 0 个写入点、编辑器 0 个绑定，这句从未触发过。
+         ② 补充句必须追加在 **make() 返回的章节对象**上，而不是塞进 fitLines：
+            适合谁的内容通常来自内容包（editorialStylePackOf 懒种子，pk.paras.fit 是角度化文案），
+            塞进 fitLines 会被包内容整段顶掉，等于没写。 */
+    const fitSec = make("fit", "fit", "people", "适合谁", pkPick("fit", a.fitFor, fb.fitFor || ""));
+    const audTxt = activityAudienceText(a);
+    if (audTxt && fitSec && fitSec.paras.join("\n").indexOf(audTxt) < 0) fitSec.paras.push(audTxt + "，都能找到自己的步频。");
 
     // Case 4：昼夜节奏 —— 白天+夜晚素材齐备时，注入「入夜」章节（kind=night），
     //   排序位于 route 之后、gain 之前，长页自然呈现 白天→夜晚 的情绪弧。
