@@ -875,12 +875,29 @@
   }
 
   // 统一入口：有后端优先走代理；代理不可达/未鉴权时回退浏览器直连（演示态）
+  /* v208：AI 调用失败原来是「静默返回 null」，上层回退本地模板，
+     老板看到的是本地内容，会以为「AI 没干活」甚至以为功能坏了。
+     这里在失败时给一次可见提示（6 秒内只提示一次，避免批量调用刷屏）。 */
+  function noteAiFailure(kind) {
+    try {
+      const now = Date.now();
+      if (clubLLM._lastFailAt && now - clubLLM._lastFailAt < 6000) return;
+      clubLLM._lastFailAt = now;
+      if (typeof toast === "function") {
+        toast(kind === "auth"
+          ? "AI 这次没成功（Key 无效或额度用完了），已先用本地内容顶上"
+          : "AI 这次没成功（网络或接口问题），已先用本地内容顶上");
+      }
+      try { console.warn("[clubLLM] 调用失败:", kind); } catch (e) {}
+    } catch (e) {}
+  }
   async function clubLLM(opts) {
-    if (getBackendURL()) {
-      const r = await clubLLMviaBackend(opts);
-      if (r !== "__fallback__") return r;
-    }
-    return clubLLMdirect(opts);
+    let r = "__fallback__";
+    if (getBackendURL()) r = await clubLLMviaBackend(opts);
+    if (r === "__fallback__") r = await clubLLMdirect(opts);
+    /* 两条路都试过仍是 null = 真的失败（有 Key 却没拿到内容） */
+    if (r == null && typeof getAIKey === "function" && getAIKey()) noteAiFailure("net");
+    return r;
   }
 
   /* ================= 会员价工具函数（C 端与详情页共用） ================= */

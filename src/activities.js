@@ -665,7 +665,7 @@
           <div class="xh-ed-toc-list">${edTocHtml}</div>
         </div>
       </div>
-      <div class="xh-ed-lightbox" id="xhLightbox" role="dialog" aria-label="查看大图"><button class="lb-close" type="button" aria-label="关闭">×</button><img id="xhLightboxImg" src="" alt=""></div>`;
+      <div class="xh-ed-lightbox" id="xhLightbox" role="dialog" aria-label="查看大图"><button class="lb-close" type="button" aria-label="关闭">×</button><img id="xhLightboxImg" alt=""></div>`;
   }
 
   function renderActivityPhone(a) {

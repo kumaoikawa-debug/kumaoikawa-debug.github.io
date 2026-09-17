@@ -48,7 +48,23 @@
     } catch (e) {}
   }
 
-  function showView(view, params) {
+  /* v208 全板块渲染护栏：任何板块渲染抛错都不再白屏/静默无反应，
+   而是给出「哪个板块 + 什么错 + 怎么回去」，老板能立刻反馈、我也能定位。
+   ★同类问题的根因往往是「渲染函数抛异常被吞掉」，这道护栏把它变成可见。 */
+function safeRender(fn, view) {
+  try { return fn(); } catch (e) {
+    try { console.error("[render]", view, e); } catch (e2) {}
+    const msg = String((e && e.message) || e || "未知错误");
+    return '<div class="card card-pad"><div class="eyebrow">板块加载出错</div>'
+      + '<h3 class="section-title" style="margin:8px 0 4px">' + esc(String(view)) + ' 没有渲染出来</h3>'
+      + '<p class="muted small" style="margin:0 0 10px">已拦下这个错误，不影响其他板块。'
+      + '如果你是点链接直接进来的，可能是缺少必要信息（比如活动或商品已被删除）。</p>'
+      + '<pre class="tiny muted" style="white-space:pre-wrap;margin:0 0 12px">' + esc(msg) + "</pre>"
+      + '<div class="row gap-8"><button class="btn btn-ghost btn-sm" data-action="nav" data-view="dashboard">返回工作台</button>'
+      + '<button class="btn btn-soft btn-sm" data-action="nav" data-view="list">去活动列表</button></div></div>';
+  }
+}
+function showView(view, params) {
     if (state.view && state.view !== view) backStack.push(state.view);
     state.view = view; state.params = params || {};
     const app = $("#app");
@@ -56,24 +72,24 @@
     const backend = ["dashboard", "create", "advice", "editor", "factConfirm", "list", "activityPage", "prep", "economics", "customers", "operator", "mallConsole", "settings", "decorate", "analytics", "signups", "membership", "ai", "brand", "plans", "memberMarketing", "membershipAdmin"];
     if (backend.includes(view)) {
       let content = "";
-      if (view === "dashboard") content = renderDashboard();
-      else if (view === "create") content = renderCreate();
-      else if (view === "advice") content = renderContentAdvice();
-      else if (view === "factConfirm") content = renderFactConfirm();
-      else if (view === "editor") content = renderEditor();
-      else if (view === "list") content = renderList();
-      else if (view === "activityPage") content = renderActivityPage(); // §七：创建后的默认落点 = 活动详情
-      else if (view === "prep") content = renderPrep(getActivity((params || {}).id)); // 出发前准备（离线包/安全/保险/协议/退改/召回）
-      else if (view === "economics") content = renderEconomics(); // AI 经营分析（不是财务报表）
-      else if (view === "customers") content = renderCustomers();
-      else if (view === "operator") content = renderFabu();
-      else if (view === "mallConsole") { state.mallCtx = "console"; content = renderClubMallConsole(); }
-      else if (view === "settings") content = renderSettings();
-      else if (view === "decorate") content = renderDecorate();
-      else if (view === "analytics") content = renderAnalytics();
-      else if (view === "signups") content = renderSignups();
-      else if (view === "membership" || view === "membershipAdmin") content = renderMembershipAdmin();
-      else if (view === "ai" || view === "brand" || view === "plans" || view === "memberMarketing") content = renderSettings();
+      if (view === "dashboard") content = safeRender(renderDashboard, view);
+      else if (view === "create") content = safeRender(renderCreate, view);
+      else if (view === "advice") content = safeRender(renderContentAdvice, view);
+      else if (view === "factConfirm") content = safeRender(renderFactConfirm, view);
+      else if (view === "editor") content = safeRender(renderEditor, view);
+      else if (view === "list") content = safeRender(renderList, view);
+      else if (view === "activityPage") content = safeRender(renderActivityPage, view); // §七：创建后的默认落点 = 活动详情
+      else if (view === "prep") content = safeRender(function () { return renderPrep(getActivity((params || {}).id)); }, view); // 出发前准备（离线包/安全/保险/协议/退改/召回）
+      else if (view === "economics") content = safeRender(renderEconomics, view); // AI 经营分析（不是财务报表）
+      else if (view === "customers") content = safeRender(renderCustomers, view);
+      else if (view === "operator") content = safeRender(renderFabu, view);
+      else if (view === "mallConsole") { state.mallCtx = "console"; content = safeRender(renderClubMallConsole, view); }
+      else if (view === "settings") content = safeRender(renderSettings, view);
+      else if (view === "decorate") content = safeRender(renderDecorate, view);
+      else if (view === "analytics") content = safeRender(renderAnalytics, view);
+      else if (view === "signups") content = safeRender(renderSignups, view);
+      else if (view === "membership" || view === "membershipAdmin") content = safeRender(renderMembershipAdmin, view);
+      else if (view === "ai" || view === "brand" || view === "plans" || view === "memberMarketing") content = safeRender(renderSettings, view);
       app.innerHTML = renderShell(content, (view === "activityPage" || view === "prep") ? "list" : view);
       if (view === "editor") bindEditorExtras();
       // 进入编辑器即按地点联网自动搜索风景图（仅一次、且仅当已有地点且无图时），供「为什么值得去」配图
@@ -101,19 +117,19 @@
       return;
     }
     // frontend
-    if (view === "frontHome") { app.innerHTML = renderFrontHome(); initBentoScroll(); initHeroCarousel(); }
-    else if (view === "detail") { app.innerHTML = wrapPhone(renderActivityPhone(getActivity(params.id)), true); initEditorialToc(); }
-    else if (view === "signup") app.innerHTML = renderSignupPage(params.id);
-    else if (view === "success") app.innerHTML = renderSuccess(params.id, params.signupId);
-    else if (view === "mySignups") app.innerHTML = renderMySignups();
-    else if (view === "myOrders") app.innerHTML = renderMyOrders();
-    else if (view === "mall") { state.mallCtx = "store"; app.innerHTML = renderStorefront(); }
-    else if (view === "mallAdmin") { state.mallView = "admin"; state.mallCtx = "admin"; app.innerHTML = renderMallAdmin(); }
-    else if (view === "mallCommission") { state.mallConsoleTab = "commission"; state.view = "mallConsole"; app.innerHTML = renderShell(renderClubMallConsole(), "mallConsole"); }
-    else if (view === "mallProduct") app.innerHTML = renderMallProduct(getProduct(params.id));
-    else if (view === "mallCart") { state.mallCtx = "store"; app.innerHTML = renderMallCart(); }
-    else if (view === "memberCenter") app.innerHTML = renderMembershipH5();
-    else app.innerHTML = renderFrontHome();
+    if (view === "frontHome") { app.innerHTML = safeRender(renderFrontHome, view); initBentoScroll(); initHeroCarousel(); }
+    else if (view === "detail") { app.innerHTML = safeRender(function () { return wrapPhone(renderActivityPhone(getActivity(params.id)), true); }, view); initEditorialToc(); }
+    else if (view === "signup") app.innerHTML = safeRender(function () { return renderSignupPage(params.id); }, view);
+    else if (view === "success") app.innerHTML = safeRender(function () { return renderSuccess(params.id, params.signupId); }, view);
+    else if (view === "mySignups") app.innerHTML = safeRender(renderMySignups, view);
+    else if (view === "myOrders") app.innerHTML = safeRender(renderMyOrders, view);
+    else if (view === "mall") { state.mallCtx = "store"; app.innerHTML = safeRender(renderStorefront, view); }
+    else if (view === "mallAdmin") { state.mallView = "admin"; state.mallCtx = "admin"; app.innerHTML = safeRender(renderMallAdmin, view); }
+    else if (view === "mallCommission") { state.mallConsoleTab = "commission"; state.view = "mallConsole"; app.innerHTML = safeRender(function () { return renderShell(renderClubMallConsole(), "mallConsole"); }, view); }
+    else if (view === "mallProduct") app.innerHTML = safeRender(function () { return renderMallProduct(getProduct(params.id)); }, view);
+    else if (view === "mallCart") { state.mallCtx = "store"; app.innerHTML = safeRender(renderMallCart, view); }
+    else if (view === "memberCenter") app.innerHTML = safeRender(renderMembershipH5, view);
+    else app.innerHTML = safeRender(renderFrontHome, view);
     window.scrollTo(0, 0);
   }
 
