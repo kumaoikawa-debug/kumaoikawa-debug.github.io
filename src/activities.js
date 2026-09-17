@@ -331,7 +331,13 @@
     const style = (typeof editorialStyleOf === "function") ? editorialStyleOf(a) : { id: "S-scenery-mag", angle: "scenery", density: "magazine", family: "magazine" };
     const ac = styleAccent(a);
     const photos = a.photos || [];
-    const coverIdx = Math.max(0, Math.min(+(a.coverIndex || 0), Math.max(0, photos.length - 1)));
+    const maxIdx = Math.max(0, photos.length - 1);
+    /* v198：封面自动选最佳 —— 老板未手动设封面（_coverManual）时，渲染时按视觉分析
+       （recommended_use / 质量分 / 横构图 / 裁切风险）实时选最佳封面，分析落地即自愈；
+       手动设过封面则永远尊重老板选择。 */
+    const coverIdx = (!a._coverManual && typeof bestCoverIndex === "function")
+      ? Math.min(bestCoverIndex(a), maxIdx)
+      : Math.max(0, Math.min(+(a.coverIndex || 0), maxIdx));
     const coverSrc = photos[coverIdx];
     const priceTxt = a.price ? `¥${a.price}<small>/${esc(a.limitUnit)}</small>` : "详询";
     const eyebrow = [a.type, a.place, (dna && dna.season)].filter(Boolean).join(" · ");
@@ -412,10 +418,12 @@
       + `</div></div>`;
 
     const days = (a.itineraryDays || []).filter((d) => (d.items || []).some((t) => t && (t.time || t.text)));
-    const itinContent = (typeof itinContentHtml === "function") ? itinContentHtml(a) : "";
+    /* v198：叙事块（itinContentHtml「这一程，这样走过」）从阅读页摘除 —— 它逐条复述时间表，
+       与下方 DAY 时间轴同屏大重复（老板：「多次出现详细行程，一直大重复」）。
+       阅读页完整行程只保留 DAY 卡这一处；叙事仅保留在后台行程编辑面板作预览。 */
     // P0-9：行程每段按内容语义匹配到的图（桨板→水上段、餐食→午餐段、夜景→结尾段），渲染到对应 DAY 旁
     const itinPhotos = (typeof pageItineraryPhotos === "function") ? pageItineraryPhotos(a) : null;
-    const itinHtml = days.length ? `<div class="dsec"><div class="dsec-h"><h3>详细行程</h3></div>${itinContent}<div class="itin-timeline-wrap" id="ed-itin">${days.map((d, i) => {
+    const itinHtml = days.length ? `<div class="dsec"><div class="dsec-h"><h3>详细行程</h3></div><div class="itin-timeline-wrap" id="ed-itin">${days.map((d, i) => {
       const dayNo = i + 1;
       const dp = (itinPhotos && itinPhotos.byDay && itinPhotos.byDay[dayNo]) ? itinPhotos.byDay[dayNo] : [];
       const dpHtml = dp.length ? `<div class="itin-day-photos">${dp.slice(0, 2).map((p) => { const c = (typeof pagePhotoContain === "function") ? pagePhotoContain(p.src) : false; return `<div class="itin-day-photo${c ? " ph-safe" : ""}" data-ar-auto><img data-smart-img src="${p.src}" alt="" style="object-fit:${c ? "contain" : "cover"}"></div>`; }).join("")}</div>` : "";
@@ -643,12 +651,9 @@
 
     const blocks = {
       timeline: (() => {
-        // P0-5：结构型时间表（事实层） + 内容型叙事（表达层）双层并存
-        // P0-9：每一天旁配「段落语义匹配」的图（core→动作/人物，meal→餐食…），而非随机配图
-        const itin = (typeof structureItinerary === "function") ? structureItinerary(a) : { narrative: { title: "", paras: [] } };
-        const nar = (itin.narrative && itin.narrative.paras.length)
-          ? `<div class="itin-narrative"><div class="itin-narrative-t">${esc(itin.narrative.title || "")}</div>${itin.narrative.paras.map((p) => `<p>${esc(p)}</p>`).join("")}</div>`
-          : "";
+        // v198：阅读页（lean）同样只保留 DAY 时间轴 —— 叙事块逐条复述时间表造成同屏大重复，
+        // 与图文长页（editorial）同一处理：完整行程只在时间轴出现一次，
+        // 体验叙事仅保留在后台行程编辑面板作预览（publish.js itineraryEditHtml）。
         const dayPh = (typeof pageItineraryPhotos === "function") ? pageItineraryPhotos(a) : null;
         const dayPhotosHtml = (idx) => {
           const list = (dayPh && dayPh.byDay && dayPh.byDay[idx + 1]) || [];
@@ -656,7 +661,7 @@
           return `<div class="tl-photos">${list.map((p) => `<div class="tl-photo" ${smartBg(p.src)}></div>`).join("")}</div>`;
         };
         const dayBlocks = (a.itineraryDays || []).map((day, idx) => { const items = (day.items || []).filter((t) => t && (t.time || t.text)); return `<details class="day-block"><summary class="day-header-sz"><div class="day-no"><span>DAY</span><b>${idx + 1}</b></div><div class="day-route-block"><p class="day-route">${esc(day.label)}</p>${day.sub ? `<p class="day-subtitle">${esc(day.sub)}</p>` : ""}</div><span class="day-expand">${ICON("chevron-down")}</span></summary><div class="day-body">${items.length ? `<div class="timeline">${items.map((t) => `<div class="tl-item"><div class="tl-node"></div><div class="t">${esc(t.time)}</div><div class="d">${esc(t.text)}</div></div>`).join("")}</div>` : `<div class="tl-empty">本日行程待机构补充。</div>`}${dayPhotosHtml(idx)}</div></details>`; }).join("");
-        return `<div class="dsec itinerary-editorial"><div class="dsec-h"><h3>详细行程${a.days > 1 ? ` · 共 ${a.days} 天` : ""}</h3></div>${nar}${dayBlocks || `<div class="pending-section"><b>真实行程待补充</b><span>补充后才会进入客户页面和发布检查。</span></div>`}</div>`;
+        return `<div class="dsec itinerary-editorial"><div class="dsec-h"><h3>详细行程${a.days > 1 ? ` · 共 ${a.days} 天` : ""}</h3></div>${dayBlocks || `<div class="pending-section"><b>真实行程待补充</b><span>补充后才会进入客户页面和发布检查。</span></div>`}</div>`;
       })(),
       highlights: hl.length ? `<div class="dsec"><div class="dsec-h"><h3>为什么值得参加</h3></div>${hl.map((h) => `<div class="hl"><div class="ic">${ICON(h[1] || "star")}</div><div class="txt">${esc(h[0])}</div></div>`).join("")}</div>` : "",
       gear: (() => {

@@ -1,4 +1,10 @@
-/* ============================================================
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClubOS v197 编辑器重做 · 样例页</title>
+<style>/* ============================================================
    ClubOS Demo V1.0 — Design System
    Brand: 山野小队 / natural · warm · professional · restrained
    ============================================================ */
@@ -5302,11 +5308,9 @@ body{
 /* P0-12：小图带形态（缩略图版式用更矮的 Hero，把版面留给章节小图） */
 .xh-ed-hero.band { min-height: 300px; }
 /* P0-B 第六点：竖图/人物封面「降 FullBleed」——原比例展示，不横裁主体。
-   原比例两侧留白用同图模糊底图垫住（.xh-ed-hero-backdrop），避免「一块脏留白」。
-   v198：垫图 opacity .55→.92 + 提亮 —— 旧参数下深色照片的两侧垫图近乎纯黑，
-   老板判「照片不能自动适配到最佳，两边出现黑屏」；现在两侧是清晰可见的同图模糊延展。 */
-.xh-ed-hero.keep { background-size: contain; background-repeat: no-repeat; background-position: center; background-color: #2a2620; }
-.xh-ed-hero-backdrop { position: absolute; inset: -24px; background-size: cover; background-position: center; filter: blur(26px) saturate(1.05) brightness(1.12); opacity: .92; z-index: 0; }
+   原比例两侧留白用同图模糊底图垫住（.xh-ed-hero-backdrop），避免「一块脏留白」。 */
+.xh-ed-hero.keep { background-size: contain; background-repeat: no-repeat; background-position: center; background-color: #17140f; }
+.xh-ed-hero-backdrop { position: absolute; inset: -24px; background-size: cover; background-position: center; filter: blur(26px) saturate(.9); opacity: .55; z-index: 0; }
 .xh-ed-hero.keep .xh-ed-hero-mask { z-index: 1; }
 .xh-ed-hero.keep .xh-ed-hero-txt { z-index: 2; }
 /* P0-B：整组原比例时的不对称排版（原比例 Solo / PortraitPair），不再硬裁成统一格子 */
@@ -5718,3 +5722,399 @@ body{
   .econ-cost-modes { grid-template-columns: 1fr; }
   .ops-prep-sum .ops-prep-grid { grid-template-columns: repeat(2, 1fr); }
 }
+</style>
+<style>
+  body { background:#f4f1ea; }
+  .show-wrap { max-width: 960px; margin: 0 auto; padding: 28px 18px 80px; }
+  .show-h { font: 600 22px/1.3 system-ui,"PingFang SC",sans-serif; color:#233; margin: 36px 0 6px; }
+  .show-sub { color:#7a7468; font: 14px/1.6 system-ui,sans-serif; margin: 0 0 14px; }
+  .show-card { background:#fff; border-radius:14px; box-shadow:0 2px 14px rgba(0,0,0,.06); padding:18px; margin-bottom:18px; }
+  .badge { display:inline-block; font:600 12px/1 sans-serif; color:#fff; background:#2e7d5b; padding:4px 9px; border-radius:20px; vertical-align:middle; margin-right:8px; }
+  .pv-note { font:600 14px/1.4 system-ui,sans-serif; color:#1f6f4a; background:#eaf6ef; border:1px solid #cfe9d8; border-radius:10px; padding:10px 12px; margin:10px 0; }
+  .theme-demo { display:flex; gap:14px; flex-wrap:wrap; }
+  .theme-demo > div { flex:1 1 320px; min-width:280px; }
+  .theme-cap { font:600 13px/1 system-ui,sans-serif; color:#555; margin:0 0 6px; }
+  .frame { border:1px solid #e4e0d6; border-radius:12px; overflow:hidden; background:#fff; }
+  .frame-note { font:12px/1.5 system-ui,sans-serif; color:#8a8478; padding:6px 10px; background:#faf8f3; border-top:1px solid #ece8de; }
+</style>
+</head>
+<body>
+<div class="show-wrap">
+  <h1 class="show-h">ClubOS v197 · 后台编辑器三处重做（样例页）</h1>
+  <p class="show-sub">以下面板由线上代码（v197）真实渲染输出，已内联 styles.css，所见即所得。版本校验：APP_VER=14（预览团期数占位，详见各区块）。</p>
+
+  <h2 class="show-h"><span class="badge">①</span>团期批量生成</h2>
+  <p class="show-sub">反馈原文：「团期可以不可以批量选，比如9月17日至10月1日，每天都可以发团，每团限20人」。下方为真实 <code>departuresEditHtml</code> 输出，含日期区间 + 节奏三选 + 周几 + 限人数 + 价格 + 实时预览 + 生成按钮。</p>
+  <div class="show-card"><div class="panel">
+      <div class="panel-head"><h3>行程与团期</h3><span class="tiny muted">一个活动可设置多个出发日期，每个团期可独立定价与限额</span></div>
+      <div class="panel-body">
+        <div class="dep-batch" id="depBatchRoot">
+          <div class="db-head">
+            <span class="db-title"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg> 按规则批量生成</span>
+            <span class="db-sub">框一段日期 + 挑发团节奏，一次生成整段排期</span>
+          </div>
+
+          <div class="db-row">
+            <span class="db-label">日期范围</span>
+            <div class="db-body">
+              <div class="db-dates">
+                <input type="date" class="input input-sm" id="depStart" data-dep-batch="start" value="2026-09-17">
+                <span class="db-tilde">至</span>
+                <input type="date" class="input input-sm" id="depEnd" data-dep-batch="end" value="2026-10-01">
+              </div>
+              <div class="db-quick">
+                <button type="button" data-action="depQuickRange" data-range="weekend">本周末</button>
+                <button type="button" data-action="depQuickRange" data-range="fortnight">未来两周</button>
+                <button type="button" data-action="depQuickRange" data-range="month">本月余下</button>
+                <button type="button" class="ghost" data-action="depQuickRange" data-range="clear">清除</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="db-row">
+            <span class="db-label">发团节奏</span>
+            <div class="db-body">
+              <div class="db-seg">
+                <button type="button" class="db-seg-b on" data-action="depFreq" data-freq="daily">每天</button>
+                <button type="button" class="db-seg-b" data-action="depFreq" data-freq="weekly">每周几</button>
+                <button type="button" class="db-seg-b" data-action="depFreq" data-freq="interval">每隔 N 天</button>
+              </div>
+              <div class="db-weekdays" id="depWeekdays" hidden><button type="button" class="db-wd" data-action="depWeekday" data-wd="0">日</button><button type="button" class="db-wd" data-action="depWeekday" data-wd="1">一</button><button type="button" class="db-wd" data-action="depWeekday" data-wd="2">二</button><button type="button" class="db-wd" data-action="depWeekday" data-wd="3">三</button><button type="button" class="db-wd" data-action="depWeekday" data-wd="4">四</button><button type="button" class="db-wd" data-action="depWeekday" data-wd="5">五</button><button type="button" class="db-wd" data-action="depWeekday" data-wd="6">六</button><span class="db-wd-hint">可多选，如只发周末就选六、日</span></div>
+              <div class="db-interval" id="depIntervalRow" hidden>每
+                <input type="number" class="input input-sm" id="depInterval" data-dep-batch="interval" min="2" max="60" value="2"> 天发一团</div>
+            </div>
+          </div>
+
+          <div class="db-row">
+            <span class="db-label">每团配置</span>
+            <div class="db-body db-cfg">
+              <label class="db-field"><span>每团限</span><input type="number" class="input input-sm" id="depCapacity" data-dep-batch="capacity" min="1" value="20" placeholder="20"><i>人</i></label>
+              <label class="db-field"><span>价格</span><input type="number" class="input input-sm" id="depPrice" data-dep-batch="price" min="0" value="199" placeholder="默认 ¥199"><i>元/人</i></label>
+            </div>
+          </div>
+
+          <div class="db-foot">
+            <div class="db-preview ok" id="depPreview"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span>09/17 — 10/01 · 共 15 天 · 每天 → 将新增 14 个团期 · 每团限 20 人 · ¥199/人（已存在的 1 天自动跳过）</span></div>
+            <button class="btn btn-primary btn-sm" data-action="addDeparture"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg> 生成团期</button>
+          </div>
+        </div>
+        <div class="dep-hint"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg> 已存在的日期会自动跳过，不会重复添加；生成后可逐条改价、改限人数或停售。</div>
+        <div class="departure-list"><div class="departure-card">
+        <div class="dep-date">
+          <div class="dep-week">周一</div>
+          <div class="dep-md">09/28</div>
+        </div>
+        <div class="dep-fields">
+          <input type="number" class="input input-sm" data-bind-dep="d-old-1" data-dep-key="price" value="228" placeholder="价格">
+          <input type="number" class="input input-sm" data-bind-dep="d-old-1" data-dep-key="capacity" value="" placeholder="限人数" min="1">
+          <select class="select select-sm" data-bind-dep="d-old-1" data-dep-key="status">
+            <option value="open" selected>可报名</option>
+            <option value="full" >已满员</option>
+            <option value="closed" >已截止</option>
+          </select>
+          <input type="text" class="input input-sm" data-bind-dep="d-old-1" data-dep-key="note" value="" placeholder="备注，如余位3">
+          <div class="dep-cap-row"><span class="dep-cap"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> 限 25 人 · 余 23 位</span><span class="dep-cap-hint">每团独立 · 留空则按活动招募上限</span></div>
+        </div>
+        <button class="icon-btn" data-action="deleteDeparture" data-id="d-old-1" title="删除团期"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg></button>
+      </div></div>
+      </div>
+    </div></div>
+  <div class="pv-note">实时预览（<code>depBatchPreview</code>，配置 9/17–10/1 每天、限20人、¥199）：<br>09/17 — 10/01 · 共 15 天 · 每天 → 将新增 14 个团期 · 每团限 20 人 · ¥199/人（已存在的 1 天自动跳过）</div>
+
+  <h2 class="show-h"><span class="badge">②</span>视觉呈现 Tab 卡片化</h2>
+  <p class="show-sub">反馈原文：「视觉显现（视觉呈现 Tab）UI 太差」。下方为真实 <code>visualTabHtml</code> 输出：整体视觉五主题卡 + 每张图一张分析卡（质量分 / 中文 chips / 用途全中文）+ 封面大图 + 页面结构大纲。</p>
+  <div class="show-card"><div class="vis-tab">
+      <div class="vis-sec">
+      <h4>整体视觉<span class="vis-hint">详情页与阅读栏的配色氛围，点一下立刻换</span></h4>
+      <div class="vt-themes">
+        <button type="button" class="vt-theme on" data-action="setEdTheme" data-theme="" title="按活动自动 · 按类型 / 季节 / 地点匹配">
+            <span class="vt-th th-auto"></span>
+            <b>按活动自动</b><i>当前：海岛</i>
+          </button><button type="button" class="vt-theme" data-action="setEdTheme" data-theme="forest" title="森林 · 墨绿 · 林间">
+            <span class="vt-th th-forest"></span>
+            <b>森林</b><i>墨绿 · 林间</i>
+          </button><button type="button" class="vt-theme" data-action="setEdTheme" data-theme="island" title="海岛 · 青蓝 · 水岸">
+            <span class="vt-th th-island"></span>
+            <b>海岛</b><i>青蓝 · 水岸</i>
+          </button><button type="button" class="vt-theme" data-action="setEdTheme" data-theme="desert" title="沙漠 · 暖沙 · 峡谷">
+            <span class="vt-th th-desert"></span>
+            <b>沙漠</b><i>暖沙 · 峡谷</i>
+          </button><button type="button" class="vt-theme" data-action="setEdTheme" data-theme="snow" title="雪原 · 冷白 · 冰川">
+            <span class="vt-th th-snow"></span>
+            <b>雪原</b><i>冷白 · 冰川</i>
+          </button>
+      </div>
+      <div class="tiny muted" style="margin-top:8px">只改配色，不动你的文案与照片；选「按活动自动」则跟随活动类型。</div>
+    </div>
+      <div class="vis-sec">
+        <h4>图片分析结果<span class="sim-tag">模拟分析（演示）</span><span class="vis-count">6 张</span></h4>
+        <div class="photo-analysis"><div class="photo-card">
+      <div class="pc-thumb" data-smart-bg="https://example.com/v197-p0.jpg" style="background-image:url('https://example.com/v197-p0.jpg');background-position:undefined% undefined%;"><span class="pc-idx">1</span><span class="pc-cover">封面</span></div>
+      <div class="pc-body">
+        <div class="pc-top"><b>图 1</b><span class="pc-cat">风光</span><span class="pc-q hi">优 88%</span></div>
+        <div class="pc-chips">
+          <span class="pc-chip">横构图</span>
+          <span class="pc-chip">主体：山脊、林木、晨雾</span>
+          <span class="pc-chip">情绪：开阔</span>
+        </div>
+        <div class="pc-uses"><span class="pc-uses-l">适合</span><span class="pc-use">封面主视觉</span><span class="pc-use">主视觉大图</span><span class="pc-use">正文配图</span><span class="pc-use">细节配图</span><span class="pc-use">通栏大图</span><span class="pc-use">图廊</span><span class="pc-area">文字放左上</span></div>
+      </div>
+    </div><div class="photo-card">
+      <div class="pc-thumb" data-smart-bg="https://example.com/v197-p1.jpg" style="background-image:url('https://example.com/v197-p1.jpg');background-position:undefined% undefined%;"><span class="pc-idx">2</span></div>
+      <div class="pc-body">
+        <div class="pc-top"><b>图 2</b><span class="pc-cat">风光</span><span class="pc-q hi">优 85%</span></div>
+        <div class="pc-chips">
+          <span class="pc-chip">竖构图</span>
+          <span class="pc-chip">主体：山脊、林木、晨雾</span>
+          <span class="pc-chip">情绪：开阔</span>
+        </div>
+        <div class="pc-uses"><span class="pc-uses-l">适合</span><span class="pc-use">封面主视觉</span><span class="pc-use">主视觉大图</span><span class="pc-use">正文配图</span><span class="pc-use">细节配图</span><span class="pc-use">通栏大图</span><span class="pc-use">图廊</span><span class="pc-area">文字放右下</span></div>
+      </div>
+    </div><div class="photo-card">
+      <div class="pc-thumb" data-smart-bg="https://example.com/v197-p2.jpg" style="background-image:url('https://example.com/v197-p2.jpg');background-position:undefined% undefined%;"><span class="pc-idx">3</span></div>
+      <div class="pc-body">
+        <div class="pc-top"><b>图 3</b><span class="pc-cat">风光</span><span class="pc-q hi">优 82%</span></div>
+        <div class="pc-chips">
+          <span class="pc-chip">方构图</span>
+          <span class="pc-chip">主体：山脊、林木、晨雾</span>
+          <span class="pc-chip">情绪：开阔</span>
+        </div>
+        <div class="pc-uses"><span class="pc-uses-l">适合</span><span class="pc-use">封面主视觉</span><span class="pc-use">主视觉大图</span><span class="pc-use">正文配图</span><span class="pc-use">细节配图</span><span class="pc-use">通栏大图</span><span class="pc-use">图廊</span><span class="pc-area">文字放居中</span></div>
+      </div>
+    </div><div class="photo-card">
+      <div class="pc-thumb" data-smart-bg="https://example.com/v197-p3.jpg" style="background-image:url('https://example.com/v197-p3.jpg');background-position:undefined% undefined%;"><span class="pc-idx">4</span></div>
+      <div class="pc-body">
+        <div class="pc-top"><b>图 4</b><span class="pc-cat">风光</span><span class="pc-q hi">优 79%</span></div>
+        <div class="pc-chips">
+          <span class="pc-chip">横构图</span>
+          <span class="pc-chip">主体：山脊、林木、晨雾</span>
+          <span class="pc-chip">情绪：开阔</span>
+        </div>
+        <div class="pc-uses"><span class="pc-uses-l">适合</span><span class="pc-use">封面主视觉</span><span class="pc-use">主视觉大图</span><span class="pc-use">正文配图</span><span class="pc-use">细节配图</span><span class="pc-use">通栏大图</span><span class="pc-use">图廊</span><span class="pc-area">文字放左上</span></div>
+      </div>
+    </div><div class="photo-card">
+      <div class="pc-thumb" data-smart-bg="https://example.com/v197-p4.jpg" style="background-image:url('https://example.com/v197-p4.jpg');background-position:undefined% undefined%;"><span class="pc-idx">5</span></div>
+      <div class="pc-body">
+        <div class="pc-top"><b>图 5</b><span class="pc-cat">风光</span><span class="pc-q hi">优 76%</span></div>
+        <div class="pc-chips">
+          <span class="pc-chip">竖构图</span>
+          <span class="pc-chip">主体：山脊、林木、晨雾</span>
+          <span class="pc-chip">情绪：开阔</span>
+        </div>
+        <div class="pc-uses"><span class="pc-uses-l">适合</span><span class="pc-use">封面主视觉</span><span class="pc-use">主视觉大图</span><span class="pc-use">正文配图</span><span class="pc-use">细节配图</span><span class="pc-use">通栏大图</span><span class="pc-use">图廊</span><span class="pc-area">文字放右下</span></div>
+      </div>
+    </div><div class="photo-card">
+      <div class="pc-thumb" data-smart-bg="https://example.com/v197-p5.jpg" style="background-image:url('https://example.com/v197-p5.jpg');background-position:undefined% undefined%;"><span class="pc-idx">6</span></div>
+      <div class="pc-body">
+        <div class="pc-top"><b>图 6</b><span class="pc-cat">风光</span><span class="pc-q hi">优 73%</span></div>
+        <div class="pc-chips">
+          <span class="pc-chip">方构图</span>
+          <span class="pc-chip">主体：山脊、林木、晨雾</span>
+          <span class="pc-chip">情绪：开阔</span>
+        </div>
+        <div class="pc-uses"><span class="pc-uses-l">适合</span><span class="pc-use">封面主视觉</span><span class="pc-use">主视觉大图</span><span class="pc-use">正文配图</span><span class="pc-use">细节配图</span><span class="pc-use">通栏大图</span><span class="pc-use">图廊</span><span class="pc-area">文字放居中</span></div>
+      </div>
+    </div></div>
+      </div>
+      <div class="vis-sec">
+      <h4>封面图<span class="vis-hint">仅用于页面主视觉，不会在正文里重复出现</span></h4>
+      <div class="vt-cover">
+        <div class="vt-cover-main" data-smart-bg="https://example.com/v197-p0.jpg" style="background-image:url('https://example.com/v197-p0.jpg');background-position:undefined% undefined%;">
+          <span class="vt-cover-tag"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3 6.5 7 .7-5.2 4.8 1.5 7L12 17l-6.3 3.8 1.5-7L2 9.2l7-.7z"/></svg> 当前封面 · 图 1</span>
+        </div>
+        <div class="vt-cover-side">
+          <div class="vt-cover-tip">点下面任意一张即可换封面</div>
+          <div class="vt-cover-strip">
+            <button type="button" class="cover-thumb sel" data-action="setCover" data-i="0" title="设为封面 · 图 1" data-smart-bg="https://example.com/v197-p0.jpg" style="background-image:url('https://example.com/v197-p0.jpg');background-position:undefined% undefined%;"><span class="ct-idx">1</span></button><button type="button" class="cover-thumb" data-action="setCover" data-i="1" title="设为封面 · 图 2" data-smart-bg="https://example.com/v197-p1.jpg" style="background-image:url('https://example.com/v197-p1.jpg');background-position:undefined% undefined%;"><span class="ct-idx">2</span></button><button type="button" class="cover-thumb" data-action="setCover" data-i="2" title="设为封面 · 图 3" data-smart-bg="https://example.com/v197-p2.jpg" style="background-image:url('https://example.com/v197-p2.jpg');background-position:undefined% undefined%;"><span class="ct-idx">3</span></button><button type="button" class="cover-thumb" data-action="setCover" data-i="3" title="设为封面 · 图 4" data-smart-bg="https://example.com/v197-p3.jpg" style="background-image:url('https://example.com/v197-p3.jpg');background-position:undefined% undefined%;"><span class="ct-idx">4</span></button><button type="button" class="cover-thumb" data-action="setCover" data-i="4" title="设为封面 · 图 5" data-smart-bg="https://example.com/v197-p4.jpg" style="background-image:url('https://example.com/v197-p4.jpg');background-position:undefined% undefined%;"><span class="ct-idx">5</span></button><button type="button" class="cover-thumb" data-action="setCover" data-i="5" title="设为封面 · 图 6" data-smart-bg="https://example.com/v197-p5.jpg" style="background-image:url('https://example.com/v197-p5.jpg');background-position:undefined% undefined%;"><span class="ct-idx">6</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+      <div class="vis-sec">
+      <h4>页面结构<span class="vis-hint">随内容与素材动态编排</span></h4>
+      <div class="outline-list">
+        <div class="ol-item tone-media">
+          <span class="ol-no">1</span>
+          <span class="ol-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></span>
+          <span class="ol-t">图片廊</span>
+          <span class="ol-p"></span>
+        </div><div class="ol-item tone-lead">
+          <span class="ol-no">2</span>
+          <span class="ol-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
+          <span class="ol-t">开篇导语</span>
+          <span class="ol-p">说明这场活动为什么值得来</span>
+        </div><div class="ol-item tone-accent">
+          <span class="ol-no">3</span>
+          <span class="ol-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 17h3l2-4V7H5v6h3zM14 17h3l2-4V7h-6v6h3z"/></svg></span>
+          <span class="ol-t">金句引文</span>
+          <span class="ol-p">形成记忆点</span>
+        </div><div class="ol-item tone-media">
+          <span class="ol-no">4</span>
+          <span class="ol-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></span>
+          <span class="ol-t">图片廊</span>
+          <span class="ol-p"></span>
+        </div><div class="ol-item tone-media">
+          <span class="ol-no">5</span>
+          <span class="ol-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></span>
+          <span class="ol-t">图片廊</span>
+          <span class="ol-p"></span>
+        </div><div class="ol-item tone-body">
+          <span class="ol-no">6</span>
+          <span class="ol-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V12"/><path d="M10 20V6"/><path d="M16 20v-6"/><path d="M22 20H2"/></svg></span>
+          <span class="ol-t">关键数据条</span>
+          <span class="ol-p">快速判断强度与时间安排</span>
+        </div><div class="ol-item tone-key">
+          <span class="ol-no">7</span>
+          <span class="ol-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8z"/><path d="M19 14l.9 2.1L22 17l-2.1.9L19 20l-.9-2.1L16 17l2.1-.9z"/></svg></span>
+          <span class="ol-t">核心卖点</span>
+          <span class="ol-p">路线核心卖点（多阶段管线输出）</span>
+        </div><div class="ol-item tone-key">
+          <span class="ol-no">8</span>
+          <span class="ol-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>
+          <span class="ol-t">价格与费用</span>
+          <span class="ol-p">先说明价格与费用包含/不含</span>
+        </div><div class="ol-item tone-key">
+          <span class="ol-no">9</span>
+          <span class="ol-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span>
+          <span class="ol-t">真实行程</span>
+          <span class="ol-p">提供理性决策信息</span>
+        </div><div class="ol-item tone-body">
+          <span class="ol-no">10</span>
+          <span class="ol-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>
+          <span class="ol-t">已确认服务</span>
+          <span class="ol-p">说明已确认服务</span>
+        </div><div class="ol-item tone-body">
+          <span class="ol-no">11</span>
+          <span class="ol-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
+          <span class="ol-t">退改与安全须知</span>
+          <span class="ol-p">退改与安全须知（多阶段管线输出）</span>
+        </div><div class="ol-item tone-body">
+          <span class="ol-no">12</span>
+          <span class="ol-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
+          <span class="ol-t">机构信息</span>
+          <span class="ol-p">机构信息</span>
+        </div>
+      </div>
+      <div class="tiny muted">共 12 个区块。顺序由内容需要决定：先讲清为什么去，再给行程与费用；少图不重复填充，多图形成节奏。</div>
+    </div>
+    </div></div>
+
+  <h2 class="show-h"><span class="badge">③</span>整体视觉可切换</h2>
+  <p class="show-sub">反馈原文：「整视也不能换」。下面对比同一详情页在「雪境(snow)」与「海岛(island)」两种主题下的渲染（类 <code>ed-theme-snow</code> / <code>ed-theme-island</code> 已打在根/阅读栏/抽屉节点），证明整站配色主题可一键切换。</p>
+  <div class="theme-demo">
+    <div><p class="theme-cap">雪境 snow</p><div class="frame">
+      <div class="activity-page xh-ed typo-serif tone-magazine ed-theme-snow">
+      <div class="ps-topbar"><span class="ps-logo"><span class="l">野</span>野径行</span></div>
+      <div class="detail-mode-switch editorial-variant-switch"><button type="button" class="dms-chip" data-action="regenStyle" title="重生成角度 / 标题 / 节奏 / 图片策略 / 版式，守住已确认事实"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8z"/><path d="M19 14l.9 2.1L22 17l-2.1.9L19 20l-.9-2.1L16 17l2.1-.9z"/></svg> 换一种排版</button><span class="dms-cur">大图Hero·叙事序 ｜ 看风景·杂志型</span></div>
+      <header class="xh-ed-hero" style="background-image:url('https://example.com/v197-p0.jpg')">
+        
+        <div class="xh-ed-hero-mask"></div>
+        
+        <div class="xh-ed-hero-txt">
+          <div class="xh-ed-eyebrow">海岛桨板 · 三亚 · 秋季</div>
+          <h1 class="xh-ed-title">秋季彩林徒步 · 龙门山环线</h1>
+          <p class="xh-ed-sub">看风景 · 10月18日 · 12 公里 · 适中强度</p>
+          <div class="xh-ed-pill"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg> 9月28日<span class="xh-ed-pill-div"></span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> 成都天府广场</div>
+        </div>
+      </header>
+      <div class="xh-ed-body" id="ed-story">
+        <div class="xh-ed-kvs"><div class="xh-ed-kv"><b>12</b><span>公里</span></div><div class="xh-ed-kv"><b>1100</b><span>海拔 m</span></div><div class="xh-ed-kv"><b>2</b><span>天行程</span></div><div class="xh-ed-kv"><b>25</b><span>人</span></div></div>
+        <div class="xh-ed-lead"><p>三亚这条路，风景不是背景，是主线。10月18日出发，不赶点，把脚步交给山水。</p><p>从集合点出发走完三亚。12 公里海拔 1100 米，一路都在换视野。</p></div>
+        <section class="xh-ed-sec" data-sec="why" data-angle="scenery"><div class="xh-ed-num">01 / SCENERY</div><h2 class="xh-ed-h">为什么值得去</h2><div class="xh-ed-figs one figs-mosaic orig"><figure class="xh-ed-fig s-wide ph-safe" style="--ar:1.36" data-ar-auto data-crop-mode="aspect_preserved" data-crop-risk="low"><img src="https://example.com/v197-p1.jpg" alt="" loading="lazy" style="object-position:50% 45%;object-fit:contain"></figure></div><div class="xh-ed-paras"><p>去三亚，不是为了打卡，是为了把被楼宇切碎的视野重新接起来。</p><p>这条路的价值在视野：走一段，就换一幅。</p></div></section>
+<section class="xh-ed-sec" data-sec="experience" data-angle="scenery"><div class="xh-ed-num">02 / EXPERIENCE</div><h2 class="xh-ed-h">你会看到的风景</h2><div class="xh-ed-figs one figs-mosaic"><figure class="xh-ed-fig s-wide" style="--ar:1.36" data-ar-auto data-crop-mode="cover" data-crop-risk="low"><img src="https://example.com/v197-p2.jpg" alt="" loading="lazy" style="object-position:undefined% undefined%;object-fit:cover"></figure></div><div class="xh-ed-paras"><p>适中的强度配得上2 天的路程，走完不会觉得赶。</p><p>沿线以森林林间为主，节奏由自己和队伍一起决定。</p></div></section>
+<section class="xh-ed-sec" data-sec="route" data-angle="scenery"><div class="xh-ed-num">03 / ROUTE</div><h2 class="xh-ed-h">沿着风景走</h2><div class="xh-ed-figs one figs-mosaic"><figure class="xh-ed-fig s-wide" style="--ar:1.36" data-ar-auto data-crop-mode="cover" data-crop-risk="low"><img src="https://example.com/v197-p3.jpg" alt="" loading="lazy" style="object-position:undefined% undefined%;object-fit:cover"></figure></div><div class="xh-ed-paras"><p>08:00，集合出发。这一程从这里开始，彻底松开身心的那口气。</p><p>08:00 集合出发</p></div></section>
+<section class="xh-ed-sec" data-sec="gain" data-angle="scenery"><div class="xh-ed-num">04 / PEOPLE</div><h2 class="xh-ed-h">带走的一片风景</h2><div class="xh-ed-figs one figs-mosaic orig"><figure class="xh-ed-fig s-wide ph-safe" style="--ar:1.36" data-ar-auto data-crop-mode="aspect_preserved" data-crop-risk="low"><img src="https://example.com/v197-p4.jpg" alt="" loading="lazy" style="object-position:50% 45%;object-fit:contain"></figure></div><div class="xh-ed-paras"><p>带走的不是照片数量，是一整天连续的视野。</p><p>把10月18日这一天的节奏完整地还给自己。</p></div></section>
+<section class="xh-ed-sec" data-sec="fit" data-angle="scenery"><div class="xh-ed-num">05 / PEOPLE</div><h2 class="xh-ed-h">谁会爱上这条路线</h2><div class="xh-ed-paras"><p>，以及想安安静静看一天风景的人。</p><p>有基础体力、愿意按自己步频走的人都能跟上。</p></div></section>
+<section class="xh-ed-sec" data-sec="field1" data-angle="scenery"><div class="xh-ed-num">06 / SCENERY</div><h2 class="xh-ed-h">现场纪实</h2><div class="xh-ed-paras"><p>[object Object]</p><p>[object Object]</p></div></section>
+        <section class="xh-ed-quote"><div class="xh-ed-quote-mark"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 17h3l2-4V7H5v6h3zM14 17h3l2-4V7h-6v6h3z"/></svg></div><p>风景不在终点，在每一段转弯之后。</p></section>
+        <section class="xh-ed-sec xh-ed-gallery g-mode-mosaic" data-sec="gallery"><div class="xh-ed-num">07 / GALLERY</div><h2 class="xh-ed-h">现场影像</h2><div class="photo-layout" data-tier="mid" data-mode="hero_grid" data-patterns="FullWidth"><div class="ly ly-FullWidth"><div class="ph ph-gallery"><img class="ph-img" data-smart-img src="https://example.com/v197-p5.jpg" alt="" style="object-position:50% 45%;object-fit:cover"></div></div></div></section>
+        <section class="xh-ed-decision" id="xhDecision"><div class="xh-ed-decision-h"><span class="xh-ed-decision-kicker">DECISION</span><h2>报名信息</h2></div><div class="decision-meta"><div class="dm-item"><span class="dm-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg></span><div class="dm-t"><span class="dm-k">时间</span><span class="dm-v">10月18日</span></div></div><div class="dm-item"><span class="dm-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span><div class="dm-t"><span class="dm-k">集合</span><span class="dm-v">成都天府广场</span></div></div><div class="dm-item"><span class="dm-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18L14 8l-3 5-2-3z"/></svg></span><div class="dm-t"><span class="dm-k">地点</span><span class="dm-v">三亚</span></div></div><div class="dm-item"><span class="dm-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span><div class="dm-t"><span class="dm-k">强度</span><span class="dm-v">中等</span></div></div><div class="dm-item"><span class="dm-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><div class="dm-t"><span class="dm-k">名额</span><span class="dm-v">25人</span></div></div><div class="dm-item"><span class="dm-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><path d="M7 7h.01"/></svg></span><div class="dm-t"><span class="dm-k">价格</span><span class="dm-v">¥199/人</span></div></div></div><div class="dsec"><div class="dsec-h"><span class="dsec-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg></span><h3>行程与团期</h3></div>
+        <div class="departure-single">
+          <div class="dep-single-date"><span class="dep-single-week">周一</span><span class="dep-single-md">09/28</span></div>
+          <div class="dep-single-info">
+            <div class="dep-single-price">¥228<small>/人</small></div>
+            <div class="dep-single-cap">限 25 人 · 剩 23 位</div>
+            
+          </div>
+        </div>
+      </div><div class="dsec"><div class="dsec-h"><h3>详细行程</h3></div><div class="itin-narrative"><div class="itin-narrative-t">这一程，这样走过</div><p>08:00，集合出发。这一程从这里开始，彻底松开身心的那口气。</p></div><div class="itin-timeline-wrap" id="ed-itin"><div class="xh-ed-day"><div class="xh-ed-day-h"><span>DAY</span><b>1</b> · 成都—龙门山</div><div class="timeline"><div class="tl-item"><div class="tl-node"></div><div class="t">08:00</div><div class="d">集合出发</div></div></div><div class="itin-day-photos"><div class="itin-day-photo ph-safe" data-ar-auto><img data-smart-img src="https://example.com/v197-p1.jpg" alt="" style="object-fit:contain"></div><div class="itin-day-photo" data-ar-auto><img data-smart-img src="https://example.com/v197-p3.jpg" alt="" style="object-fit:cover"></div></div></div></div></div><div class="dsec" id="ed-fee"><div class="dsec-h"><h3>费用说明</h3></div><div class="fee-card"><div class="fee-hero"><div class="fee-hero-l"><span class="fee-hero-k">活动价格</span><b class="fee-hero-v">¥199</b><span class="fee-hero-u">/ 人</span></div></div><div class="fee-sec"><div class="fee-sec-h"><span class="fee-sec-ic ok"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>费用包含</div><div class="fee-grid"><div class="fee-cell"><span class="fee-cell-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><span>往返大巴</span></div><div class="fee-cell"><span class="fee-cell-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><span>专业领队</span></div><div class="fee-cell"><span class="fee-cell-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><span>户外保险</span></div></div></div><div class="fee-sec"><div class="fee-sec-h"><span class="fee-sec-ic no"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg></span>费用不含</div><div class="fee-grid"><div class="fee-cell fee-cell-no"><span class="fee-cell-ic no"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg></span><span>午餐</span></div></div></div></div></div><div class="dsec"><div class="dsec-h"><h3>装备建议</h3></div><div class="gear-list"></div></div><div class="dsec"><div class="dsec-h"><span class="dsec-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><h3>适合与不适合</h3></div><div class="suit-grid"><div class="suit-col ok"><div class="suit-h">适合</div><div class="suit-row"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span>请先向机构确认年龄、体能和经验要求</span></div></div><div class="suit-col no"><div class="suit-h">不适合</div><div class="suit-row"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg><span>不符合机构最终报名条件的人</span></div></div></div></div></section>
+        <details class="xh-ed-checklist" id="ed-prep" open><summary><span class="cl-ct">出行前清单</span><span class="cl-prog" id="clProg">0/8</span><span class="cl-chev">▾</span></summary><div class="cl-items"><div class="cl-item" data-action="clToggle" data-key="id" data-store="clubos_prep_v197-demo"><span class="cl-box">✓</span><span class="cl-txt">身份证 / 证件（报名后请确认）</span></div><div class="cl-item" data-action="clToggle" data-key="power" data-store="clubos_prep_v197-demo"><span class="cl-box">✓</span><span class="cl-txt">充电宝 + 手机防水袋</span></div><div class="cl-item" data-action="clToggle" data-key="med" data-store="clubos_prep_v197-demo"><span class="cl-box">✓</span><span class="cl-txt">个人常用药 + 创可贴</span></div><div class="cl-item" data-action="clToggle" data-key="bag" data-store="clubos_prep_v197-demo"><span class="cl-box">✓</span><span class="cl-txt">舒适双肩背包（20-30L）</span></div><div class="cl-item" data-action="clToggle" data-key="rain" data-store="clubos_prep_v197-demo"><span class="cl-box">✓</span><span class="cl-txt">轻便雨具</span></div><div class="cl-item" data-action="clToggle" data-key="quick" data-store="clubos_prep_v197-demo"><span class="cl-box">✓</span><span class="cl-txt">速干衣裤 + 备用衣物</span></div><div class="cl-item" data-action="clToggle" data-key="aquashoe" data-store="clubos_prep_v197-demo"><span class="cl-box">✓</span><span class="cl-txt">溯溪鞋 / 防滑凉鞋</span></div><div class="cl-item" data-action="clToggle" data-key="dry" data-store="clubos_prep_v197-demo"><span class="cl-box">✓</span><span class="cl-txt">防水袋（保护电子设备）</span></div></div></details>
+        <section class="xh-ed-sec xh-ed-reviews" id="ed-reviews" data-sec="reviews"><div class="xh-ed-num">08 / REVIEWS</div><h2 class="xh-ed-h">活动评价</h2><div class="xh-ed-rv-empty"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-9 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.2A8.5 8.5 0 0 1 12 3a8.38 8.38 0 0 1 9 8.5z"/></svg><div><b>还没有评价</b><p>活动结束后的参与者评价会展示在这里。你也可以先在下面录入往期活动的真实评价 —— 平台不会替你编造任何评价。</p></div></div></section>
+        <section class="xh-ed-cta" id="ed-cta"><div class="xh-ed-cta-theme">把看过变成走过</div><div class="xh-ed-cta-price">¥199<small>/人</small></div><button class="btn btn-primary btn-block" data-action="openSignup" data-id="v197-demo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> 立即报名</button><div class="tiny muted">2 天行程 · 限 25人</div></section>
+        <section class="xh-ed-org"><div class="xh-ed-org-mark">野径行</div><p>野径行是一支扎根成都的户外俱乐部，专注周边一日与多日徒步路线。我们相信，最好的状态在走得够远之后。</p><div class="xh-ed-org-meta">客服微信：yejingxing_club · 138 0000 6021</div></section>
+      </div>
+      </div>
+      <div class="xh-ed-dock ed-theme-snow" id="xhDock" role="toolbar" aria-label="阅读工具">
+        <button type="button" class="xh-ed-dock-toc" data-action="edToc" aria-expanded="false" aria-controls="xhToc"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg><span id="xhDockCur">目录</span></button>
+        <div class="xh-ed-dock-price">¥199<small>/人</small></div>
+        <button type="button" class="xh-ed-dock-ask" data-action="contactOrg"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-9 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.2A8.5 8.5 0 0 1 12 3a8.38 8.38 0 0 1 9 8.5z"/></svg> 咨询</button>
+        <button type="button" class="btn btn-primary btn-sm xh-ed-dock-cta" data-action="openSignup" data-id="v197-demo">立即报名</button>
+      </div>
+      <div class="xh-ed-toc-root ed-theme-snow" id="xhTocRoot">
+        <div class="xh-ed-toc-mask" data-action="edTocClose"></div>
+        <div class="xh-ed-toc" id="xhToc" role="dialog" aria-label="页面目录">
+          <div class="xh-ed-toc-h"><b>目录</b><button type="button" class="xh-ed-toc-x" data-action="edTocClose" aria-label="关闭"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg></button></div>
+          <div class="xh-ed-toc-list"><button type="button" class="xh-ed-toc-item" data-action="edTocGo" data-target="#ed-story"><i>01</i><b>图文故事</b><span>活动缘起 · 现场故事</span></button><button type="button" class="xh-ed-toc-item" data-action="edTocGo" data-target="#ed-itin"><i>02</i><b>详细行程</b><span>逐日时间轴</span></button><button type="button" class="xh-ed-toc-item" data-action="edTocGo" data-target="#ed-fee"><i>03</i><b>费用说明</b><span>包含 · 不含</span></button><button type="button" class="xh-ed-toc-item" data-action="edTocGo" data-target="#ed-prep"><i>04</i><b>出行清单</b><span>装备与准备</span></button><button type="button" class="xh-ed-toc-item" data-action="edTocGo" data-target="#ed-reviews"><i>05</i><b>活动评价</b><span>参与者怎么说</span></button><button type="button" class="xh-ed-toc-item" data-action="edTocGo" data-target="#ed-cta"><i>06</i><b>报名</b><span>名额与价格</span></button></div>
+        </div>
+      </div>
+      <div class="xh-ed-lightbox" id="xhLightbox" role="dialog" aria-label="查看大图"><button class="lb-close" type="button" aria-label="关闭">×</button><img id="xhLightboxImg" src="" alt=""></div></div><div class="frame-note">renderActivityPhone(edTheme:"snow")</div></div>
+    <div><p class="theme-cap">海岛 island</p><div class="frame">
+      <div class="activity-page xh-ed typo-serif tone-magazine ed-theme-island">
+      <div class="ps-topbar"><span class="ps-logo"><span class="l">野</span>野径行</span></div>
+      <div class="detail-mode-switch editorial-variant-switch"><button type="button" class="dms-chip" data-action="regenStyle" title="重生成角度 / 标题 / 节奏 / 图片策略 / 版式，守住已确认事实"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8z"/><path d="M19 14l.9 2.1L22 17l-2.1.9L19 20l-.9-2.1L16 17l2.1-.9z"/></svg> 换一种排版</button><span class="dms-cur">大图Hero·叙事序 ｜ 看风景·杂志型</span></div>
+      <header class="xh-ed-hero" style="background-image:url('https://example.com/v197-p0.jpg')">
+        
+        <div class="xh-ed-hero-mask"></div>
+        
+        <div class="xh-ed-hero-txt">
+          <div class="xh-ed-eyebrow">海岛桨板 · 三亚 · 秋季</div>
+          <h1 class="xh-ed-title">秋季彩林徒步 · 龙门山环线</h1>
+          <p class="xh-ed-sub">看风景 · 10月18日 · 12 公里 · 适中强度</p>
+          <div class="xh-ed-pill"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg> 9月28日<span class="xh-ed-pill-div"></span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> 成都天府广场</div>
+        </div>
+      </header>
+      <div class="xh-ed-body" id="ed-story">
+        <div class="xh-ed-kvs"><div class="xh-ed-kv"><b>12</b><span>公里</span></div><div class="xh-ed-kv"><b>1100</b><span>海拔 m</span></div><div class="xh-ed-kv"><b>2</b><span>天行程</span></div><div class="xh-ed-kv"><b>25</b><span>人</span></div></div>
+        <div class="xh-ed-lead"><p>三亚这条路，风景不是背景，是主线。10月18日出发，不赶点，把脚步交给山水。</p><p>从集合点出发走完三亚。12 公里海拔 1100 米，一路都在换视野。</p></div>
+        <section class="xh-ed-sec" data-sec="why" data-angle="scenery"><div class="xh-ed-num">01 / SCENERY</div><h2 class="xh-ed-h">为什么值得去</h2><div class="xh-ed-figs one figs-mosaic orig"><figure class="xh-ed-fig s-wide ph-safe" style="--ar:1.36" data-ar-auto data-crop-mode="aspect_preserved" data-crop-risk="low"><img src="https://example.com/v197-p1.jpg" alt="" loading="lazy" style="object-position:50% 45%;object-fit:contain"></figure></div><div class="xh-ed-paras"><p>去三亚，不是为了打卡，是为了把被楼宇切碎的视野重新接起来。</p><p>这条路的价值在视野：走一段，就换一幅。</p></div></section>
+<section class="xh-ed-sec" data-sec="experience" data-angle="scenery"><div class="xh-ed-num">02 / EXPERIENCE</div><h2 class="xh-ed-h">你会看到的风景</h2><div class="xh-ed-figs one figs-mosaic"><figure class="xh-ed-fig s-wide" style="--ar:1.36" data-ar-auto data-crop-mode="cover" data-crop-risk="low"><img src="https://example.com/v197-p2.jpg" alt="" loading="lazy" style="object-position:undefined% undefined%;object-fit:cover"></figure></div><div class="xh-ed-paras"><p>适中的强度配得上2 天的路程，走完不会觉得赶。</p><p>沿线以森林林间为主，节奏由自己和队伍一起决定。</p></div></section>
+<section class="xh-ed-sec" data-sec="route" data-angle="scenery"><div class="xh-ed-num">03 / ROUTE</div><h2 class="xh-ed-h">沿着风景走</h2><div class="xh-ed-figs one figs-mosaic"><figure class="xh-ed-fig s-wide" style="--ar:1.36" data-ar-auto data-crop-mode="cover" data-crop-risk="low"><img src="https://example.com/v197-p3.jpg" alt="" loading="lazy" style="object-position:undefined% undefined%;object-fit:cover"></figure></div><div class="xh-ed-paras"><p>08:00，集合出发。这一程从这里开始，彻底松开身心的那口气。</p><p>08:00 集合出发</p></div></section>
+<section class="xh-ed-sec" data-sec="gain" data-angle="scenery"><div class="xh-ed-num">04 / PEOPLE</div><h2 class="xh-ed-h">带走的一片风景</h2><div class="xh-ed-figs one figs-mosaic orig"><figure class="xh-ed-fig s-wide ph-safe" style="--ar:1.36" data-ar-auto data-crop-mode="aspect_preserved" data-crop-risk="low"><img src="https://example.com/v197-p4.jpg" alt="" loading="lazy" style="object-position:50% 45%;object-fit:contain"></figure></div><div class="xh-ed-paras"><p>带走的不是照片数量，是一整天连续的视野。</p><p>把10月18日这一天的节奏完整地还给自己。</p></div></section>
+<section class="xh-ed-sec" data-sec="fit" data-angle="scenery"><div class="xh-ed-num">05 / PEOPLE</div><h2 class="xh-ed-h">谁会爱上这条路线</h2><div class="xh-ed-paras"><p>，以及想安安静静看一天风景的人。</p><p>有基础体力、愿意按自己步频走的人都能跟上。</p></div></section>
+<section class="xh-ed-sec" data-sec="field1" data-angle="scenery"><div class="xh-ed-num">06 / SCENERY</div><h2 class="xh-ed-h">现场纪实</h2><div class="xh-ed-paras"><p>[object Object]</p><p>[object Object]</p></div></section>
+        <section class="xh-ed-quote"><div class="xh-ed-quote-mark"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 17h3l2-4V7H5v6h3zM14 17h3l2-4V7h-6v6h3z"/></svg></div><p>风景不在终点，在每一段转弯之后。</p></section>
+        <section class="xh-ed-sec xh-ed-gallery g-mode-mosaic" data-sec="gallery"><div class="xh-ed-num">07 / GALLERY</div><h2 class="xh-ed-h">现场影像</h2><div class="photo-layout" data-tier="mid" data-mode="hero_grid" data-patterns="FullWidth"><div class="ly ly-FullWidth"><div class="ph ph-gallery"><img class="ph-img" data-smart-img src="https://example.com/v197-p5.jpg" alt="" style="object-position:50% 45%;object-fit:cover"></div></div></div></section>
+        <section class="xh-ed-decision" id="xhDecision"><div class="xh-ed-decision-h"><span class="xh-ed-decision-kicker">DECISION</span><h2>报名信息</h2></div><div class="decision-meta"><div class="dm-item"><span class="dm-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg></span><div class="dm-t"><span class="dm-k">时间</span><span class="dm-v">10月18日</span></div></div><div class="dm-item"><span class="dm-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span><div class="dm-t"><span class="dm-k">集合</span><span class="dm-v">成都天府广场</span></div></div><div class="dm-item"><span class="dm-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18L14 8l-3 5-2-3z"/></svg></span><div class="dm-t"><span class="dm-k">地点</span><span class="dm-v">三亚</span></div></div><div class="dm-item"><span class="dm-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span><div class="dm-t"><span class="dm-k">强度</span><span class="dm-v">中等</span></div></div><div class="dm-item"><span class="dm-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><div class="dm-t"><span class="dm-k">名额</span><span class="dm-v">25人</span></div></div><div class="dm-item"><span class="dm-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><path d="M7 7h.01"/></svg></span><div class="dm-t"><span class="dm-k">价格</span><span class="dm-v">¥199/人</span></div></div></div><div class="dsec"><div class="dsec-h"><span class="dsec-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg></span><h3>行程与团期</h3></div>
+        <div class="departure-single">
+          <div class="dep-single-date"><span class="dep-single-week">周一</span><span class="dep-single-md">09/28</span></div>
+          <div class="dep-single-info">
+            <div class="dep-single-price">¥228<small>/人</small></div>
+            <div class="dep-single-cap">限 25 人 · 剩 23 位</div>
+            
+          </div>
+        </div>
+      </div><div class="dsec"><div class="dsec-h"><h3>详细行程</h3></div><div class="itin-narrative"><div class="itin-narrative-t">这一程，这样走过</div><p>08:00，集合出发。这一程从这里开始，彻底松开身心的那口气。</p></div><div class="itin-timeline-wrap" id="ed-itin"><div class="xh-ed-day"><div class="xh-ed-day-h"><span>DAY</span><b>1</b> · 成都—龙门山</div><div class="timeline"><div class="tl-item"><div class="tl-node"></div><div class="t">08:00</div><div class="d">集合出发</div></div></div><div class="itin-day-photos"><div class="itin-day-photo ph-safe" data-ar-auto><img data-smart-img src="https://example.com/v197-p1.jpg" alt="" style="object-fit:contain"></div><div class="itin-day-photo" data-ar-auto><img data-smart-img src="https://example.com/v197-p3.jpg" alt="" style="object-fit:cover"></div></div></div></div></div><div class="dsec" id="ed-fee"><div class="dsec-h"><h3>费用说明</h3></div><div class="fee-card"><div class="fee-hero"><div class="fee-hero-l"><span class="fee-hero-k">活动价格</span><b class="fee-hero-v">¥199</b><span class="fee-hero-u">/ 人</span></div></div><div class="fee-sec"><div class="fee-sec-h"><span class="fee-sec-ic ok"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>费用包含</div><div class="fee-grid"><div class="fee-cell"><span class="fee-cell-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><span>往返大巴</span></div><div class="fee-cell"><span class="fee-cell-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><span>专业领队</span></div><div class="fee-cell"><span class="fee-cell-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><span>户外保险</span></div></div></div><div class="fee-sec"><div class="fee-sec-h"><span class="fee-sec-ic no"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg></span>费用不含</div><div class="fee-grid"><div class="fee-cell fee-cell-no"><span class="fee-cell-ic no"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg></span><span>午餐</span></div></div></div></div></div><div class="dsec"><div class="dsec-h"><h3>装备建议</h3></div><div class="gear-list"></div></div><div class="dsec"><div class="dsec-h"><span class="dsec-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><h3>适合与不适合</h3></div><div class="suit-grid"><div class="suit-col ok"><div class="suit-h">适合</div><div class="suit-row"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span>请先向机构确认年龄、体能和经验要求</span></div></div><div class="suit-col no"><div class="suit-h">不适合</div><div class="suit-row"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg><span>不符合机构最终报名条件的人</span></div></div></div></div></section>
+        <details class="xh-ed-checklist" id="ed-prep" open><summary><span class="cl-ct">出行前清单</span><span class="cl-prog" id="clProg">0/8</span><span class="cl-chev">▾</span></summary><div class="cl-items"><div class="cl-item" data-action="clToggle" data-key="id" data-store="clubos_prep_v197-demo"><span class="cl-box">✓</span><span class="cl-txt">身份证 / 证件（报名后请确认）</span></div><div class="cl-item" data-action="clToggle" data-key="power" data-store="clubos_prep_v197-demo"><span class="cl-box">✓</span><span class="cl-txt">充电宝 + 手机防水袋</span></div><div class="cl-item" data-action="clToggle" data-key="med" data-store="clubos_prep_v197-demo"><span class="cl-box">✓</span><span class="cl-txt">个人常用药 + 创可贴</span></div><div class="cl-item" data-action="clToggle" data-key="bag" data-store="clubos_prep_v197-demo"><span class="cl-box">✓</span><span class="cl-txt">舒适双肩背包（20-30L）</span></div><div class="cl-item" data-action="clToggle" data-key="rain" data-store="clubos_prep_v197-demo"><span class="cl-box">✓</span><span class="cl-txt">轻便雨具</span></div><div class="cl-item" data-action="clToggle" data-key="quick" data-store="clubos_prep_v197-demo"><span class="cl-box">✓</span><span class="cl-txt">速干衣裤 + 备用衣物</span></div><div class="cl-item" data-action="clToggle" data-key="aquashoe" data-store="clubos_prep_v197-demo"><span class="cl-box">✓</span><span class="cl-txt">溯溪鞋 / 防滑凉鞋</span></div><div class="cl-item" data-action="clToggle" data-key="dry" data-store="clubos_prep_v197-demo"><span class="cl-box">✓</span><span class="cl-txt">防水袋（保护电子设备）</span></div></div></details>
+        <section class="xh-ed-sec xh-ed-reviews" id="ed-reviews" data-sec="reviews"><div class="xh-ed-num">08 / REVIEWS</div><h2 class="xh-ed-h">活动评价</h2><div class="xh-ed-rv-empty"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-9 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.2A8.5 8.5 0 0 1 12 3a8.38 8.38 0 0 1 9 8.5z"/></svg><div><b>还没有评价</b><p>活动结束后的参与者评价会展示在这里。你也可以先在下面录入往期活动的真实评价 —— 平台不会替你编造任何评价。</p></div></div></section>
+        <section class="xh-ed-cta" id="ed-cta"><div class="xh-ed-cta-theme">把看过变成走过</div><div class="xh-ed-cta-price">¥199<small>/人</small></div><button class="btn btn-primary btn-block" data-action="openSignup" data-id="v197-demo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> 立即报名</button><div class="tiny muted">2 天行程 · 限 25人</div></section>
+        <section class="xh-ed-org"><div class="xh-ed-org-mark">野径行</div><p>野径行是一支扎根成都的户外俱乐部，专注周边一日与多日徒步路线。我们相信，最好的状态在走得够远之后。</p><div class="xh-ed-org-meta">客服微信：yejingxing_club · 138 0000 6021</div></section>
+      </div>
+      </div>
+      <div class="xh-ed-dock ed-theme-island" id="xhDock" role="toolbar" aria-label="阅读工具">
+        <button type="button" class="xh-ed-dock-toc" data-action="edToc" aria-expanded="false" aria-controls="xhToc"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg><span id="xhDockCur">目录</span></button>
+        <div class="xh-ed-dock-price">¥199<small>/人</small></div>
+        <button type="button" class="xh-ed-dock-ask" data-action="contactOrg"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-9 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.2A8.5 8.5 0 0 1 12 3a8.38 8.38 0 0 1 9 8.5z"/></svg> 咨询</button>
+        <button type="button" class="btn btn-primary btn-sm xh-ed-dock-cta" data-action="openSignup" data-id="v197-demo">立即报名</button>
+      </div>
+      <div class="xh-ed-toc-root ed-theme-island" id="xhTocRoot">
+        <div class="xh-ed-toc-mask" data-action="edTocClose"></div>
+        <div class="xh-ed-toc" id="xhToc" role="dialog" aria-label="页面目录">
+          <div class="xh-ed-toc-h"><b>目录</b><button type="button" class="xh-ed-toc-x" data-action="edTocClose" aria-label="关闭"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg></button></div>
+          <div class="xh-ed-toc-list"><button type="button" class="xh-ed-toc-item" data-action="edTocGo" data-target="#ed-story"><i>01</i><b>图文故事</b><span>活动缘起 · 现场故事</span></button><button type="button" class="xh-ed-toc-item" data-action="edTocGo" data-target="#ed-itin"><i>02</i><b>详细行程</b><span>逐日时间轴</span></button><button type="button" class="xh-ed-toc-item" data-action="edTocGo" data-target="#ed-fee"><i>03</i><b>费用说明</b><span>包含 · 不含</span></button><button type="button" class="xh-ed-toc-item" data-action="edTocGo" data-target="#ed-prep"><i>04</i><b>出行清单</b><span>装备与准备</span></button><button type="button" class="xh-ed-toc-item" data-action="edTocGo" data-target="#ed-reviews"><i>05</i><b>活动评价</b><span>参与者怎么说</span></button><button type="button" class="xh-ed-toc-item" data-action="edTocGo" data-target="#ed-cta"><i>06</i><b>报名</b><span>名额与价格</span></button></div>
+        </div>
+      </div>
+      <div class="xh-ed-lightbox" id="xhLightbox" role="dialog" aria-label="查看大图"><button class="lb-close" type="button" aria-label="关闭">×</button><img id="xhLightboxImg" src="" alt=""></div></div><div class="frame-note">renderActivityPhone(edTheme:"island")</div></div>
+  </div>
+</div>
+</body>
+</html>

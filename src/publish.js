@@ -863,6 +863,7 @@ function applyVision(src, data) {
   try {
     const prev = PHOTO_FOCUS_CACHE.get(src) || {};
     PHOTO_FOCUS_CACHE.set(src, Object.assign({}, prev, data, { simulated: false }));
+    try { if (typeof recomputeAutoCover === "function") recomputeAutoCover(src); } catch (e) {}
     /* P1：同步登记统一 visionResult —— 让 evidenceScope / groundingTags / 细粒度场景
        在「真实视觉结果」写回后立即可用（不依赖再跑一次 batch）。 */
     try {
@@ -2313,18 +2314,25 @@ function applyVisionBatch(map) {
      原则：时间表只搬运真实行程；叙事只做表达，不新增事件、不臆造天气/感受。 */
   const ITIN_ROLE_RULES = [
     { role: "opening", kw: ["集合", "出发", "前往", "签到", "上车"] },
+    /* v198：closing 必须先于 arrival 判定 —— 「17:30 抵达天府广场，活动结束」含「抵达」，
+       旧顺序先命中 arrival，导致收尾项被塞进途中串讲、又再出现在收尾段（双重出现 + 乱序）。 */
+    { role: "closing", kw: ["返程", "返回", "解散", "结束", "回程", "总结", "回城", "下撤"] },
     { role: "arrival", kw: ["到达", "抵达", "入园", "进山", "下车"] },
     { role: "warmup", kw: ["热身", "讲解", "说明", "培训", "教学", "装备检查", "安全"] },
-    { role: "meal", kw: ["午餐", "中餐", "用餐", "吃饭", "野餐", "补给", "下午茶", "早餐", "晚餐"] },
+    { role: "meal", kw: ["午餐", "中餐", "用餐", "吃饭", "野餐", "补给", "下午茶", "早餐", "晚餐", "简餐", "路餐"] },
     { role: "core", kw: ["徒步", "登山", "溯溪", "漂流", "桨板", "攀岩", "骑行", "穿越", "探索", "游玩", "活动", "行走", "登顶", "下水", "体验"] },
     { role: "rest", kw: ["休息", "自由", "拍照", "合影", "观景"] },
-    { role: "closing", kw: ["返程", "返回", "解散", "结束", "回程", "总结", "回城"] },
   ];
   function itineraryContentRole(text) {
     const s = String(text || "");
     for (const r of ITIN_ROLE_RULES) if (r.kw.some((k) => s.includes(k))) return r.role;
     return "core";
   }
+  /* v198 重写：叙事 = 「节奏摘要」，不是时间表的逐条复述。
+     旧实现把途中每一项的「时间+事实」用「；」串成一整段 —— 读者在 DAY 时间轴已经看过一遍，
+     叙事区再来一遍逐字复制，老板判「一直大重复，没有实现智能编辑」。
+     现在：集合出发 1 句 + 最多 3 个关键节点（按时段聚合、只出现一次）+ 收尾 1 句，
+     全部来自真实行程（不新增事件、不臆造天气/感受），具体时间表只留给 DAY 卡。 */
   function buildItineraryNarrative(a, timeline) {
     if (!timeline || !timeline.length) return { title: "", paras: [] };
     a = a || {};
@@ -2333,24 +2341,36 @@ function applyVisionBatch(map) {
     const place = a.place || "";
     // 体验基调：由 DNA 动机驱动，但绝不新增事件、不臆造天气/感受
     const mood = ({ scenery: "把节奏放慢，看清一路的季节", sport: "让身体舒展开来", family: "陪孩子一起走进自然", challenge: "一步一步把这段路走完", healing: "暂时放下待办，只专注脚下", social: "和同频的人边走边聊", photo: "等光、构图，把此刻装进相册", release: "彻底松开身心的那口气" })[dna.coreMotivation] || "走进户外，换一种节奏";
+    const timeBand = (t) => { const h = parseInt(String((t && t.time) || "").split(":")[0], 10); return isNaN(h) ? "" : (h < 11 ? "上午" : (h < 13 ? "中午" : (h < 17 ? "下午" : "傍晚"))); };
+    const tidy = (s) => String(s || "").replace(/[。；;\s]+$/g, "");
     const paras = [];
-    // 1) 开场：保留真实时间锚点 + 体验基调
-    const start = pick("opening")[0] || pick("arrival")[0] || timeline[0];
-    if (start && start.fact) paras.push(`${start.time ? start.time + "，" : ""}${start.fact}。这一程从这里开始，${mood}。`);
-    // 2) 途中：热身 / 到达 / 核心 / 休息·拍照 全部串成一段可读体验，逐条保留真实时间
-    const mid = [].concat(pick("arrival"), pick("warmup"), pick("core"), pick("rest"));
-    if (mid.length) {
-      const spine = mid.filter((t) => t.fact).map((t) => (t.time ? t.time + " " : "") + t.fact).join("；");
+    const start = pick("opening")[0] || timeline[0];
+    /* v198：收尾取「最后一个 closing」—— 一天常有多个 closing 项（15:00 下撤返回、17:30 抵达解散），
+       叙事的收尾锚点应是最末端的解散项，中途回撤项归入途中节点。 */
+    const closings = pick("closing");
+    const end = closings.length ? closings[closings.length - 1] : timeline[timeline.length - 1];
+    if (start && start.fact) paras.push(`${start.time ? start.time + "，" : ""}${tidy(start.fact)}，${mood}。`);
+    // 途中：按时段聚合，最多取 3 个关键节点（按真实时间表顺序），绝不逐条复述时间表
+    const coreBits = [].concat(pick("arrival"), pick("warmup"), pick("core"), pick("rest"), pick("meal"))
+      .filter((t) => t.fact && t !== start && t !== end)
+      .sort((x, y) => timeline.indexOf(x) - timeline.indexOf(y));
+    const seen = new Set(); const nodes = [];
+    coreBits.forEach((t) => {
+      if (seen.has(t.fact)) return;
+      seen.add(t.fact);
+      nodes.push({ band: timeBand(t), fact: tidy(t.fact) });
+    });
+    let prevBand = null; const parts = [];
+    nodes.slice(0, 3).forEach((n) => {
+      parts.push(n.band && n.band !== prevBand ? n.band + n.fact : n.fact);
+      prevBand = n.band;
+    });
+    if (parts.length) {
       const tail = place ? `（${place}）` : "";
       const dist = a.distance ? `全程约 ${a.distance} 公里，` : "";
-      paras.push(`${spine}${tail}，是整段行程最值得沉浸的部分。${dist}按自己的节奏走就好。`);
+      paras.push(`${parts.join("，")}${tail}，是这一程的主线。${dist}按自己的节奏走就好。`);
     }
-    // 3) 餐食：保留真实时间
-    const meal = pick("meal");
-    if (meal.length && meal[0].fact) paras.push(`${meal[0].time ? meal[0].time + "，" : ""}${meal[0].fact}，找个舒服的地方补给、回血，也是难得的松弛时刻。`);
-    // 4) 收尾：保留真实时间
-    const end = pick("closing")[0] || timeline[timeline.length - 1];
-    if (end && end.fact && end !== start) paras.push(`${end.time ? end.time + "，" : ""}${end.fact}。带着这一程的疲惫与满足，为这次出发收尾。`);
+    if (end && end.fact && end !== start) paras.push(`${end.time ? end.time + "，" : ""}${tidy(end.fact)}，为这次出发收尾。`);
     return { title: "这一程，这样走过", paras: paras };
   }
   function structureItinerary(a) {
@@ -4236,6 +4256,7 @@ function applyVisionBatch(map) {
     PHOTO_FOCUS_PENDING.add(src);
     analyzeImageFocus(src).then((focus) => {
       PHOTO_FOCUS_CACHE.set(src, focus); updateSmartFocus(src, focus); PHOTO_FOCUS_PENDING.delete(src);
+      try { if (typeof recomputeAutoCover === "function") recomputeAutoCover(src); } catch (e2) {}
     });
   }
   function smartPos(src) {
@@ -4252,14 +4273,33 @@ function applyVisionBatch(map) {
       const meta = photoMeta(src);
       if (!meta) return;
       const uses = meta.recommended_use || [];
-      const score = (meta.quality_score || 0) * 100
-        + (uses.includes("hero") ? 35 : 0)
+      let score = (meta.quality_score || 0) * 100
+        + (uses.includes("hero") || uses.includes("cover") ? 35 : 0)
         + (meta.orientation === "landscape" ? 18 : 0)
         + ((meta.subjects || []).length ? 8 : 0)
         - (meta.category === "天空" ? 24 : 0);
+      // v198：高风险裁切图（主体靠边/竖图人物）不适合做满幅 hero 封面 —— 显著降权，
+      // 否则会走进 hero「keep/contain」路径，两侧露深色留白（老板：「两边出现黑屏」）。
+      try {
+        const cp = (typeof cropPolicyOf === "function") ? cropPolicyOf(src) : null;
+        if (cp && (cp.riskLevel === "high" || cp.mode === "aspect_preserved")) score -= 30;
+        else if (cp && cp.riskLevel === "medium") score -= 10;
+      } catch (e) {}
       if (score > bestScore) { bestScore = score; best = i; }
     });
     return best;
+  }
+  /* v198：视觉分析结果写回缓存后重算自动封面（未手动设封面的草稿才生效）。
+     旧链路只在「上传回调」里算一次 bestCoverIndex —— 那一刻分析还没跑完（photoMeta 全 null）
+     → 恒返回 0，之后分析落地也从不重算 → 封面永远是第一张（老板：「随机选图做封面」）。 */
+  function recomputeAutoCover(src) {
+    try {
+      if (typeof state === "undefined" || !state || !state.draft || state.draft._coverManual) return;
+      if ((state.draft.photos || []).indexOf(src) < 0) return;
+      if (typeof bestCoverIndex !== "function") return;
+      const next = bestCoverIndex(state.draft);
+      if (next !== state.draft.coverIndex) state.draft.coverIndex = next;
+    } catch (e) {}
   }
   function coverStyle(a) {
     if (a.photos && a.photos[0]) return `background-image:url('${a.photos[0]}');background-position:${smartPos(a.photos[0])};`;
@@ -5510,12 +5550,16 @@ function applyVisionBatch(map) {
     }
     return null;
   }
-  /* P0-C：换风格 —— 真正重生成内容，并做「连续重复降权」 */
+  /* P0-C：换风格 —— 真正重生成内容，并做「连续重复降权」。
+     v198：按钮叫「换一种排版」，老板感知的「排版」= 版式轴（hero 形态/章节结构/图片组合/字体）。
+     旧实现只旋转风格轴、版式轴冻结 —— 文案换了但页面长得一模一样，被老板判「假 AI / 点了没变化」。
+     现在：风格轴 + 版式轴一起旋转（双轴都保证与当前不同），事实层依旧冻结。 */
   function regenStyleContent(a, opts) {
     if (!a) return null;
     opts = opts || {};
     const curStyle = (typeof editorialStyleOf === "function") ? editorialStyleOf(a) : { id: "" };
     const curLayout = (typeof editorialLayoutOf === "function") ? editorialLayoutOf(a) : { id: "" };
+    const nextLayout = (typeof pickEditorialLayout === "function" && EDITORIAL_LAYOUTS.length > 1) ? pickEditorialLayout(curLayout.id) : curLayout;
     const hist = Array.isArray(a._styleHistory) ? a._styleHistory.slice() : [];
     const recent = hist.slice(-2).map(function (h) { return h && h.contentAngle; }).filter(Boolean);
     // 选下一个风格：逐个尝试，跳过「近两次已用过的角度」（连续重复降权）
@@ -5528,13 +5572,14 @@ function applyVisionBatch(map) {
       if (recent.indexOf(cand.angle) < 0 || tried >= EDITORIAL_STYLES.length) { next = cand; break; }
     }
     next = next || (typeof pickEditorialStyle === "function" ? pickEditorialStyle(curStyle.id) : curStyle);
-    // 冻结事实 → 只写 style 轴；事实字段一概不碰
+    // 冻结事实 → 只写 style 轴 + layout 轴；事实字段一概不碰
     a.editorialStyleId = next.id;
+    a.editorialLayoutId = nextLayout.id;
     const dna = (typeof buildActivityDNA === "function") ? buildActivityDNA(a, a.photos) : null;
-    const variant = { angle: next.angle, structure: curLayout.structure, img: curLayout.img, density: next.density, layout: curLayout.id, style: next.id, typo: curLayout.typo, family: next.family };
+    const variant = { angle: next.angle, structure: nextLayout.structure, img: nextLayout.img, density: next.density, layout: nextLayout.id, style: next.id, typo: nextLayout.typo, family: next.family };
     const pack = angleEditorialPack(a, variant, dna || {});
     a.editorialStylePack = pack;
-    a._styleHistory = hist.concat([{ contentAngle: next.angle, styleId: next.id, layoutId: curLayout.id, createdAt: Date.now() }]).slice(-12);
+    a._styleHistory = hist.concat([{ contentAngle: next.angle, styleId: next.id, layoutId: nextLayout.id, createdAt: Date.now() }]).slice(-12);
     // 同步重生成后置的图片策略（不改 sec.imgCount / imgKind）
     return pack;
   }

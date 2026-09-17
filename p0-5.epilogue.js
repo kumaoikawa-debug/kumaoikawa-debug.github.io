@@ -1,7 +1,9 @@
-// P0-5 验收：Itinerary Structuring（行程结构化 · 双表达并存）
+// P0-5 验收：Itinerary Structuring（行程结构化）—— v198 契约更新
 // ⚠️ 夹具契约：本文件被包进 async 函数体，必须「裸顶层 return」返回；含 ok:false 才判失败。
-// 验证：老板原始行程 → 结构化数据 [{time,fact,contentRole}]；输出「结构型行程（真实时间表）」
-//       +「内容型行程（体验叙事）」两种表达同时存在，且内容叙事保留真实时间、不替换时间表。
+// v198 老板反馈「详情页多次出现详细行程，一直大重复，没有实现智能编辑」：
+//   ① 阅读页（lean / editorial）完整行程只出现一次（DAY 时间轴），叙事块不再同屏复述；
+//   ② 叙事（仅保留在后台行程编辑面板预览）必须是「节奏摘要」——不逐条复述中间时间点；
+//   ③ 角色分类：closing 项（抵达…活动结束）不得再被误判为 arrival。
 state = (typeof initState === "function") ? initState() : (typeof loadState === "function" ? loadState() : state);
 
 const checks = [];
@@ -48,40 +50,45 @@ try {
   add("contentRole 按语义归类（opening/arrival/core/meal/closing 齐全）",
     ["opening", "arrival", "core", "meal", "closing"].every((r) => tl.some((x) => x.contentRole === r)),
     tl.map((x) => x.contentRole).join(","));
+  // v198：closing 先于 arrival 判定 —— 「15:30 返程解散」必须是 closing 而非 arrival
+  const closingItem = tl.find((x) => x.time === "15:30");
+  add("closing 优先于 arrival（15:30 返程解散 → closing，不再误判 arrival）",
+    closingItem && closingItem.contentRole === "closing", "role=" + (closingItem && closingItem.contentRole));
 
-  // ③ 内容型行程：体验叙事（保留真实时间锚点，不替换时间表）
+  // ③ 叙事 = 节奏摘要（不再逐条复述时间表）
   const nar = (typeof buildItineraryNarrative === "function") ? buildItineraryNarrative(a, tl) : { paras: [] };
   const narText = (nar.paras || []).join(" ");
-  add("内容型行程：生成可读体验叙事（≥2 段）", (nar.paras || []).length >= 2, "paras=" + (nar.paras || []).length);
-  add("内容型叙事保留真实时间锚点（含 08:00 / 12:00 / 15:30）",
-    narText.includes("08:00") && narText.includes("12:00") && narText.includes("15:30"),
-    "sample=" + narText.slice(0, 48));
-  // 内容叙事不得出现时间表之外的任意时间点（证明未编造事件）
+  add("体验叙事：生成可读节奏摘要（≥2 段）", (nar.paras || []).length >= 2, "paras=" + (nar.paras || []).length);
+  add("体验叙事保留首尾时间锚点（08:00 / 15:30）",
+    narText.includes("08:00") && narText.includes("15:30"), "sample=" + narText.slice(0, 48));
+  // v198 核心：叙事不复述中间时间点（10:30/12:00/14:00 只属于 DAY 时间轴）
+  add("叙事是摘要不是复述（中间时间点 10:30/12:00/14:00 不出现在叙事里）",
+    !narText.includes("10:30") && !narText.includes("12:00") && !narText.includes("14:00"),
+    "narTimes=" + (narText.match(/\d{1,2}:\d{2}/g) || []).join(","));
   const narTimes = (narText.match(/\d{1,2}:\d{2}/g) || []);
-  add("内容型叙事未编造新时间点（所有时间都在真实时间表内）",
+  add("叙事未编造新时间点（所有时间都在真实时间表内）",
     narTimes.every((t) => realTimes.includes(t)), "narTimes=" + narTimes.join(","));
 
-  // ④ 两种表达同时存在于「简洁报名详情」
+  // ④ v198：阅读页（lean）完整行程只出现一次（时间轴），叙事块不再同屏
   state.detailMode = "lean";
   const lean = renderActivityPhone(a);
   add("简洁页含结构型时间轴（真实时间表 tl-item）", lean.includes('class="timeline"') && lean.includes("tl-item"), "tl=" + lean.includes("tl-item"));
-  add("简洁页含内容型叙事（itin-narrative）", lean.includes("itin-narrative"), "nar=" + lean.includes("itin-narrative"));
+  add("简洁页不再出现叙事复述块（itin-narrative 已从阅读页摘除）", !lean.includes("itin-narrative"), "nar=" + lean.includes("itin-narrative"));
   add("简洁页真实时间出现在结构型时间轴", realTimes.every((t) => lean.includes(t)), "times=" + realTimes.every((t) => lean.includes(t)));
+  add("简洁页「详细行程」区块只出现一次", count(lean, /<h3>详细行程<\/h3>/g) === 1, "n=" + count(lean, /<h3>详细行程<\/h3>/g));
 
-  // ⑤ 两种表达同时存在于「图文长页」
+  // ⑤ v198：图文长页（editorial）同样时间轴唯一、无叙事复述
   state.detailMode = "editorial";
-  const ed = renderActivityPhone(a);
+  const ed = renderActivityEditorial(a);
   add("图文页含结构型时间轴", ed.includes('class="timeline"') && ed.includes("tl-item"));
-  add("图文页含内容型叙事", ed.includes("itin-narrative"));
-
-  // ⑥ 两种表达结构独立：内容叙事块与时间轴块共存，非互相替换
-  add("两种表达并存且不互相替换（叙事块 + 时间轴块 各自独立存在）",
-    (ed.match(/itin-narrative/g) || []).length >= 1 && (ed.match(/tl-item/g) || []).length >= 5,
-    "narBlocks=" + (ed.match(/itin-narrative/g) || []).length + " tlItems=" + (ed.match(/tl-item/g) || []).length);
+  add("图文页不再出现叙事复述块", !ed.includes("itin-narrative"));
+  add("图文页「详细行程」区块只出现一次（底部目录条不计）", count(ed, /<h3>详细行程<\/h3>/g) === 1, "n=" + count(ed, /<h3>详细行程<\/h3>/g));
+  add("阅读页时间轴唯一且完整（tl-item ≥5 且不互相替换）",
+    (ed.match(/tl-item/g) || []).length >= 5, "tlItems=" + (ed.match(/tl-item/g) || []).length);
 
   dbg = { tlLen: tl.length, narParas: (nar.paras || []).length, leanTl: count(lean, /tl-item/g), edTl: count(ed, /tl-item/g) };
 } catch (e) {
-  add("行程双表达渲染未抛错", false, String((e && e.stack) || e));
+  add("行程结构化渲染未抛错", false, String((e && e.stack) || e));
 }
 
 const failed = checks.filter((c) => !c.pass);
