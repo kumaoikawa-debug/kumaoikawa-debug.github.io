@@ -1504,6 +1504,11 @@ const REQUIRED_MODULE_FILES = {
   intakeParseFields: "intake.js",
   intakeParseItinerary: "intake.js",
   visionReadPoster: "vision.js",
+  /* M1 活动详情页 AI Content Director：接管 regenStyle 与 renderActivityEditorial 的 outline 生成 */
+  aiContentDirector: "contentDirector.js",
+  runContentDirector: "contentDirector.js",
+  directorOutline: "contentDirector.js",
+  aiDirectorReady: "contentDirector.js",
 };
 const REQUIRED_MODULES = Object.keys(REQUIRED_MODULE_FILES);
 /* 返回「缺失的模块名 → 应在文件」清单；全部就绪返回空数组 */

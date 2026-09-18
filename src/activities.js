@@ -382,7 +382,11 @@
     // 只有换风格后的包（无 _auto）才用角度标题 —— 尊重老板原标题，避免一键生成就覆盖掉活动名。
     const heroTitle = (spack && !spack._auto && spack.title) ? gateSys(spack.title) : gateTitle(a.title);
     const sub = (spack && spack.subtitle) ? gateSys(spack.subtitle) : gateTitle(a.posterTagline || a.hook || "");
-    const outline = (typeof buildEditorialOutline === "function") ? buildEditorialOutline(a, variant) : [];
+    /* M1：若本活动跑过 AI Content Director（a.pageBlueprint 存在），
+       用 directorOutline 把 Blueprint 转成叙事章节；否则回退旧双轴大纲。 */
+    const outline = (a && a.pageBlueprint && typeof directorOutline === "function")
+      ? (directorOutline(a.pageBlueprint) || (typeof buildEditorialOutline === "function" ? buildEditorialOutline(a, variant) : []))
+      : (typeof buildEditorialOutline === "function" ? buildEditorialOutline(a, variant) : []);
     const caps = a.photoCaptions || [];
     const usedSet = new Set([coverIdx]);
     let capIdx = 1;

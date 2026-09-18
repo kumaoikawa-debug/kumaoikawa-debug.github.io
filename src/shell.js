@@ -329,20 +329,31 @@ function showView(view, params) {
         break;
       }
       case "regenStyle": {
-        /* P0-C：换风格 = 真正重生成内容，不是只换 CSS。
-           冻结：confirmedFacts / actualActivityData / DNA 事实层 / Photo Intelligence。
-           重生成：内容角度 → 主主题 → 标题 → 副标题 → 导语 → 章节标题与正文 →
-                   金句 → 图片叙事策略 → Editorial Direction → LayoutPlan。 */
+        /* M1：优先走 AI Content Director（动态 Blueprint 重生成）；
+           AI 不可用（无 Key / 无后端 / 接口异常）时回退旧双轴 regenStyleContent。 */
         const target = viewingActivity() || (state.draft ? state.draft : null);
-        let pack = null;
-        if (target && typeof regenStyleContent === "function") pack = regenStyleContent(target);
-        if (state.draft && state.draft !== target && typeof regenStyleContent === "function") pack = regenStyleContent(state.draft);
-        saveState();
-        if (showDetailLikeView()) showView(state.view, state.params);
-        else refreshPreview();
-        const angLabel = (pack && pack.angleLabel) || ((typeof EDITORIAL_ANGLES !== "undefined" && EDITORIAL_ANGLES[pack && pack.angle]) ? EDITORIAL_ANGLES[pack.angle].label : "新风格");
-        const psName = (pack && pack.photoStrategy && pack.photoStrategy.name) || "";
-        toast("已重生成风格：" + angLabel + (psName ? " · " + psName : ""));
+        if (!target) break;
+        const draftSame = !state.draft || state.draft === target;
+        if (typeof runContentDirector === "function" && typeof aiDirectorReady === "function" && aiDirectorReady()) {
+          runContentDirector(target, function (ok) {
+            if (!ok && typeof regenStyleContent === "function") {
+              regenStyleContent(target);
+              if (!draftSame) regenStyleContent(state.draft);
+            }
+            if (!draftSame && state.draft) state.draft.pageBlueprint = target.pageBlueprint;
+            if (typeof saveState === "function") saveState();
+            if (typeof showDetailLikeView === "function" && showDetailLikeView()) showView(state.view, state.params);
+            else if (typeof refreshPreview === "function") refreshPreview();
+            toast(ok ? "已按内容策划重生成（AI 总监）" : "AI 总监未成功，已换一版风格");
+          });
+        } else if (typeof regenStyleContent === "function") {
+          regenStyleContent(target);
+          if (!draftSame) regenStyleContent(state.draft);
+          saveState();
+          if (typeof showDetailLikeView === "function" && showDetailLikeView()) showView(state.view, state.params);
+          else refreshPreview();
+          toast("已重生成风格");
+        }
         break;
       }
 
