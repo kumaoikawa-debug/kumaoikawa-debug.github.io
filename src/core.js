@@ -1513,6 +1513,10 @@ const REQUIRED_MODULE_FILES = {
   aiContentDirectorCandidates: "contentDirector.js",
   scoreDirectorCandidate: "contentDirector.js",
   selectBestDirector: "contentDirector.js",
+  /* M3 三层反重复：copySimilarity/layoutSimilarity/semanticSimilarity 撞车检测 + 局部重生成 */
+  repetitionReport: "contentDirector.js",
+  aiDirectorRepair: "contentDirector.js",
+  directorFingerprintOf: "contentDirector.js",
 };
 const REQUIRED_MODULES = Object.keys(REQUIRED_MODULE_FILES);
 /* 返回「缺失的模块名 → 应在文件」清单；全部就绪返回空数组 */

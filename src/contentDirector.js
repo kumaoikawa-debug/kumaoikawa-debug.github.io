@@ -5,7 +5,7 @@
  * 推导成一份动态 Page Blueprint，而不是套用「视觉杂志型 / 纪实型 / 专业信息型 /
  * 生活方式型」之类预设风格模板。
  *
- * 本文件做 M1 + M2 的落地：
+ * 本文件做 M1 + M2 + M3 的落地：
  *   —— M1 ——
  *   ① aiContentDirector  —— 单次 LLM 调用，返回完整 Blueprint（兼容旧契约）；
  *   ② directorOutline     —— 把 Blueprint 的 sections 映射成 renderActivityEditorial
@@ -17,14 +17,17 @@
  *   ⑥ scoreDirectorCandidate      —— 适合度(bigram Jaccard)+素材满足度+历史重复度 打分；
  *   ⑦ selectBestDirector          —— 综合打分选最优（并列时素材分高者胜），
  *                            取代「盲信 AI 的 fitScore」，让 Creative Memory 真正参与决策。
+ *   —— M3 三层反重复（Anti-Repetition）——
+ *   ⑧ copySimilarity / layoutSimilarity / semanticSimilarity —— 三层撞车检测（离线可算）；
+ *   ⑨ repetitionReport            —— 汇总三层与 Creative Memory 的相似度，超阈值判定 over；
+ *   ⑩ aiDirectorRepair            —— 仅重写撞车层（局部重生成），失败保留原 Blueprint；
+ *   ⑪ directorFingerprintOf       —— 富化创意指纹(thesis/layout/copy)，供后续场次比对。
  *
  * 旧双轴 buildEditorialOutline / regenStyleContent 保留作安全回退，零回归：
  *   - 渲染层：a.pageBlueprint 存在才走 Director，否则回退；
  *   - regenStyle：Director 失败（无 Key / 无后端 / 接口异常）自动回退旧双轴。
  *
  * 后续里程碑（不在本文件落地）：
- *   M2 Creative Memory + Diversity Controller 完整（3 方向按适合度/素材/历史重复度打分选最优）；
- *   M3 三层反重复（copySimilarity / layoutFingerprint / semanticSimilarity）超阈值局部重生成；
  *   M4 30 场压力测试 harness。
  * ===================================================================== */
 
@@ -381,6 +384,190 @@ function aiDirectorReady() {
   return false;
 }
 
+/* ===================== M3 三层反重复（Anti-Repetition） =====================
+ * 不只靠 prompt 里「避免重复」的口头约束，而是把最近场次的创意指纹拿出来做
+ * **可量化的撞车检测**，并对撞车的那一层做**局部重生成**（其余字段不动）：
+ *   ① copySimilarity     —— 文案层：标题/正文句子的最大重合度；
+ *   ② layoutSimilarity   —— 版式层：章节 kind 序列的集合/顺序/长度相似度；
+ *   ③ semanticSimilarity —— 语义层：核心主张(coreThesis/insight)的文本相似度。
+ * 任一层超阈值即 over，触发 aiDirectorRepair 只重写该层。
+ * 所有相似度均为离线字符级 bigram 启发式（无需 embedding），可单测。 */
+
+const CD_M3_THRESHOLDS = { copy: 0.72, layout: 0.80, semantic: 0.70 };
+
+/* 句子切分（换行 + 中文标点） */
+function cdSentences(text) {
+  return String(text || "").split(/[\n。！？；;!?]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+}
+
+/* ① 文案相似度：两段文案间「最相似句子对」的 bigram Jaccard（0-1） */
+function copySimilarity(a, b) {
+  const sa = cdSentences(a), sb = cdSentences(b);
+  if (!sa.length || !sb.length) return 0;
+  let max = 0;
+  for (let i = 0; i < sa.length; i++) {
+    for (let j = 0; j < sb.length; j++) {
+      const v = cdJaccard(sa[i], sb[j]);
+      if (v > max) max = v;
+    }
+  }
+  return max;
+}
+
+/* 取 coreThesis（优先）或 insight 作为「语义层」文本 */
+function cdThesisOf(bp) {
+  if (!bp) return "";
+  const bb = bp.pageBlueprint || {};
+  return String(bb.coreThesis || bp.insight || "").trim();
+}
+/* 取「文案层」文本：所有章节 heading + contentIntent 拼接 */
+function cdCopyTextOf(bp) {
+  const secs = (bp && bp.pageBlueprint && bp.pageBlueprint.sections) || [];
+  const parts = [];
+  secs.forEach(function (s) {
+    if (!s) return;
+    if (s.heading) parts.push(String(s.heading));
+    if (s.contentIntent) parts.push(String(s.contentIntent));
+  });
+  return parts.join("\n");
+}
+
+/* ② 版式指纹：章节 kind 序列（存 Creative Memory 用；比对也可传指纹串或 Blueprint） */
+function layoutFingerprint(bp) {
+  const secs = (bp && bp.pageBlueprint && bp.pageBlueprint.sections) || [];
+  return secs.map(function (s) { return (s && s.kind) || "?"; }).join(">");
+}
+/* 归一化成 kind 数组：接受「scenic>route」串 或 Blueprint 对象 */
+function layoutKindsOf(x) {
+  if (typeof x === "string") return x.split(">").map(function (s) { return s.trim(); }).filter(Boolean);
+  const secs = (x && x.pageBlueprint && x.pageBlueprint.sections) || [];
+  return secs.map(function (s) { return (s && s.kind) || "?"; });
+}
+/* 版式相似度：kind 集合 Jaccard(0.5) + 长度接近度(0.25) + 同位 kind 顺序一致率(0.25) */
+function layoutSimilarity(x, y) {
+  const A = layoutKindsOf(x), B = layoutKindsOf(y);
+  if (!A.length || !B.length) return 0;
+  const setA = {}, setB = {};
+  A.forEach(function (k) { setA[k] = 1; });
+  B.forEach(function (k) { setB[k] = 1; });
+  const keysA = Object.keys(setA), keysB = Object.keys(setB);
+  let inter = 0;
+  keysA.forEach(function (k) { if (setB[k]) inter++; });
+  const union = keysA.length + keysB.length - inter;
+  const kindJ = union ? inter / union : 0;
+  const lenSim = 1 - Math.abs(A.length - B.length) / Math.max(A.length, B.length);
+  const n = Math.min(A.length, B.length);
+  let pos = 0;
+  for (let i = 0; i < n; i++) if (A[i] === B[i]) pos++;
+  const orderSim = n ? pos / n : 0;
+  return 0.5 * kindJ + 0.25 * lenSim + 0.25 * orderSim;
+}
+
+/* ③ 语义相似度：核心主张文本的 bigram Jaccard（无 embedding 的离线代理） */
+function semanticSimilarity(a, b) {
+  return cdJaccard(String(a || ""), String(b || ""));
+}
+
+/* 富化创意指纹：兼容 M2 的 dir/tone/palette，并补 thesis/layout/copy 供 M3 比对 */
+function directorFingerprintOf(bp) {
+  if (!bp) return null;
+  const inf = bp.styleInference || {};
+  const chosenDir = (bp.directions || []).filter(function (d) { return d && d.id === bp.chosen; })[0];
+  return {
+    dir: (chosenDir && chosenDir.name) || bp.chosen || "?",
+    tone: inf.tone || "?",
+    palette: inf.palette || "?",
+    thesis: cdThesisOf(bp),
+    layout: layoutFingerprint(bp),
+    copy: cdCopyTextOf(bp)
+  };
+}
+
+/* 汇总三层与 Creative Memory（最近 8 条）的最大相似度，超阈值判定 over */
+function repetitionReport(bp, mem) {
+  const arr = Array.isArray(mem) ? mem : creativeMemoryRaw().slice(-8);
+  const thesis = cdThesisOf(bp);
+  const copy = cdCopyTextOf(bp);
+  let maxCopy = 0, maxLayout = 0, maxSem = 0;
+  arr.forEach(function (m) {
+    if (!m) return;
+    if (m.copy) maxCopy = Math.max(maxCopy, copySimilarity(copy, m.copy));
+    if (m.layout) maxLayout = Math.max(maxLayout, layoutSimilarity(bp, m.layout));
+    if (m.thesis) maxSem = Math.max(maxSem, semanticSimilarity(thesis, m.thesis));
+  });
+  const layers = [];
+  if (maxCopy >= CD_M3_THRESHOLDS.copy) layers.push("copy");
+  if (maxLayout >= CD_M3_THRESHOLDS.layout) layers.push("layout");
+  if (maxSem >= CD_M3_THRESHOLDS.semantic) layers.push("semantic");
+  return { copy: maxCopy, layout: maxLayout, semantic: maxSem, layers: layers, over: layers.length > 0 };
+}
+
+/* 局部重生成：只让 AI 重写撞车层（semantic/layout/copy），其余字段一律保留。
+   无 AI / 无输出 / 输出非法 → 返回 null（调用方保留原 Blueprint，不做死循环）。 */
+async function aiDirectorRepair(a, bp, layers) {
+  if (!a || !bp || !Array.isArray(layers) || !layers.length) return null;
+  // 只有真配了 AI（直连 Key 或后端代理）才尝试重写；未配则原样返回 null（离线安全）
+  if (!(typeof aiDirectorReady === "function" && aiDirectorReady())) return null;
+  const facts = directorFacts(a);
+  const layerText = layers.map(function (L) {
+    if (L === "semantic") return "语义层（coreThesis/insight/openingStrategy 与最近场次撞车，换一个全新的核心立意）";
+    if (L === "layout") return "版式层（章节 kind 序列与最近场次撞车，调整章节结构/顺序/数量，事实必须保留）";
+    if (L === "copy") return "文案层（部分标题/正文与最近场次撞车，重写这些句子，事实不变）";
+    return String(L);
+  }).join("；");
+  const cur = bp.pageBlueprint || {};
+  const sys = "你是 ClubOS 的「AI 内容总监」。你只做**局部重写**：只改动被指出的撞车层，其他字段一律保持。"
+    + "严格遵守事实边界：不得新增或篡改时间、价格、名额、路线、人物评价等事实。输出严格 JSON。";
+  const user = "【活动事实（不得改动）】\n" + facts
+    + "\n\n【需要重写的层】\n" + layerText
+    + "\n\n【当前 Blueprint（摘要）】\n"
+    + JSON.stringify({
+      insight: bp.insight,
+      coreThesis: cur.coreThesis,
+      openingStrategy: cur.openingStrategy,
+      sections: (cur.sections || []).map(function (s) {
+        return { kind: s.kind, heading: s.heading, contentIntent: s.contentIntent, facts: s.facts || [], visualWeight: s.visualWeight };
+      })
+    })
+    + "\n\n只返回你改动的 key，JSON 形如：\n"
+    + "{\n"
+    + "  \"semantic\": { \"insight\": \"…\", \"coreThesis\": \"…\", \"openingStrategy\": \"…\" },\n"
+    + "  \"layout\": { \"sections\": [ 完整新章节，必须保留原 facts ] },\n"
+    + "  \"copy\": { \"sections\": [ {\"heading\": \"…\", \"contentIntent\": \"…\"} ] }\n"
+    + "}\n（只含被要求改的 key；copy.sections 按原章节下标对齐，只覆盖 heading/contentIntent）";
+  let out = null;
+  try {
+    out = (typeof clubLLM === "function")
+      ? await clubLLM({ system: sys, user: user, json: true, temperature: 0.85 })
+      : null;
+  } catch (e) { out = null; }
+  if (!out || typeof out !== "object") return null;
+  const merged = JSON.parse(JSON.stringify(bp));
+  merged.pageBlueprint = merged.pageBlueprint || {};
+  let changed = false;
+  if (out.semantic && layers.indexOf("semantic") >= 0) {
+    if (out.semantic.insight) merged.insight = out.semantic.insight;
+    if (out.semantic.coreThesis) merged.pageBlueprint.coreThesis = out.semantic.coreThesis;
+    if (out.semantic.openingStrategy) merged.pageBlueprint.openingStrategy = out.semantic.openingStrategy;
+    changed = true;
+  }
+  if (out.layout && Array.isArray(out.layout.sections) && layers.indexOf("layout") >= 0) {
+    const secs = out.layout.sections.filter(function (s) { return s && (s.heading || s.contentIntent); });
+    if (secs.length) { merged.pageBlueprint.sections = secs; changed = true; }
+  }
+  if (out.copy && Array.isArray(out.copy.sections) && layers.indexOf("copy") >= 0) {
+    const curSecs = merged.pageBlueprint.sections || [];
+    out.copy.sections.forEach(function (patch, i) {
+      if (!patch || !curSecs[i]) return;
+      if (patch.heading) { curSecs[i].heading = patch.heading; changed = true; }
+      if (patch.contentIntent) { curSecs[i].contentIntent = patch.contentIntent; changed = true; }
+    });
+  }
+  if (!changed) return null;
+  merged._repairedAt = Date.now();
+  return merged;
+}
+
 /* ===================== regenStyle 的异步入口 ===================== */
 /* 成功：写 a.pageBlueprint 并回写创意指纹；失败：cb(false)（上层回退本地双轴）。
    cb 为可选回调（成功/失败都调用一次）。 */
@@ -402,18 +589,19 @@ async function runContentDirector(a, cb) {
     try { bp = (typeof aiContentDirector === "function") ? await aiContentDirector(a) : null; } catch (e) { bp = null; }
   }
   if (bp) {
+    // M3：三层反重复检测 → 撞车则局部重生成（仅一次；失败保留原 bp，不做死循环）
+    try {
+      const mem = creativeMemoryRaw().slice(-8);
+      const rep = (typeof repetitionReport === "function") ? repetitionReport(bp, mem) : null;
+      if (rep && rep.over && typeof aiDirectorRepair === "function") {
+        const fixed = await aiDirectorRepair(a, bp, rep.layers);
+        if (fixed) { fixed._repairedLayers = rep.layers; bp = fixed; }
+      }
+    } catch (e) {}
     a.pageBlueprint = bp;
     if (!a._directorAngle && bp.chosen) a._directorAngle = bp.chosen;
-    // 写创意指纹到 Creative Memory（供后续反重复）
-    try {
-      const inf = bp.styleInference || {};
-      const chosenDir = (bp.directions || []).filter(function (d) { return d && d.id === bp.chosen; })[0];
-      creativeMemoryPush({
-        dir: (chosenDir && chosenDir.name) || bp.chosen || "?",
-        tone: inf.tone || "?",
-        palette: inf.palette || "?"
-      });
-    } catch (e) {}
+    // 写富化创意指纹到 Creative Memory（兼容 M2 的 tone/palette/dir，补 M3 的 thesis/layout/copy）
+    try { creativeMemoryPush(directorFingerprintOf(bp)); } catch (e) {}
     if (typeof cb === "function") cb(true);
   } else {
     if (typeof cb === "function") cb(false);
@@ -430,4 +618,11 @@ if (typeof window !== "undefined") {
   window.aiContentDirectorCandidates = aiContentDirectorCandidates;
   window.scoreDirectorCandidate = scoreDirectorCandidate;
   window.selectBestDirector = selectBestDirector;
+  window.copySimilarity = copySimilarity;
+  window.layoutSimilarity = layoutSimilarity;
+  window.semanticSimilarity = semanticSimilarity;
+  window.layoutFingerprint = layoutFingerprint;
+  window.repetitionReport = repetitionReport;
+  window.aiDirectorRepair = aiDirectorRepair;
+  window.directorFingerprintOf = directorFingerprintOf;
 }
