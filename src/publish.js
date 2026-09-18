@@ -2502,7 +2502,7 @@ function applyVisionBatch(map) {
     { key: "difficulty", label: "活动难度", required: (a) => a.type === "高海拔登山", val: (a) => a.difficulty || inferDifficulty(a), test: (raw) => /难度|轻松|中等|挑战|入门|进阶|专业级/.test(raw) },
     { key: "audience", label: "参与人群", val: (a) => (a.audience || []).join("/"), test: (raw) => /亲子|儿童|孩子|家庭|成人|团建|企业|研学|青少年|少年/.test(raw) },
     { key: "age", label: "适合年龄", required: (a) => isFamilyActivity(a), val: (a) => a.ageRange, test: (raw) => /\d{1,2}\s*[-—~至到]\s*\d{1,2}\s*岁|\d{1,2}\s*岁以上/.test(raw) },
-    { key: "price", label: "活动价格", required: true, val: (a) => (a.price != null ? "¥" + a.price + "/" + a.limitUnit : (a.priceTBD ? "待定" : "")), test: (raw) => /\d{2,4}\s*元|\d{2,4}\s*\/\s*人|价格待定|费用待定|\d{2,4}\s*每人/.test(raw) },
+    { key: "price", label: "活动价格", required: true, val: (a) => (a.price != null && +a.price > 0 ? "¥" + a.price + "/" + a.limitUnit : (a.priceTBD ? "待定" : "")), test: (raw) => /\d{2,4}\s*元|\d{2,4}\s*\/\s*人|价格待定|费用待定|\d{2,4}\s*每人/.test(raw) },
     { key: "limit", label: "招募上限", val: (a) => (a.limit ? a.limit + a.limitUnit : ""), test: (raw) => /限\s*\d+|招募\s*\d+|成行\s*\d+|\d+\s*组|\d+\s*人/.test(raw) },
     { key: "distance", label: "路线距离", val: (a) => (a.distance ? a.distance + "KM" : ""), test: (raw) => /\d+(?:\.\d+)?\s*(?:KM|km|公里)/.test(raw) },
     { key: "elevation", label: "海拔", na: (a) => !["高海拔登山", "徒步"].includes(a.type), val: (a) => (a.elevation ? a.elevation + "m" : ""), test: (raw) => /海拔/.test(raw) },
@@ -4662,12 +4662,14 @@ function applyVisionBatch(map) {
     if (!deps.length) return "";
     if (deps.length === 1) {
       const d = deps[0];
-      const price = d.price != null ? d.price : a.price;
+      /* ★展示口径：团期 0 价 / 未填价一律走「未定价」文案，绝不印「¥0」。
+         结算仍由 priceBaseOf/effectiveUnitPrice 负责，那里 0 是合法金额。 */
+      const price = priceDisplayBaseOf(a, d);
       return `<div class="dsec"><div class="dsec-h"><span class="dsec-ic">${ICON("calendar")}</span><h3>行程与团期</h3></div>
         <div class="departure-single">
           <div class="dep-single-date"><span class="dep-single-week">${esc(d.weekDay)}</span><span class="dep-single-md">${esc(formatDepartureSlash(d.date))}</span></div>
           <div class="dep-single-info">
-            <div class="dep-single-price">${price != null ? "¥" + price + "<small>/" + esc(a.limitUnit) + "</small>" : "价格详询"}</div>
+            <div class="dep-single-price">${price != null ? "¥" + price + "<small>/" + esc(a.limitUnit) + "</small>" : priceUnpricedTextOf(a)}</div>
             ${depCapacityLine(d, a, "dep-single-cap")}
             ${d.note ? `<div class="dep-single-note">${esc(d.note)}</div>` : ""}
           </div>
@@ -4675,12 +4677,12 @@ function applyVisionBatch(map) {
       </div>`;
     }
     const cards = deps.map((d) => {
-      const price = d.price != null ? d.price : a.price;
+      const price = priceDisplayBaseOf(a, d);
       const disabled = d.status === "full";
       return `<div class="departure-slide ${disabled ? "full" : ""}" data-departure-id="${d.id}">
         <div class="dep-slide-week">${esc(d.weekDay)}</div>
         <div class="dep-slide-md">${esc(formatDepartureSlash(d.date))}</div>
-        <div class="dep-slide-price">${price != null ? "¥" + price : "详询"}</div>
+        <div class="dep-slide-price">${price != null ? "¥" + price : priceUnpricedTextOf(a)}</div>
         ${depCapacityLine(d, a, "dep-slide-cap")}
         ${d.note ? `<div class="dep-slide-note">${esc(d.note)}</div>` : ""}
         ${disabled ? `<div class="dep-slide-badge">已满员</div>` : ""}

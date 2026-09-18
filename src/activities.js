@@ -447,7 +447,7 @@
       ["mountain", "地点", a.place || a.type || "待定"],
       ["activity", "强度", (a.difficulty && !/missing/i.test(a.difficulty)) ? a.difficulty : "待确认"],
       ["users", "名额", a.limit ? a.limit + (a.limitUnit || "人") : "不限"],
-      ["tag", "价格", a.price ? "¥" + a.price + (a.limitUnit ? "/" + a.limitUnit : "") : "详询"],
+      ["tag", "价格", priceTextOf(a, null, { withUnit: true })],
     ];
     /* v199：价格行可能含「会员价 + 原价划线」（由 priceDisplayHtml 产出，本身已转义），
        该行直出 HTML；其余行仍走 esc。 */
@@ -461,7 +461,7 @@
       ? `<div class="fee-mem-row"><span class="fee-mem-tag">${esc((feeBen.tier && feeBen.tier.name) || "会员")}价</span><b class="fee-mem-v">¥${feeBen.member}</b><s class="fee-mem-base">¥${feeBen.base}</s><span class="fee-mem-save">省 ¥${feeBen.savePerUnit}${esc(a.limitUnit || "")}</span></div>`
       : "";
     const feeExtraHtml = (typeof memberMarketingExtrasHtml === "function") ? memberMarketingExtrasHtml(a, a.price || 0) : "";
-    const feeHtml = `<div class="dsec" id="ed-fee"><div class="dsec-h"><h3>费用说明</h3></div><div class="fee-card"><div class="fee-hero"><div class="fee-hero-l"><span class="fee-hero-k">活动价格</span><b class="fee-hero-v">${a.price ? "¥" + a.price : "详询"}</b>${a.price ? `<span class="fee-hero-u">/ ${esc(a.limitUnit)}</span>` : ""}</div>${feeMemHtml}</div>${feeExtraHtml}`
+    const feeHtml = `<div class="dsec" id="ed-fee"><div class="dsec-h"><h3>费用说明</h3></div><div class="fee-card"><div class="fee-hero"><div class="fee-hero-l"><span class="fee-hero-k">活动价格</span><b class="fee-hero-v">${priceTextOf(a, null)}</b>${priceDisplayBaseOf(a, null) != null ? `<span class="fee-hero-u">/ ${esc(a.limitUnit)}</span>` : ""}</div>${feeMemHtml}</div>${feeExtraHtml}`
       + (fee.length ? `<div class="fee-sec"><div class="fee-sec-h"><span class="fee-sec-ic ok">${ICON("check")}</span>费用包含</div><div class="fee-grid">${fee.map((f) => `<div class="fee-cell"><span class="fee-cell-ic">${ICON("check")}</span><span>${esc(f)}</span></div>`).join("")}</div></div>` : "")
       + ((a.feeExclude || []).length ? `<div class="fee-sec"><div class="fee-sec-h"><span class="fee-sec-ic no">${ICON("x")}</span>费用不含</div><div class="fee-grid">${a.feeExclude.map((f) => `<div class="fee-cell fee-cell-no"><span class="fee-cell-ic no">${ICON("x")}</span><span>${esc(f)}</span></div>`).join("")}</div></div>` : "")
       + `</div></div>`;
@@ -754,7 +754,7 @@
       org: `<div class="dsec"><div class="dsec-h"><h3>关于${esc(state.brand.name)}</h3></div><div class="org-block">${orgLogo()}<div><div style="font-weight:700">${esc(state.brand.name)}</div>${(isFamily || !/亲子|孩子|儿童|少年/.test(state.brand.intro || "")) && state.brand.intro ? `<div class="tiny muted" style="margin:3px 0;line-height:1.6">${esc(state.brand.intro)}</div>` : ""}<div class="tiny muted">客服微信：${esc(state.brand.wechat)} · ${esc(state.brand.phone)}</div></div></div></div>`,
       fee: `<div class="dsec decision-fee" id="sec-notes"><div class="dsec-h"><h3>费用说明</h3></div><div class="fee-card">
         <div class="fee-hero">
-          <div class="fee-hero-l"><span class="fee-hero-k">活动价格</span><b class="fee-hero-v">${a.price ? "¥" + a.price : "详询"}</b>${a.price ? `<span class="fee-hero-u">/ ${esc(a.limitUnit)}</span>` : ""}</div>
+          <div class="fee-hero-l"><span class="fee-hero-k">活动价格</span><b class="fee-hero-v">${priceTextOf(a, null)}</b>${priceDisplayBaseOf(a, null) != null ? `<span class="fee-hero-u">/ ${esc(a.limitUnit)}</span>` : ""}</div>
           ${(() => { const fb = memberBenefitOf(a, null); return fb.hasBenefit ? `<div class="fee-mem-row"><span class="fee-mem-tag">${esc((fb.tier && fb.tier.name) || "会员")}价</span><b class="fee-mem-v">¥${fb.member}</b><s class="fee-mem-base">¥${fb.base}</s><span class="fee-mem-save">省 ¥${fb.savePerUnit}${esc(a.limitUnit || "")}</span></div>` : ""; })()}
         </div>
         ${(typeof memberMarketingExtrasHtml === "function") ? memberMarketingExtrasHtml(a, a.price || 0) : ""}
@@ -782,7 +782,7 @@
         { ic: "mountain", k: "地点", v: esc(a.place || a.type || "待定") },
         { ic: "activity", k: "强度", v: esc(routeDifficultyConflict ? "待机构确认" : ((a.difficulty && !/missing/i.test(a.difficulty)) ? a.difficulty : "待确认")) },
         { ic: "users", k: "名额", v: esc(a.limit ? a.limit + a.limitUnit : "不限") },
-        { ic: "tag", k: "价格", v: (typeof priceDisplayHtml === "function") ? priceDisplayHtml(a, null, { bare: true, showRange: false }) : (a.price ? "¥" + a.price : "详询"), _raw: 1 },
+        { ic: "tag", k: "价格", v: (typeof priceDisplayHtml === "function") ? priceDisplayHtml(a, null, { bare: true, showRange: false }) : priceTextOf(a, null), _raw: 1 },
       ];
       return `<div class="decision-meta">${rows.map((r) => `<div class="dm-item"><span class="dm-ic">${ICON(r.ic)}</span><div class="dm-t"><span class="dm-k">${r.k}</span><span class="dm-v">${r.v}</span></div></div>`).join("")}</div>`;
     })();

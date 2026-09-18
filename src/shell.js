@@ -2614,7 +2614,7 @@ function showView(view, params) {
     const sub = (a.type || "") + " · " + (audienceLabel(a) || "成人");
     const dateTxt = (a.dateMD || a.date || "待定").trim();
     const placeRaw = ((a.meeting ? a.meeting + " · " : "") + (a.place || "待定"));
-    const priceTxt = a.price ? ("¥" + a.price) : (a.priceTBD ? "价格待定" : "详询");
+    const priceTxt = priceTextOf(a, null);
     const unitTxt = a.price ? ("/" + (a.limitUnit || "人")) : "";
     const diffTxt = a.difficulty || "待确认";
     const curPhoto = (a.photos || [])[a.posterPhotoIndex || 0] || (a.photos || [])[0];

@@ -206,9 +206,7 @@ const total = checks.length, passed = checks.filter((c) => c.pass).length;
 return {
   ok: passed === total, total, passed, checks,
   /* 非致命但值得知道的现场事实（不进断言，避免把既有问题记成本次回归失败） */
-  knownIssues: [
-    "无价格活动在详情页仍渲染「¥0/人」（cta/dock），非本里程碑引入，建议后续做诚实空态"
-  ],
+  knownIssues: [],   /* v213 已修：无价格活动不再渲染「¥0/人」，见 case-v213-honest-price.epilogue.js */
   metrics: {
     total: R.total, ok: R.ok, memPeak: R.memPeak, uniqLayouts: R.uniqLayouts,
     maxCopy: r4(R.maxCopy), maxLayout: r4(R.maxLayout), maxSem: r4(R.maxSem),

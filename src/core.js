@@ -1020,6 +1020,31 @@
     if (dep && dep.price != null && isFinite(+dep.price)) return +dep.price;
     return (a && a.price != null && isFinite(+a.price)) ? +a.price : null;
   }
+  /* ---------- 价格「展示口径」：与结算口径分开 ----------
+     priceBaseOf / effectiveUnitPrice 是结算真源，0 在那里是合法金额（免费或未填都可能）。
+     但展示层不能把 0 当金额印出来 —— 起因：a.price = 0（价格没填）曾让详情页
+     的 CTA / 悬浮条 / 列表卡 / 报名页渲染出「¥0/人」，看起来像在报一个不存在的价。
+     这里只做一次归一：非有限数、或 <= 0，一律视为「未定价」→ null。 */
+  function priceDisplayBaseOf(a, dep) {
+    const base = priceBaseOf(a, dep);
+    if (base == null) return null;
+    const n = +base;
+    return (isFinite(n) && n > 0) ? n : null;
+  }
+  /* 未定价时的统一文案：标了「免费」说免费，标了「价格待定」说待定，其余「详询」。 */
+  function priceUnpricedTextOf(a) {
+    const raw = (a && a.price != null) ? String(a.price).trim() : "";
+    if (raw === "免费") return "免费";
+    return (a && a.priceTBD) ? "价格待定" : "详询";
+  }
+  /* 单行价格文案（纯文本）—— 列表卡 / 决策速览 / 标签 / 团期条一律走它。
+     禁止再手写 `"¥" + a.price`：那会把 0 和「免费」这类非金额拼成「¥0」「¥免费」。 */
+  function priceTextOf(a, dep, opts) {
+    opts = opts || {};
+    const base = priceDisplayBaseOf(a, dep);
+    if (base == null) return priceUnpricedTextOf(a);
+    return "¥" + base + (opts.withUnit ? "/" + ((a && a.limitUnit) || "人") : "");
+  }
   function effectiveUnitPrice(a, dep, tier) {
     const base = priceBaseOf(a, dep);
     if (base == null) return null;
@@ -1041,26 +1066,28 @@
     const hasBenefit = !!(a && a.useMemberPrice && base != null && member != null && member < base);
     return { base: base, member: member, tier: tier, hasBenefit: hasBenefit, savePerUnit: hasBenefit ? base - member : 0 };
   }
-  /* 跨等级最低会员价（未登录/未定级时展示「会员价 ¥X 起」） */
+  /* 跨等级最低会员价（未登录/未定级时展示「会员价 ¥X 起」）。
+     只服务展示，故走 priceDisplayBaseOf：未定价（0/空）时不给任何会员价话术。 */
   function memberBestPriceOf(a, dep) {
     if (!a || !a.useMemberPrice) return null;
-    const base = priceBaseOf(a, dep);
+    const base = priceDisplayBaseOf(a, dep);
     const prices = (state.memberTiers || []).map(function (t) {
       const tp = (a.tierPrices || {})[t.id];
-      if (tp != null && isFinite(+tp)) return +tp;
+      if (tp != null && isFinite(+tp) && +tp > 0) return +tp;
       if (t.discount && t.discount < 100 && base != null) return Math.round(base * t.discount / 100);
       return null;
-    }).filter(function (p) { return p != null; });
+    }).filter(function (p) { return p != null && p > 0; });
     if (!prices.length) return null;
     const min = Math.min.apply(null, prices);
     return (base != null && min < base) ? min : null;
   }
-  /* 详情页/列表统一价格 HTML：有真优惠才展示会员价与原价划线 */
+  /* 详情页/列表统一价格 HTML：有真优惠才展示会员价与原价划线。
+     ★未定价时输出诚实文案（详询 / 价格待定 / 免费），绝不输出「¥0」。 */
   function priceDisplayHtml(a, dep, opts) {
     opts = opts || {};
     const unit = esc((a && a.limitUnit) || "人");
-    const base = priceBaseOf(a, dep);
-    if (base == null) return "详询";
+    const base = priceDisplayBaseOf(a, dep);
+    if (base == null) return priceUnpricedTextOf(a);
     const ben = memberBenefitOf(a, dep);
     const suffix = opts.bare ? "" : "<small>/" + unit + "</small>";
     if (!ben.hasBenefit) {
@@ -1521,6 +1548,11 @@ const REQUIRED_MODULE_FILES = {
   cdStressScenarios: "contentDirector.js",
   cdStressRun: "contentDirector.js",
   creativeMemoryWrite: "contentDirector.js",
+  /* v213 诚实价格：显示层把「未定价」（0/空）归一到 详询/价格待定/免费，
+     front.js 的 C 端列表卡与报名页也直接调它们 —— 缺一个是「印出 ¥0」 */
+  priceDisplayBaseOf: "core.js",
+  priceUnpricedTextOf: "core.js",
+  priceTextOf: "core.js",
 };
 const REQUIRED_MODULES = Object.keys(REQUIRED_MODULE_FILES);
 /* 返回「缺失的模块名 → 应在文件」清单；全部就绪返回空数组 */
