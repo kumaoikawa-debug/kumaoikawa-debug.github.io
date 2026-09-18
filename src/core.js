@@ -1517,6 +1517,10 @@ const REQUIRED_MODULE_FILES = {
   repetitionReport: "contentDirector.js",
   aiDirectorRepair: "contentDirector.js",
   directorFingerprintOf: "contentDirector.js",
+  /* M4 压力测试 harness：30 场连续压测 + 记忆隔离（线上控制台可自检） */
+  cdStressScenarios: "contentDirector.js",
+  cdStressRun: "contentDirector.js",
+  creativeMemoryWrite: "contentDirector.js",
 };
 const REQUIRED_MODULES = Object.keys(REQUIRED_MODULE_FILES);
 /* 返回「缺失的模块名 → 应在文件」清单；全部就绪返回空数组 */

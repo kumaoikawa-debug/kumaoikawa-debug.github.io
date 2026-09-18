@@ -23,12 +23,16 @@
  *   ⑩ aiDirectorRepair            —— 仅重写撞车层（局部重生成），失败保留原 Blueprint；
  *   ⑪ directorFingerprintOf       —— 富化创意指纹(thesis/layout/copy)，供后续场次比对。
  *
+ *   —— M4 压力测试 harness ——
+ *   ⑫ cdStressScenarios           —— 确定性生成 30 场差异化场景（含 0 照片/无价格/无行程/超长标题等边界）；
+ *   ⑬ cdStressRun                 —— 逐场跑 runContentDirector 并汇总不变量/撞车度/记忆规模，
+ *                                    默认记忆隔离（跑前快照、跑后还原），单场失败不中断整轮。
+ *
  * 旧双轴 buildEditorialOutline / regenStyleContent 保留作安全回退，零回归：
  *   - 渲染层：a.pageBlueprint 存在才走 Director，否则回退；
  *   - regenStyle：Director 失败（无 Key / 无后端 / 接口异常）自动回退旧双轴。
  *
- * 后续里程碑（不在本文件落地）：
- *   M4 30 场压力测试 harness。
+ * 里程碑已全部落地（M1 单次 Blueprint / M2 多候选打分选优 / M3 三层反重复 / M4 30 场压测）。
  * ===================================================================== */
 
 const CD_MEM_KEY = "clubos_creative_memory_v1";
@@ -608,8 +612,225 @@ async function runContentDirector(a, cb) {
   }
 }
 
+/* ===================== M4 压力测试 harness（30 场） =====================
+ * 为什么需要它：M1/M2/M3 的单元契约都只验证「单场」正确——但真实使用是**连续多场**，
+ * 记忆会累积、候选会与历史撞车、边界字段会缺失。单场绿 ≠ 30 场绿。
+ *
+ * 设计原则：
+ *   ① 不触网：默认 engine 就是 runContentDirector（线上配了 AI 就真跑真 AI；
+ *      离线沙箱把 clubLLM/getAIKey 换掉即可确定性复跑同一套断言）。
+ *   ② 记忆隔离：默认 resetMemory=true —— 跑前快照、跑后还原。
+ *      只为跑测试却污染用户真实 Creative Memory 是 bug，不是 feature。
+ *   ③ 单场失败不中断整轮：每场独立 try/catch，错误写进 runs[i].error 后继续跑下一场。
+ *
+ * 用法（线上真机自检，浏览器控制台）：
+ *   const r = await cdStressRun(cdStressScenarios());
+ *   console.table(r.runs);  r.uniqLayouts;  r.maxCopy;  r.memPeak;  r.memoryRestored
+ * ===================================================================== */
+
+/* 全量写回 Creative Memory（压测快照还原用；creativeMemoryPush 只能逐条追加） */
+function creativeMemoryWrite(arr) {
+  try {
+    if (typeof localStorage === "undefined" || !localStorage) return false;
+    localStorage.setItem(CD_MEM_KEY, JSON.stringify((Array.isArray(arr) ? arr : []).slice(-CD_MEM_MAX)));
+    return true;
+  } catch (e) { return false; }
+}
+
+/* 渲染器认的 kind 受控词表（与 directorOutline 内联白名单同口径） */
+const CD_KIND_WHITELIST = ["scenic", "experience", "route", "people", "night", "info"];
+function cdR4(x) { return Math.round(Number(x || 0) * 1e4) / 1e4; }
+
+/* 30 场确定性场景：刻意覆盖「字段缺失 / 规模极值 / 字符异常」三类边界，
+   并含一场与第 1 场高度同质的「重复压测基线场」用于逼出历史撞车。
+   表列：标题 / 类型 / 地点 / 天数 / 照片数 / 价格 / 海拔 / 人群 / 行程天数 / 标签 */
+function cdStressScenarios() {
+  const T = [
+    ["初秋轻徒步：莫干山竹海", "徒步", "莫干山", 1, 0, 380, 400, "周末轻徒步人群", 1, "边界:0照片"],
+    ["只有一张照片的日落", "摄影", "东白山", 1, 1, 0, 800, "摄影爱好者", 1, "边界:1照片+无价格"],
+    ["坝上草原秋摄五日", "摄影", "乌兰布统", 5, 20, 3680, 1500, "摄影发烧友", 5, "边界:20照片"],
+    ["溪谷营地两日（无价格）", "露营", "安吉", 2, 6, 0, 300, "", 2, "边界:无价格+无人群"],
+    ["无名高地", "", "", 2, 4, 880, 0, "山系青年", 0, "边界:无类型/无海拔/无行程"],
+    ["横断长线十五日", "徒步", "横断山脉", 15, 12, 12800, 4200, "资深徒步者", 15, "边界:15天"],
+    ["京郊最美的一段山脊线从清晨云海走到黄昏落日整整十二小时徒步纪实与装备清单", "徒步", "海坨山", 2, 8, 680, 2241, "徒步进阶人群", 2, "边界:超长标题"],
+    ["溪谷 & 星空 <露营> 「双人帐篷」", "露营", "浙西大峡谷", 2, 5, 1280, 600, "情侣/朋友", 2, "边界:特殊字符"],
+    ["贝加尔湖蓝冰八日", "摄影", "贝加尔湖", 8, 18, 9800, 460, "摄影+冰雪爱好者", 8, "常规:长线"],
+    ["四明山越野训练营", "越野", "四明山", 2, 7, 1580, 900, "越野跑者", 2, "常规:越野"],
+    ["梅里转山七日", "徒步", "德钦", 7, 16, 6800, 3700, "高原徒步者", 7, "常规:高原"],
+    ["皮划艇日归体验", "皮划艇", "千岛湖", 1, 4, 580, 100, "水上运动新手", 1, "常规:水上"],
+    ["雪季单板入门营", "滑雪", "崇礼", 3, 9, 4280, 2100, "滑雪新手", 3, "常规:雪季"],
+    ["北海道温泉慢旅六日", "温泉", "登别", 6, 14, 11200, 200, "亲子家庭", 6, "常规:出境"],
+    ["城市漫步：梧桐区半日", "城市漫步", "上海", 1, 3, 99, 0, "城市探索者", 1, "常规:城市"],
+    ["腾格里沙漠穿越", "徒步", "阿拉善", 4, 11, 3980, 1200, "沙漠徒步爱好者", 4, "常规:沙漠"],
+    ["武功山穿越三日", "徒步", "萍乡", 3, 13, 1680, 1918, "露营爱好者", 3, "常规:山脊"],
+    ["香格里拉亲子五日", "亲子", "香格里拉", 5, 15, 5980, 3300, "亲子家庭", 5, "常规:亲子"],
+    ["秦岭太白南北穿越", "徒步", "太白山", 3, 10, 2280, 3767, "重装徒步者", 3, "常规:重装"],
+    ["洱海骑行环湖四日", "骑行", "大理", 4, 12, 2680, 2000, "骑行爱好者", 4, "常规:骑行"],
+    ["甘南草原摄影七日", "摄影", "迭部", 7, 19, 7280, 3000, "风光摄影师", 7, "常规:风光"],
+    ["吉林雾凇两日", "摄影", "吉林市", 2, 6, 1580, 300, "摄影爱好者", 2, "常规:冬季"],
+    ["雅拉雪山徒步五日", "徒步", "康定", 5, 14, 5280, 4000, "高原徒步者", 5, "常规:雪山"],
+    ["徽杭古道一日", "徒步", "绩溪", 1, 5, 280, 600, "入门徒步人群", 1, "常规:古道"],
+    ["海南冲浪三日", "冲浪", "万宁", 3, 8, 3180, 10, "年轻运动人群", 3, "常规:海"],
+    ["雨崩村六日", "徒步", "德钦", 6, 17, 6980, 3100, "徒步进阶人群", 6, "常规:秘境"],
+    ["北疆喀纳斯九日", "摄影", "布尔津", 9, 20, 9880, 1374, "摄影+长线人群", 9, "常规:九日"],
+    ["单人成行的露营日归", "露营", "富阳", 1, 2, 199, 150, "新手/独行", 1, "边界:2照片+独行"],
+    ["无边界的空白活动", "", "", 1, 1, 0, 0, "", 1, "边界:几乎全空"],
+    ["重复压测基线场", "徒步", "莫干山", 1, 4, 380, 400, "周末轻徒步人群", 1, "常规:基线"]
+  ];
+  const out = [];
+  T.forEach(function (r, i) {
+    const photos = [];
+    for (let k = 0; k < (r[4] || 0); k++) photos.push({ id: "p" + (i + 1) + "-" + (k + 1) });
+    const itin = [];
+    for (let d = 0; d < (r[8] || 0); d++) {
+      itin.push({ label: "第 " + (d + 1) + " 天", items: [
+        { time: "08:00", text: (r[2] || "集合地") + "集合出发" },
+        { time: "14:00", text: "第 " + (d + 1) + " 天抵达营地" }
+      ] });
+    }
+    const id = "stress-" + (i + 1);
+    out.push({
+      id: id, name: r[0], tag: r[9],
+      act: {
+        id: id, title: r[0], type: r[1], place: r[2], days: r[3], photos: photos,
+        price: r[5], elevation: r[6], audience: r[7] ? [r[7]] : [], limit: 12 + i, limitUnit: "人",
+        difficulty: r[3] >= 4 ? "进阶" : "轻松",
+        meeting: r[2] ? r[2] + "高铁站" : "",
+        itineraryDays: itin
+      }
+    });
+  });
+  return out;
+}
+
+/* outline 不变量校验：key 唯一 / imgCount∈[1,3] / kind 在白名单 / 标题与段落非空 / 节数与 Blueprint 一致 */
+function cdOutlineCheck(outline, bp) {
+  const bad = [];
+  if (!Array.isArray(outline) || !outline.length) return { ok: false, bad: ["no-outline"] };
+  const seen = {};
+  outline.forEach(function (s, i) {
+    if (!s || typeof s !== "object") { bad.push("null@" + i); return; }
+    if (seen[s.key]) bad.push("dup-key:" + s.key);
+    seen[s.key] = 1;
+    const ic = Number(s.imgCount);
+    if (!(ic >= 1 && ic <= 3)) bad.push("imgCount:" + s.imgCount);
+    if (CD_KIND_WHITELIST.indexOf(s.kind) < 0) bad.push("kind:" + s.kind);
+    if (!s.heading) bad.push("heading@" + i);
+    if (!Array.isArray(s.paras) || !s.paras.length) bad.push("paras@" + i);
+    else if (s.paras.some(function (p) { return !String(p || "").trim(); })) bad.push("empty-para@" + i);
+  });
+  const want = ((bp && bp.pageBlueprint && bp.pageBlueprint.sections) || []).length;
+  if (want !== outline.length) bad.push("count:" + outline.length + "/" + want);
+  return { ok: bad.length === 0, bad: bad };
+}
+
+/* 默认执行器：走完整 M1→M2→M3 流水线（runContentDirector 内部已含候选打分 + 反重复） */
+async function cdStressEngine(act) {
+  if (typeof runContentDirector !== "function") return null;
+  await runContentDirector(act);
+  return (act && act.pageBlueprint) || null;
+}
+
+/* 压测主入口。
+   opts.engine      自定义执行器 (act) => Promise<bp|null>（默认 cdStressEngine，可换真/假 AI）
+   opts.resetMemory 默认 true：跑前快照、跑后还原（禁止污染真实 Creative Memory）
+   返回 { total, ok, failed, runs[], uniqLayouts, uniqTones, maxCopy, maxLayout, maxSem,
+          repaired, badOutline, badFingerprint, memPeak, memoryRestored } */
+async function cdStressRun(scenarios, opts) {
+  opts = opts || {};
+  const list = (Array.isArray(scenarios) && scenarios.length) ? scenarios : cdStressScenarios();
+  const resetMemory = opts.resetMemory !== false;
+  const engine = (typeof opts.engine === "function") ? opts.engine : cdStressEngine;
+  const snap = resetMemory ? creativeMemoryRaw() : null;
+  if (resetMemory) creativeMemoryWrite([]);
+  const runs = [];
+  const seenLayout = {};
+  let memPeak = 0;
+  for (let i = 0; i < list.length; i++) {
+    const sc = list[i] || {};
+    const act = JSON.parse(JSON.stringify(sc.act || sc));
+    const memBefore = creativeMemoryRaw().slice(-8);
+    const t0 = Date.now();
+    let bp = null, err = "";
+    try { bp = await engine(act); } catch (e) { err = String((e && e.message) || e); bp = null; }
+    const rec = {
+      id: sc.id || ("s" + (i + 1)), tag: sc.tag || "", ok: !!bp, ms: Date.now() - t0,
+      photos: (act.photos || []).filter(Boolean).length, error: err
+    };
+    if (bp) {
+      const outline = (typeof directorOutline === "function") ? directorOutline(bp) : null;
+      const chk = cdOutlineCheck(outline, bp);
+      const fp = (typeof directorFingerprintOf === "function") ? directorFingerprintOf(bp) : null;
+      const rep = (typeof repetitionReport === "function") ? repetitionReport(bp, memBefore) : null;
+      const cs = bp._candidateScore || null;
+      rec.sections = ((bp.pageBlueprint && bp.pageBlueprint.sections) || []).length;
+      rec.outlineLen = outline ? outline.length : 0;
+      rec.outlineOk = chk.ok;
+      rec.bad = chk.bad;
+      rec.layout = fp ? String(fp.layout || "") : "";
+      rec.tone = fp ? String(fp.tone || "") : "";
+      rec.palette = fp ? String(fp.palette || "") : "";
+      rec.fpComplete = !!(fp && fp.dir && fp.tone && fp.palette && fp.thesis && fp.layout && fp.copy);
+      rec.asset = cs ? cdR4(cs.asset) : null;
+      rec.fit = cs ? cdR4(cs.fit) : null;
+      rec.total = cs ? cdR4(cs.total) : null;
+      rec.rep = rep ? { copy: cdR4(rep.copy), layout: cdR4(rep.layout), semantic: cdR4(rep.semantic), over: !!rep.over, layers: rep.layers } : null;
+      rec.repaired = !!bp._repairedAt;
+      if (rec.layout && seenLayout[rec.layout]) rec.dupLayout = true;
+      if (rec.layout) seenLayout[rec.layout] = 1;
+      /* 端到端再走一遍渲染层：只在「多场连续」时才暴露的问题（样式轴累积、记忆干扰、
+         边界字段缺失）必须在渲染出口也被看见。opts.render=false 可跳过。 */
+      if (opts.render !== false && typeof renderActivityEditorial === "function") {
+        try {
+          const html = String(renderActivityEditorial(act) || "");
+          rec.renderOk = true;
+          rec.htmlLen = html.length;
+          rec.yen = (html.match(/¥/g) || []).length;
+        } catch (e2) {
+          rec.renderOk = false; rec.htmlLen = 0; rec.yen = 0;
+          rec.renderError = String((e2 && e2.message) || e2);
+        }
+      }
+    }
+    const m = creativeMemoryRaw().length;
+    rec.memSize = m;
+    if (m > memPeak) memPeak = m;
+    runs.push(rec);
+  }
+  if (resetMemory && snap) creativeMemoryWrite(snap);
+  const okRuns = runs.filter(function (r) { return r.ok; });
+  const layouts = {}, tones = {};
+  let maxCopy = 0, maxLayout = 0, maxSem = 0, repaired = 0, badOutline = 0, badFp = 0, badRender = 0;
+  okRuns.forEach(function (r) {
+    if (r.layout) layouts[r.layout] = 1;
+    if (r.tone) tones[r.tone] = 1;
+    if (r.rep) {
+      if (r.rep.copy > maxCopy) maxCopy = r.rep.copy;
+      if (r.rep.layout > maxLayout) maxLayout = r.rep.layout;
+      if (r.rep.semantic > maxSem) maxSem = r.rep.semantic;
+    }
+    if (r.repaired) repaired++;
+    if (r.outlineOk === false) badOutline++;
+    if (r.fpComplete === false) badFp++;
+    if (r.renderOk === false) badRender++;
+  });
+  return {
+    total: runs.length, ok: okRuns.length, failed: runs.length - okRuns.length, runs: runs,
+    /* 便于区分「AI 没配 → 30 场全回退」与「流水线真的有 bug」 */
+    aiReady: (typeof aiDirectorReady === "function") ? aiDirectorReady() : false,
+    uniqLayouts: Object.keys(layouts).length, uniqTones: Object.keys(tones).length,
+    maxCopy: cdR4(maxCopy), maxLayout: cdR4(maxLayout), maxSem: cdR4(maxSem),
+    repaired: repaired, badOutline: badOutline, badFingerprint: badFp, badRender: badRender,
+    memPeak: memPeak,
+    memoryRestored: resetMemory ? (JSON.stringify(creativeMemoryRaw()) === JSON.stringify(snap || [])) : null
+  };
+}
+
 /* 显式挂到 window，兼容 vm 沙箱（顶层函数声明在沙箱里不一定进全局） */
 if (typeof window !== "undefined") {
+  window.cdStressScenarios = cdStressScenarios;
+  window.cdStressRun = cdStressRun;
+  window.creativeMemoryWrite = creativeMemoryWrite;
   window.aiContentDirector = aiContentDirector;
   window.runContentDirector = runContentDirector;
   window.directorOutline = directorOutline;
