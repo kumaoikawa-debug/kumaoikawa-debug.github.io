@@ -1509,6 +1509,10 @@ const REQUIRED_MODULE_FILES = {
   runContentDirector: "contentDirector.js",
   directorOutline: "contentDirector.js",
   aiDirectorReady: "contentDirector.js",
+  /* M2 Diversity Controller：多候选 + 自有打分器选最优（取代盲信 AI fitScore） */
+  aiContentDirectorCandidates: "contentDirector.js",
+  scoreDirectorCandidate: "contentDirector.js",
+  selectBestDirector: "contentDirector.js",
 };
 const REQUIRED_MODULES = Object.keys(REQUIRED_MODULE_FILES);
 /* 返回「缺失的模块名 → 应在文件」清单；全部就绪返回空数组 */

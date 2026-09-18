@@ -5,13 +5,18 @@
  * 推导成一份动态 Page Blueprint，而不是套用「视觉杂志型 / 纪实型 / 专业信息型 /
  * 生活方式型」之类预设风格模板。
  *
- * 本文件只做 M1 的最小落地：
- *   ① aiContentDirector  —— 单次 LLM 调用，返回完整 Blueprint；
+ * 本文件做 M1 + M2 的落地：
+ *   —— M1 ——
+ *   ① aiContentDirector  —— 单次 LLM 调用，返回完整 Blueprint（兼容旧契约）；
  *   ② directorOutline     —— 把 Blueprint 的 sections 映射成 renderActivityEditorial
  *                            需要的 outline 形状（失败安全回退到旧双轴）；
  *   ③ runContentDirector  —— regenStyle 的异步入口（成功写 a.pageBlueprint）；
- *   ④ Creative Memory     —— 最近 ~20 场「创意指纹」的 localStorage 读写，
- *                            供 Director 在 prompt 里反重复。
+ *   ④ Creative Memory     —— 最近 ~20 场「创意指纹」的 localStorage 读写。
+ *   —— M2 Diversity Controller ——
+ *   ⑤ aiContentDirectorCandidates —— 单次 LLM 返回 3 套完整 Blueprint 候选；
+ *   ⑥ scoreDirectorCandidate      —— 适合度(bigram Jaccard)+素材满足度+历史重复度 打分；
+ *   ⑦ selectBestDirector          —— 综合打分选最优（并列时素材分高者胜），
+ *                            取代「盲信 AI 的 fitScore」，让 Creative Memory 真正参与决策。
  *
  * 旧双轴 buildEditorialOutline / regenStyleContent 保留作安全回退，零回归：
  *   - 渲染层：a.pageBlueprint 存在才走 Director，否则回退；
@@ -200,6 +205,171 @@ function directorOutline(bp) {
   return out.length ? out : null;
 }
 
+/* ===================== M2 Diversity Controller =====================
+ * 让 Director 一次性产出 3 套完整 Blueprint，再用自有打分器（而非盲信 AI 的 fitScore）
+ * 选最优：① 适合度 = 活动事实与 Blueprint 嵌入事实的 bigram Jaccard；
+ *         ② 素材满足度 = 可用照片数 vs 各章节配图需求；
+ *         ③ 历史重复度 = 与 Creative Memory 最近调性/色板/方向的撞车程度。
+ * 三维度综合打分选最优；打分器离线可跑（不依赖网络），便于单测与回归。 */
+
+/* 字符级 bigram 集合（中文按字、英文按小写词），用于事实重合度 */
+function cdBigrams(text) {
+  const s = String(text || "").toLowerCase().replace(/[\s，。、；：！？“”‘’（）()\[\]【】…—\-_,.;:!?]+/g, "");
+  const set = new Set();
+  if (!s) return set;
+  for (let i = 0; i < s.length - 1; i++) set.add(s.slice(i, i + 2));
+  for (let i = 0; i < s.length; i++) set.add("□" + s[i]); // 单字兜底，避免极短文本空集
+  return set;
+}
+function cdJaccard(a, b) {
+  const A = (a instanceof Set) ? a : cdBigrams(a);
+  const B = (b instanceof Set) ? b : cdBigrams(b);
+  if (!A.size && !B.size) return 1;
+  if (!A.size || !B.size) return 0;
+  let inter = 0;
+  A.forEach(function (x) { if (B.has(x)) inter++; });
+  return inter / (A.size + B.size - inter);
+}
+
+/* 收集 Blueprint 里所有「嵌入事实」文本（章节 facts + heading + contentIntent） */
+function cdBlueprintFactText(bp) {
+  const secs = (bp && bp.pageBlueprint && bp.pageBlueprint.sections) || [];
+  const parts = [];
+  if (bp && bp.insight) parts.push(String(bp.insight));
+  secs.forEach(function (s) {
+    if (!s) return;
+    if (Array.isArray(s.facts)) s.facts.forEach(function (f) { parts.push(String(f)); });
+    if (s.heading) parts.push(String(s.heading));
+    if (s.contentIntent) parts.push(String(s.contentIntent));
+  });
+  return parts.join(" ");
+}
+
+/* 章节配图预算（与 directorOutline 同口径）：vw>0.66→3，>0.33→2，else 1 */
+function cdSectionImgCount(s) {
+  if (!s || typeof s !== "object") return 0;
+  const vw = Number(s.visualWeight != null ? s.visualWeight : 0.5);
+  return vw > 0.66 ? 3 : (vw > 0.33 ? 2 : 1);
+}
+
+/* 三维度打分：返回 {fit, asset, history, total}（各 0-1，total 加权） */
+function scoreDirectorCandidate(bp, a, mem) {
+  a = a || {};
+  bp = bp || {};
+  const photoN = (a.photos || []).filter(Boolean).length;
+  const actFacts = directorFacts(a);
+  const bpFacts = cdBlueprintFactText(bp);
+  // ① 适合度：活动事实词表 vs Blueprint 事实词表 的 Jaccard
+  const fit = cdJaccard(actFacts, bpFacts);
+  // ② 素材满足度：可用照片 vs 各章节配图需求总和
+  const secs = (bp.pageBlueprint && bp.pageBlueprint.sections) || [];
+  let need = 0;
+  secs.forEach(function (s) { need += cdSectionImgCount(s); });
+  let asset;
+  if (need <= 0) asset = 1;
+  else if (photoN <= 0) asset = 0;
+  else asset = Math.min(1, photoN / need);
+  // ③ 历史重复度：与 Creative Memory 最近调性/色板/方向 撞车则降权
+  const inf = bp.styleInference || {};
+  const tone = String(inf.tone || "").trim();
+  const pal = String(inf.palette || "").trim();
+  const chosenDir = (bp.directions || []).filter(function (d) { return d && d.id === bp.chosen; })[0];
+  const dirName = String((chosenDir && chosenDir.name) || "").trim();
+  let repeat = 0;
+  const arr = Array.isArray(mem) ? mem : creativeMemoryRaw().slice(-8);
+  arr.forEach(function (m) {
+    if (!m) return;
+    const mt = String(m.tone || "").trim(), mp = String(m.palette || "").trim(), md = String(m.dir || "").trim();
+    if (tone && mt && tone === mt) repeat += 0.5;
+    if (pal && mp && pal === mp) repeat += 0.4;
+    if (dirName && md && dirName === md) repeat += 0.3;
+  });
+  repeat = Math.min(0.9, repeat);
+  const history = 1 - repeat;
+  // 综合：适合度主导，素材与历史各占权重
+  const total = 0.5 * fit + 0.3 * asset + 0.2 * history;
+  return { fit: fit, asset: asset, history: history, total: total };
+}
+
+/* 从候选数组里选综合分最高者；并列时素材分高者胜；无候选返 null。
+   mem 可不传（缺省读 Creative Memory）。返回 { blueprint, score } 或 null。 */
+function selectBestDirector(list, a) {
+  if (!Array.isArray(list) || !list.length) return null;
+  const mem = creativeMemoryRaw().slice(-8);
+  let best = null, bestScore = null;
+  list.forEach(function (bp) {
+    const sc = scoreDirectorCandidate(bp, a, mem);
+    bp._candidateScore = sc; // 调试可见
+    if (!best
+        || sc.total > bestScore.total + 1e-9
+        || (Math.abs(sc.total - bestScore.total) <= 1e-9 && sc.asset > bestScore.asset)) {
+      best = bp; bestScore = sc;
+    }
+  });
+  if (!best) return null;
+  return { blueprint: best, score: bestScore };
+}
+
+/* 单次 LLM 返回 n 套完整 Blueprint 候选（结构同 aiContentDirector 的单套）。
+   无事实/无 Key/失败返 null。每套自带 id 便于追踪。 */
+async function aiContentDirectorCandidates(a, n) {
+  n = (typeof n === "number" && n > 0) ? n : 3;
+  if (!a) return null;
+  const facts = directorFacts(a);
+  if (!facts.trim()) return null;
+  const mem = creativeMemoryBrief();
+  const photoN = (a.photos || []).filter(Boolean).length;
+  const sys = "你是 ClubOS 的「AI 内容总监（Content Director）」。你不为活动套用固定风格模板，"
+    + "而是基于活动事实、可用照片、目标人群与品牌调性，推导一整套连贯的营销策划。"
+    + "必须严格遵守事实边界：不要编造时间、价格、名额、路线、人物评价等未提供的事实；"
+    + "照片数量不足时不要承诺不存在的视觉。"
+    + "输出严格 JSON，不要任何解释文字。";
+  let user = "【活动事实】\n" + facts
+    + "\n\n【品牌调性】远拓旅游：年轻、松弛、山系高级感，文案有语言美感而非堆数字；图片主导。"
+    + "\n\n【最近创意记忆（避免重复）】\n" + mem
+    + "\n\n请产出 JSON，包含 " + n + " 套彼此差异化的完整策划候选（candidates 数组），每套结构如下：\n"
+    + "{\n"
+    + "  \"candidates\": [ {\n"
+    + "    \"id\": \"c1\",\n"
+    + "    \"insight\": \"一句话营销洞察\",\n"
+    + "    \"directions\": [ {\"id\":\"d1\",\"name\":\"方向名\",\"thesis\":\"核心主张\",\"why\":\"为什么适合\",\"fitScore\":0-100} ],\n"
+    + "    \"chosen\": \"选中的方向 id\",\n"
+    + "    \"styleInference\": { \"tone\":\"松弛/热血/沉静…\",\"energy\":0-1,\"warmth\":0-1,\"visualRichness\":0-1,\"typography\":\"衬线/无衬线\",\"palette\":\"自然色/冷调/暖调\" },\n"
+    + "    \"pageBlueprint\": {\n"
+    + "      \"coreThesis\": \"整页核心主张\",\n"
+    + "      \"contentGoal\": \"想让 reader 产生什么感受/动作\",\n"
+    + "      \"openingStrategy\": \"开场切入\",\n"
+    + "      \"storyArc\": \"情绪/信息推进顺序\",\n"
+    + "      \"sections\": [ 3-6 个章节，每节 {\n"
+    + "        \"purpose\":\"这节的任务\",\"heading\":\"章节标题(有美感)\",\n"
+    + "        \"contentIntent\":\"文案(2-4 句，换行分隔)\",\n"
+    + "        \"facts\":[\"需嵌入的硬事实，逐条自然语言短句\"],\n"
+    + "        \"assetRequirement\":\"hero 大图 / 2-3 张体验图 / 路线图 / 人物特写 / 无图\",\n"
+    + "        \"kind\":\"scenic|experience|route|people|night|info 之一\",\n"
+    + "        \"textDensity\":0-1,\"visualWeight\":0-1,\"informationWeight\":0-1,\"emotionalWeight\":0-1\n"
+    + "      } ]\n"
+    + "    }\n"
+    + "  } ]\n"
+    + "}\n"
+    + "要求：每套候选应是风格/调性/叙事角度明显不同的方案；章节数量与顺序由活动决定；"
+    + "图片需求(kind/assetRequirement)要与可用照片数(" + photoN + " 张)匹配，照片少就少配图。"
+    + "只返回 JSON，不要任何解释。";
+  let out = null;
+  try {
+    out = (typeof clubLLM === "function")
+      ? await clubLLM({ system: sys, user: user, json: true, temperature: 0.9 })
+      : null;
+  } catch (e) { out = null; }
+  if (!out || typeof out !== "object") return null;
+  const cands = Array.isArray(out) ? out : (Array.isArray(out.candidates) ? out.candidates : null);
+  if (!cands || !cands.length) return null;
+  // 结构兜底：每套都要有合法 sections 才是候选
+  const valid = cands.filter(function (bp) {
+    return bp && bp.pageBlueprint && Array.isArray(bp.pageBlueprint.sections) && bp.pageBlueprint.sections.length;
+  });
+  return valid.length ? valid : null;
+}
+
 /* ===================== AI 是否可走 Director ===================== */
 /* 只有真正配了 AI（浏览器直连 Key 或后端代理）才走 Director；
    没配 AI 时 regenStyle 回退旧双轴 regenStyleContent（仍会推进风格轴，零回归）。 */
@@ -217,7 +387,20 @@ function aiDirectorReady() {
 async function runContentDirector(a, cb) {
   if (!a) { if (typeof cb === "function") cb(false); return; }
   let bp = null;
-  try { bp = (typeof aiContentDirector === "function") ? await aiContentDirector(a) : null; } catch (e) { bp = null; }
+  // M2 优先：一次产出多套候选，自有打分器选最优（不再盲信 AI 的 fitScore）
+  try {
+    if (typeof aiContentDirectorCandidates === "function") {
+      const list = await aiContentDirectorCandidates(a, 3);
+      if (list && list.length) {
+        const best = (typeof selectBestDirector === "function") ? selectBestDirector(list, a) : null;
+        if (best && best.blueprint) bp = best.blueprint;
+      }
+    }
+  } catch (e) { bp = null; }
+  // 回退 M1：单套调用（候选为空 / 失败 / 无后端时兜底，契约不变）
+  if (!bp) {
+    try { bp = (typeof aiContentDirector === "function") ? await aiContentDirector(a) : null; } catch (e) { bp = null; }
+  }
   if (bp) {
     a.pageBlueprint = bp;
     if (!a._directorAngle && bp.chosen) a._directorAngle = bp.chosen;
@@ -244,4 +427,7 @@ if (typeof window !== "undefined") {
   window.directorOutline = directorOutline;
   window.creativeMemoryOf = creativeMemoryOf;
   window.creativeMemoryPush = creativeMemoryPush;
+  window.aiContentDirectorCandidates = aiContentDirectorCandidates;
+  window.scoreDirectorCandidate = scoreDirectorCandidate;
+  window.selectBestDirector = selectBestDirector;
 }
