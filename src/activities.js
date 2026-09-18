@@ -414,9 +414,12 @@
     if (a.limit) kvs.push([a.limit, a.limitUnit || "人"]);
     const kvHtml = kvs.length ? `<div class="xh-ed-kvs">${kvs.map(([v, k]) => `<div class="xh-ed-kv"><b>${esc(String(v))}</b><span>${esc(k)}</span></div>`).join("")}</div>` : "";
 
-    /* 导语：pack 文案走完整闸门；老板手写的 a.intro 只丢参数播报行。
+    /* 导语：v214 起 AI 总监优先 —— Blueprint 的 openingStrategy 直接作为读者看到的第一句，
+       没有（或内容是创作说明被闸门拒掉）才回退风格包模板 / 老板手写 intro。
+       pack 文案走完整闸门；老板手写的 a.intro 只丢参数播报行。
        （闸门内部先按换行切段，所以这里 split 出来的段落数与原来一致） */
-    const leadSrc = (spack && spack.lead) ? gateSys(spack.lead) : gateOwn(a.intro || "");
+    const dirLead = (a && a.pageBlueprint && typeof directorLeadOf === "function") ? directorLeadOf(a) : "";
+    const leadSrc = dirLead ? gateSys(dirLead) : ((spack && spack.lead) ? gateSys(spack.lead) : gateOwn(a.intro || ""));
     const leadParas = String(leadSrc).split(/\n+/).map((s) => s.trim()).filter(Boolean);
     const leadHtml = leadParas.length ? `<div class="xh-ed-lead">${leadParas.map((p) => `<p>${esc(p)}</p>`).join("")}</div>` : "";
 
@@ -436,9 +439,12 @@
     }).join("\n");
 
     // P0-12：金句是否出现由「文案密度」决定（画册/纪实克制，杂志/转化强调）
+    // v214：AI 总监给了 insight 时以它为准 —— 金句本来就是「整页最想被记住的那句」，
+    //   由总监决定比由密度枚举决定更合理；此时不再受密度开关压制。
     const dens = (typeof EDITORIAL_DENSITY !== "undefined" && EDITORIAL_DENSITY[variant.density]) || null;
-    const quoteText = (spack && spack.pullQuote) ? gateSys(spack.pullQuote) : gateTitle(a.pullQuote);
-    const quoteHtml = (dens && dens.quote && quoteText) ? `<section class="xh-ed-quote"><div class="xh-ed-quote-mark">${ICON("quote")}</div><p>${esc(quoteText)}</p></section>` : "";
+    const dirQuote = (a && a.pageBlueprint && typeof directorQuoteOf === "function") ? directorQuoteOf(a) : "";
+    const quoteText = dirQuote ? gateSys(dirQuote) : ((spack && spack.pullQuote) ? gateSys(spack.pullQuote) : gateTitle(a.pullQuote));
+    const quoteHtml = ((dens && dens.quote) || dirQuote) && quoteText ? `<section class="xh-ed-quote"><div class="xh-ed-quote-mark">${ICON("quote")}</div><p>${esc(quoteText)}</p></section>` : "";
 
     // 决策信息
     const metaRows = [

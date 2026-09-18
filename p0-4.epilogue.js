@@ -67,12 +67,17 @@ try {
   dbg = { outlineLen: outline.length, secs: outline.map((s) => s.key + ":" + s.heading), outlineFactsLen: outlineFacts.length };
 
   add("图文故事大纲：章节 ≥5 且每节都有标题+文案", outlineOk, "n=" + outline.length);
-  add("大纲按 DNA/事实推进（含 why/experience/route/gain/fit 关键节）",
-    ["why", "experience", "gain", "fit"].every((k) => outline.some((s) => s.key === k)) && outline.some((s) => /^day/.test(s.key)),
+  add("大纲按 DNA/事实推进（含 why/experience/gain/fit 关键节）",
+    ["why", "experience", "gain", "fit"].every((k) => outline.some((s) => s.key === k)),
     outline.map((s) => s.key).join(","));
-  add("多日行程按天分节（DAY 1 / DAY 2）",
-    outline.some((s) => s.key === "day1") && outline.some((s) => s.key === "day2"),
-    outline.filter((s) => /^day/.test(s.key)).map((s) => s.heading).join(" | "));
+  /* v214 契约变更：叙事大纲不再按天复述时间表。
+     旧断言要求 outline 里有 day1/day2 节 —— 那两节的段落正是
+     `items.map(t => t.time + " " + t.text).join("；")`（整张时间表），
+     与阅读页下方「详细行程」的 DAY 时间轴（tl-item）同屏大重复（老板截图即此）。
+     v198 已定「阅读页完整行程只渲染一处（DAY 时间轴）」，此处补齐该约定。 */
+  add("行程不再进叙事大纲（无 day*/route 节，避免与 DAY 时间轴同屏重复）",
+    !outline.some((s) => /^day/.test(s.key)) && !outline.some((s) => s.kind === "route"),
+    outline.filter((s) => /^day/.test(s.key) || s.kind === "route").map((s) => s.key).join(",") || "none");
 
   add("页面排版：Hero + 数据条 + 长页正文容器", hEd.includes("xh-ed-hero") && hEd.includes("xh-ed-kvs") && hEd.includes("xh-ed-body"));
   add("页面排版：逐节编号 + 小节标题（非字段表）", count(hEd, /xh-ed-num/g) >= 5 && count(hEd, /xh-ed-h/g) >= 5, "num=" + count(hEd, /xh-ed-num/g));

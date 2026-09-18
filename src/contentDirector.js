@@ -124,14 +124,14 @@ async function aiContentDirector(a) {
     + "\n\n【最近创意记忆（避免重复）】\n" + mem
     + "\n\n请产出 JSON：\n"
     + "{\n"
-    + "  \"insight\": \"一句话营销洞察（这场合在哪一点上打动人）\",\n"
+    + "  \"insight\": \"一句话金句（★直接给读者看：将作为页面金句原样展示，不要写创作说明）\",\n"
     + "  \"directions\": [ 三条创意方向，每条 {\"id\":\"d1\",\"name\":\"方向名\",\"thesis\":\"核心主张\",\"why\":\"为什么适合这场\",\"fitScore\":0-100} ],\n"
     + "  \"chosen\": \"选中的方向 id（从三条里挑最适合的一场）\",\n"
     + "  \"styleInference\": { \"tone\":\"松弛/热血/沉静…\",\"energy\":0-1,\"warmth\":0-1,\"visualRichness\":0-1,\"typography\":\"衬线/无衬线\",\"palette\":\"自然色/冷调/暖调\" },\n"
     + "  \"pageBlueprint\": {\n"
     + "    \"coreThesis\": \"整页核心主张\",\n"
     + "    \"contentGoal\": \"这页想让 reader 产生什么感受/动作\",\n"
-    + "    \"openingStrategy\": \"开场如何切入（避免俗套标语）\",\n"
+    + "    \"openingStrategy\": \"开场第一句（★直接给读者看：将作为详情页导语原样展示；写一句能开篇的话，不要写“从…切入”这类创作说明）\",\n"
     + "    \"storyArc\": \"情绪/信息推进顺序\",\n"
     + "    \"sections\": [ 3-6 个章节，每节 {\n"
     + "        \"purpose\":\"这节的任务(吸引/建立信任/展示体验/促成报名…)\",\n"
@@ -210,6 +210,38 @@ function directorOutline(bp) {
     });
   });
   return out.length ? out : null;
+}
+
+/* ===================== Blueprint → 导语 / 金句（v214） =====================
+ * 为什么需要：页面顶部的导语与中段金句此前只来自「本地风格包模板」（publish.js 的
+ * EDITORIAL_ANGLE_VOICE），AI 总监即使跑过，它的开场与金句也**从不出现在页面上** ——
+ * 页头是模板句（且 {P} 塞长地名会出病句），正文却是 AI 编排，读起来「头尾两张皮」。
+ * 现在：Blueprint 有 openingStrategy / insight 时由它接管导语与金句。
+ * ★ 安全闸门：只接受「能给读者看」的句子。AI 很可能把创作说明（「从凌晨的黑暗切入」）
+ *   写进这两个字段 —— 直接渲染等于把策划笔记贴给读者。命中策略口吻 / 过长一律弃用，
+ *   回退本地模板（宁可回到模板，也不往页面贴创作说明）。 */
+const CD_META_SPEAK = /(切入|策略|创作说明|章节|本节|叙事结构|意图|面向读者|开场如何|基调定为|建议采用)/;
+function cdReaderFacing(t, max) {
+  const s = String(t == null ? "" : t).replace(/\s+/g, " ").trim();
+  if (!s) return "";
+  if (CD_META_SPEAK.test(s)) return "";
+  if (max && s.length > max) return "";
+  return s;
+}
+/* 导语：openingStrategy（首选）→ coreThesis（兜底）；都不合格返回 ""（调用方回退风格包模板） */
+function directorLeadOf(a) {
+  const bp = a && a.pageBlueprint;
+  if (!bp) return "";
+  const bb = bp.pageBlueprint || {};
+  return cdReaderFacing(bb.openingStrategy, 120) || cdReaderFacing(bb.coreThesis, 120);
+}
+/* 金句：insight（首选）→ coreThesis；与导语重复则不用（同屏两句一样的话很蠢） */
+function directorQuoteOf(a) {
+  const bp = a && a.pageBlueprint;
+  if (!bp) return "";
+  const bb = bp.pageBlueprint || {};
+  const q = cdReaderFacing(bp.insight, 60) || cdReaderFacing(bb.coreThesis, 60);
+  return (q && q !== directorLeadOf(a)) ? q : "";
 }
 
 /* ===================== M2 Diversity Controller =====================
@@ -338,14 +370,14 @@ async function aiContentDirectorCandidates(a, n) {
     + "{\n"
     + "  \"candidates\": [ {\n"
     + "    \"id\": \"c1\",\n"
-    + "    \"insight\": \"一句话营销洞察\",\n"
+    + "    \"insight\": \"一句话金句（★直接给读者看，将作为页面金句展示）\",\n"
     + "    \"directions\": [ {\"id\":\"d1\",\"name\":\"方向名\",\"thesis\":\"核心主张\",\"why\":\"为什么适合\",\"fitScore\":0-100} ],\n"
     + "    \"chosen\": \"选中的方向 id\",\n"
     + "    \"styleInference\": { \"tone\":\"松弛/热血/沉静…\",\"energy\":0-1,\"warmth\":0-1,\"visualRichness\":0-1,\"typography\":\"衬线/无衬线\",\"palette\":\"自然色/冷调/暖调\" },\n"
     + "    \"pageBlueprint\": {\n"
     + "      \"coreThesis\": \"整页核心主张\",\n"
     + "      \"contentGoal\": \"想让 reader 产生什么感受/动作\",\n"
-    + "      \"openingStrategy\": \"开场切入\",\n"
+    + "      \"openingStrategy\": \"开场第一句（★直接给读者看，将作为详情页导语原样展示；不要写创作说明）\",\n"
     + "      \"storyArc\": \"情绪/信息推进顺序\",\n"
     + "      \"sections\": [ 3-6 个章节，每节 {\n"
     + "        \"purpose\":\"这节的任务\",\"heading\":\"章节标题(有美感)\",\n"
@@ -846,4 +878,7 @@ if (typeof window !== "undefined") {
   window.repetitionReport = repetitionReport;
   window.aiDirectorRepair = aiDirectorRepair;
   window.directorFingerprintOf = directorFingerprintOf;
+  /* v214：Blueprint 接管导语/金句 */
+  window.directorLeadOf = directorLeadOf;
+  window.directorQuoteOf = directorQuoteOf;
 }

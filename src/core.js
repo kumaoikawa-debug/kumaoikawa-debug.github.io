@@ -1045,6 +1045,27 @@
     if (base == null) return priceUnpricedTextOf(a);
     return "¥" + base + (opts.withUnit ? "/" + ((a && a.limitUnit) || "人") : "");
   }
+  /* ---------- 地点「短名」：给文案模板用 ----------
+     起因：风格包的句子里有 {P} 占位符（如「{P}不是散步的路线。」），而 editorialFacts 之前直接
+     塞了 a.place 原文。老板填的是完整行政区划（「四川省甘孜州康定市 · 新都桥镇 · 鱼子西」），
+     于是渲染出病句：「四川省甘孜州康定市 · 新都桥镇 · 鱼子西不是散步的路线。」
+     规则（只做「取更具体的那一段」，不猜、不编）：
+       ① 已够短（≤10 字）→ 原样；
+       ② 有分隔符（·／，／、／/）→ 取最后一段（越靠后的越具体）；
+       ③ 仍过长 → 按行政区划/地形后缀切开，取最后一个后缀「之后」的词（即最小地名）。 */
+  function shortPlaceOf(place) {
+    const s = String(place == null ? "" : place).replace(/\s+/g, " ").trim();
+    if (!s) return "";
+    if (s.length <= 10) return s;
+    const parts = s.split(/[·・•‧、,，;；/|]+/).map((x) => x.trim()).filter(Boolean);
+    let cand = (parts.length > 1) ? parts[parts.length - 1] : s;
+    if (cand.length > 10) {
+      const segs = cand.split(/(?:省|市|区|州|县|镇|乡|村|街道|路|景区|营地|公园|草原|沙漠|冰川|雪山|湿地)/)
+        .map((x) => x.trim()).filter(Boolean);
+      if (segs.length > 1) cand = segs[segs.length - 1];
+    }
+    return cand || s;
+  }
   function effectiveUnitPrice(a, dep, tier) {
     const base = priceBaseOf(a, dep);
     if (base == null) return null;
@@ -1548,11 +1569,16 @@ const REQUIRED_MODULE_FILES = {
   cdStressScenarios: "contentDirector.js",
   cdStressRun: "contentDirector.js",
   creativeMemoryWrite: "contentDirector.js",
+  /* v214：Blueprint 接管导语 / 金句（渲染层读它们，缺了页头就退回模板句） */
+  directorLeadOf: "contentDirector.js",
+  directorQuoteOf: "contentDirector.js",
   /* v213 诚实价格：显示层把「未定价」（0/空）归一到 详询/价格待定/免费，
      front.js 的 C 端列表卡与报名页也直接调它们 —— 缺一个是「印出 ¥0」 */
   priceDisplayBaseOf: "core.js",
   priceUnpricedTextOf: "core.js",
   priceTextOf: "core.js",
+  /* v214 地点短名：文案模板 {P} 只吃短名，避免「四川省…鱼子西不是散步的路线。」病句 */
+  shortPlaceOf: "core.js",
 };
 const REQUIRED_MODULES = Object.keys(REQUIRED_MODULE_FILES);
 /* 返回「缺失的模块名 → 应在文件」清单；全部就绪返回空数组 */

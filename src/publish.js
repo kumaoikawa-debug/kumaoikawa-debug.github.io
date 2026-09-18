@@ -5244,7 +5244,9 @@ function applyVisionBatch(map) {
 
   /* ===== P0-4「AI 图文活动详情页」：图文故事大纲（事实+行程+图片+补充资料 → 章节序列）=====
      与「简洁报名详情」并存的第二种输出，目标是接近公众号/活动宣传长图文，而非固定 SaaS 详情页。 */
-  const EDITORIAL_KIND_LABEL = { scenic: "SCENERY", experience: "EXPERIENCE", route: "ROUTE", people: "PEOPLE", gear: "GEAR", info: "INFO" };
+  /* v214：补齐 night —— 本地大纲（Case 4 昼夜节奏）与 AI Director 的 directorOutline
+     都能产出 kind=night 的「入夜」章节，此前标签表没有它，页面上会显示成兜底的 STORY。 */
+  const EDITORIAL_KIND_LABEL = { scenic: "SCENERY", experience: "EXPERIENCE", route: "ROUTE", people: "PEOPLE", gear: "GEAR", info: "INFO", night: "NIGHT" };
 
   /* ===== P0-12 图文详情页「多样生成」=====
      同一活动连续生成多版，必须在四个维度同时产生差异：
@@ -5271,10 +5273,15 @@ function applyVisionBatch(map) {
     season:     { why: "这一季为什么去",   experience: "此刻才有的样子", route: "踩准季节的步点",   gain: "把季节收进记忆",   fit: "赶在这一季的人",     reasons: "错过等一年的理由" },
     lifestyle:  { why: "为什么把生活搬出来", experience: "另一种过法",     route: "慢下来的路线",     gain: "带回去的生活感",   fit: "想换种活法的人",     reasons: "把日子过成户外的理由" },
   };
+  /* ★ v214 注意事项：叙事大纲里已经没有 route/day 章节了（完整行程只由阅读页的
+     DAY 时间轴渲染一处）。结构轴此前靠「行程块排在第几」来区分 story 与 route，
+     行程移出叙事后就撞车了（两版叙事顺序完全一样）→ 把 route 结构改为
+     「体验先行、收获跟进」的推进顺序，保持 5 种结构两两可辨（P0-12 的承诺：
+     连续两版必须在结构维度上看出不同）。 */
   const EDITORIAL_STRUCTURES = {
     story:      ["why", "experience", "route", "night", "gain", "fit", "reasons"],
     experience: ["experience", "why", "route", "night", "gain", "fit", "reasons"],
-    route:      ["route", "why", "experience", "night", "gain", "fit", "reasons"],
+    route:      ["experience", "night", "gain", "why", "fit", "reasons"],
     value:      ["gain", "why", "experience", "route", "night", "fit", "reasons"],
     social:     ["fit", "why", "gain", "experience", "route", "night", "reasons"],
   };
@@ -5498,7 +5505,10 @@ function applyVisionBatch(map) {
     return {
       place: String(a.place || "").trim(),
       hasPlace: !!String(a.place || "").trim(),
-      P: String(a.place || "").trim() || "这条路线",
+      /* v214：{P} 只吃「短地名」—— 模板句是「{P}不是散步的路线。」，
+         塞完整行政区划会读成病句（老板截图里正是「…新都桥镇 · 鱼子西不是散步的路线。」）。
+         place 字段仍保留全名，供事实层（决策速览/行程）使用。 */
+      P: ((typeof shortPlaceOf === "function") ? shortPlaceOf(a.place) : String(a.place || "").trim()) || "这条路线",
       dateShort: String(a.dateMD || a.date || "").trim(),
       D: String(a.dateMD || a.date || "").trim() || "这一天",
       season: season,
@@ -5701,7 +5711,17 @@ function applyVisionBatch(map) {
   /* 事实指纹：事实一变，旧内容包自动作废（防止换了日期/价格还沿用旧文案） */
   function editorialFactsFingerprint(a) {
     a = a || {};
-    return [a.place, a.date, a.dateMD, a.price, a.distance, a.elevation, a.difficulty, a.days, a.limit, a.limitUnit,
+    /* v214：日期先归一成「X月X日」再进指纹。
+       原因：syncDepartures 会把顶层 a.date 覆写成 dateMD（「2026-09-26」→「9月26日」），
+       而它可能发生在「风格包已生成」之后 —— 于是同一条活动在渲染前后指纹不同，
+       已生成的风格包被判「事实变了」直接丢弃（editorialStylePackOf 返回 null），
+       第二次渲染导语 / 角度化正文整体消失、退回 canonical 文案。
+       归一后只有真正的事实变化才会让包失效（日期本身改了，归一秒过的值照样不一样）。 */
+    const fd = (v) => {
+      const s = String(v == null ? "" : v).trim();
+      return (typeof toDateMD === "function") ? String(toDateMD(s) || "") : s;
+    };
+    return [a.place, fd(a.date), fd(a.dateMD), a.price, a.distance, a.elevation, a.difficulty, a.days, a.limit, a.limitUnit,
       a.meeting, a.meetTime, a.returnTime, a.title,
       (a.itineraryDays || []).map(function (d) { return (d.label || "") + "|" + (d.items || []).map(function (i) { return (i.time || "") + (i.text || ""); }).join(","); }).join(";"),
       (a.feeInclude || []).join(","), (a.feeExclude || []).join(","),
@@ -5840,7 +5860,9 @@ function applyVisionBatch(map) {
     const theme = (dna && dna.mainTheme) || a.storyPurpose || a.editorialTitle || a.title || "这一程";
     const sig = (dna && dna.sceneSignature) || "";
     const angles = (dna && dna.copyAngles) || [];
-    const envLabel = (dna && dna.environmentLabel) || a.place || "山野";
+    /* v214：兜底标题里的地点同样用短名 —— 「四川省甘孜州康定市 · 新都桥镇 · 鱼子西的这一天」
+       作为小节标题太长，短名（鱼子西）才是标题该有的粒度。 */
+    const envLabel = (dna && dna.environmentLabel) || ((typeof shortPlaceOf === "function") ? shortPlaceOf(a.place) : a.place) || "山野";
     const lines = (t) => String(t || "").split(/\n+/).map((s) => s.trim()).filter(Boolean);
     const pick = (v, f) => (lines(v).length ? lines(v) : lines(f));
     const st = a.sectionTitles || {};
@@ -5862,28 +5884,15 @@ function applyVisionBatch(map) {
     make("why", "why", "scenic", st.whyGo || "为什么值得去", pkPick("why", a.whyGo, fb.whyGo));
     make("experience", "experience", "experience", st.experience || "来了会体验什么", pkPick("experience", a.experience, fb.experience));
 
-    // 行程：多日每天一节，统一归到 route 组（保持内部顺序）
-    const days = a.itineraryDays || [];
-    const dayHasContent = days.some((d) => (d.items || []).some((t) => t && (t.time || t.text)));
-    if (dayHasContent) {
-      let narTxt = "";
-      if (typeof structureItinerary === "function" && typeof buildItineraryNarrative === "function") {
-        const itin = structureItinerary(a) || {};
-        const nar = buildItineraryNarrative(a, itin.timeline || []);
-        if (nar && nar.paras && nar.paras.length) narTxt = nar.paras.join("");
-      }
-      if (days.length > 1) {
-        days.forEach((d, i) => {
-          const items = (d.items || []).filter((t) => t && (t.time || t.text));
-          if (!items.length) return;
-          make("route", "day" + (i + 1), "route", "DAY " + (i + 1) + (d.label ? " · " + d.label : ""),
-            [items.map((t) => (t.time ? t.time + " " : "") + t.text).join("；")]);
-        });
-      } else {
-        const items = (days[0].items || []).filter((t) => t && (t.time || t.text));
-        make("route", "route", "route", "这一天会怎么过", [narTxt, items.map((t) => (t.time ? t.time + " " : "") + t.text).join("；")]);
-      }
-    }
+    /* v214：行程不再进叙事大纲 —— 恢复 v198 的「完整行程只渲染一处」。
+       ★ 修复的正是老板截图里的「一直大重复」：旧代码在这里为每天塞一节 route，
+         段落 = 当天时间表 items 用「；」串成一整段；而阅读页下方「详细行程」的
+         DAY 时间轴（activities.js itinHtml）本来就按 tl-item 逐条渲染同一份时间表
+         → 同一份时间表同屏出现两遍。
+       v198 只摘掉了 itinContentHtml（「这一程，这样走过」），漏掉了这里；
+       现按 v198 既定约定统一：**阅读页的行程只有 DAY 时间轴一处**，
+       叙事大纲只谈理由/体验/收获/适合谁，不再复述时间表。
+       （需要「有行程感的叙事」时，由 AI Content Director 的 pageBlueprint 决定章节，见 contentDirector.js） */
 
     make("gain", "gain", "people", st.gain || "参加完能得到什么", pkPick("gain", a.gain, fb.gain));
     /* v201：适合人群属事实层 —— 文学层模板已不再掺入 {audience}（老板要的是没有参数的文案），

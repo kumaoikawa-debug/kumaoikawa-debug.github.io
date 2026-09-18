@@ -86,19 +86,22 @@ try {
     !!dn && dn.dayCount === 6 && dn.nightCount === 4 && dn.hasRhythm === true,
     JSON.stringify(dbg.dayNight));
 
-  // 固定变体，保证结构顺序确定性（story: why→experience→route→night→gain→fit）
+  // 固定变体，保证结构顺序确定性（story: why→experience→night→gain→fit）
   const fixedVariant = { angle: "scenery", structure: "story", img: "hero-mosaic", density: "magazine", layout: "L-mosaic-story", style: "S-scenery-mag" };
   const ol4 = buildEditorialOutline(a4, fixedVariant);
   const keys4 = ol4.map((s) => s.key);
   const iNight = ol4.findIndex((s) => s.kind === "night");
-  const iRoute = ol4.findIndex((s) => s.group === "route");
+  const iExp = ol4.findIndex((s) => s.group === "experience");
   const iGain = ol4.findIndex((s) => s.group === "gain");
   dbg.outline4 = keys4.join(",");
 
   add("Case4 长页自动注入「入夜」章节", iNight >= 0, keys4.join(","));
-  add("Case4 昼→夜节奏：夜章节排在白天行程之后、收获之前（情绪弧成立）",
-    iRoute >= 0 && iNight > iRoute && iGain >= 0 && iNight < iGain,
-    "route=" + iRoute + " night=" + iNight + " gain=" + iGain + " | " + keys4.join(","));
+  /* v214 契约变更：叙事大纲里不再有 route/day 章节（完整行程只由阅读页的 DAY 时间轴渲染一处，
+     否则同一张时间表同屏出现两遍 —— v198 已定此约定）。所以「夜在白天行程之后」这句
+     改为按叙事里的实际锚点断言：夜章节排在「体验」之后、「收获」之前，昼→夜情绪弧依然成立。 */
+  add("Case4 昼→夜节奏：夜章节排在体验之后、收获之前（情绪弧成立）",
+    iExp >= 0 && iNight > iExp && iGain >= 0 && iNight < iGain,
+    "exp=" + iExp + " night=" + iNight + " gain=" + iGain + " | " + keys4.join(","));
 
   // 纯白天素材不应凭空造出「入夜」章节（不臆造未发生的夜晚）
   const a4d = Object.assign({}, a4, { photos: photos.slice(0, 6) });

@@ -503,7 +503,14 @@ function showView(view, params) {
         snap._historyAt = Date.now();
         state.history.unshift(snap); state.history = state.history.slice(0, 30);
         saveState();
-        const id = state.draft.id; state.draft = null; showPublishSuccess(id); break;
+        const id = state.draft.id;
+        const published = state.draft;
+        state.draft = null;
+        showPublishSuccess(id);
+        /* v214：发布路径同样补一次「AI 内容总监编排」——
+           pageBlueprint 只在手动「换一种排版」时才产生的话，从这里发布的活动也会永远停在模板版。 */
+        autoRunDirector(published);
+        break;
       }
       case "confirmFactsContinue": {
         const fa = state.draft; if (!fa) break;
@@ -2088,6 +2095,34 @@ function showView(view, params) {
     state.draft = null;             // 不挂在编辑器里，老板不需要逐字段改
     showView("activityPage", { id: fa.id });
     toast("活动详情页已生成");
+    autoRunDirector(fa);
+  }
+
+  /* v214：活动落库后自动跑一次 AI Content Director —— 但只在「配了 AI」时才跑。
+     为什么必须补这一步：此前 runContentDirector 的**唯一**调用点是手动「换一种排版」，
+     老板不点那一下，a.pageBlueprint 就永远不存在，详情页永远走本地双轴模板
+     （于是出现「DAY 1 · 第1天」把整张时间表又抄一遍的老问题，M1–M4 的代码等于没上过线）。
+     设计取舍：
+       · 不阻塞 —— 先把模板版详情页给老板看，Blueprint 拿到后再刷一次；
+       · 失败静默 —— 网络/Key/接口任何问题都回退本地模板，绝不阻断「生成活动」这条主链路；
+       · 不重跑 —— 已有 pageBlueprint 直接返回，避免每次生成都白烧一次 AI；
+       · 未配 AI 直接返回（aiDirectorReady 为假），离线/演示环境行为与旧版完全一致。 */
+  async function autoRunDirector(a) {
+    if (!a || a.pageBlueprint) return;
+    if (typeof runContentDirector !== "function" || typeof aiDirectorReady !== "function" || !aiDirectorReady()) return;
+    let ok = false;
+    try {
+      ok = await new Promise(function (res) { runContentDirector(a, function (r) { res(!!r); }); });
+    } catch (e) { ok = false; }
+    if (!ok || !a.pageBlueprint) {
+      /* 静默会让人以为「AI 已经编排过」→ 复用统一的 AI 失败提示（6 秒节流，不刷屏） */
+      if (typeof noteAiFailure === "function") noteAiFailure("net");
+      return;
+    }
+    a._directorAutoAt = Date.now();
+    try { upsert(a); saveState(); } catch (e) { /* 落库失败不影响当前页面 */ }
+    if (state.view === "activityPage" && state.params && state.params.id === a.id) showView("activityPage", { id: a.id });
+    toast("已按 AI 内容总监编排刷新详情页");
   }
 
   /* §七 最后一环：详情页 → 确认发布。事实不全时不硬发，回到确认卡补全后重生成。

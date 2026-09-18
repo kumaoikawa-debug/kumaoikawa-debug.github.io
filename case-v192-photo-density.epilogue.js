@@ -107,9 +107,17 @@ try {
     "caps全为1=" + Object.keys(pFew.caps).every((k) => pFew.caps[k] === 1) + " reserveN=" + pFew.reserveN);
   const pMany = planEditorialPhotoCaps(30, secs7, 0, 3, galleryMaxFor(30));
   const capsSum = Object.keys(pMany.caps).reduce((n, k) => n + pMany.caps[k], 0);
+  const placed = capsSum + pMany.reserveN + 1;
+  /* v214：叙事大纲不再含 route/day 章节（行程回归 DAY 时间轴一处渲染），章节数变少
+     → 分不到章节的照片更多，会撞上「图廊上限 galleryMax」而被截掉几张。
+     这里断言的是真正要守的两条不变量：
+       ① 章节全部吃满变体上限（capsSum = 节数 × 3），照片驱动没退化；
+       ② 图廊不超过 galleryMax，且因上限而闲置的照片是个位数量级（≤3）。
+     （真实阅读页还会把照片用在「详细行程」每天的 itin-day-photos 上，
+       所以这 2 张闲置并不等于页面上少了 2 张图。） */
   add("v192：图远多于章节（30 张）→ 章节吃满上限 + 图廊受 galleryMax 约束",
-    capsSum + pMany.reserveN + 1 === 30 && pMany.reserveN <= 9,
-    "章节合计=" + capsSum + " 图廊=" + pMany.reserveN + " 总计=" + (capsSum + pMany.reserveN + 1));
+    capsSum === secs7.length * 3 && pMany.reserveN <= 9 && (30 - placed) <= 3,
+    "章节合计=" + capsSum + " 图廊=" + pMany.reserveN + " 总计=" + placed);
 
   // —— 8) editorialPhotosFor 的 cap 参数被尊重（旧调用不传 cap → 回退 sec.imgCount）——
   const aCap = mk(12);
