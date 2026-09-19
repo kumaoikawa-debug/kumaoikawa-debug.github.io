@@ -357,6 +357,27 @@ function showView(view, params) {
         break;
       }
 
+      /* Content Engine V3：调后端受控管线（truth→direction→compose→quality）生成 PromoDocument。
+         失败（未配后端 / 未鉴权 / 出参不合法）一律保持原 legacy 排版并如实提示 —— 不静默降级。 */
+      case "edV3Generate": {
+        const v3a = viewingActivity() || (state.draft ? state.draft : null);
+        if (!v3a) break;
+        if (typeof contentV3Generate !== "function") break;
+        toast("正在用 V3 管线重排…");
+        contentV3Generate(v3a).then(function (doc) {
+          if (doc && typeof contentV3Attach === "function") {
+            contentV3Attach(v3a, doc);
+            if (typeof saveState === "function") saveState();
+            if (typeof showDetailLikeView === "function" && showDetailLikeView()) showView(state.view, state.params);
+            else if (typeof refreshPreview === "function") refreshPreview();
+            toast("已按 Content Engine V3 重排");
+          } else {
+            toast("V3 这次没成功（后端未配置或返回不合法），页面保持原排版");
+          }
+        });
+        break;
+      }
+
 
       case "clToggle": {
         // v195 出行清单：勾选状态按活动持久化；同步刷新「已勾 / 总数」进度
@@ -1880,6 +1901,7 @@ function showView(view, params) {
         if (typeof syncDerived === "function") syncDerived(base);
         applyDnaCopyFallback(base);
         restorePlanItinerary(base);
+        applyPlanFieldsOverride(base);   // v215：无 Key / AI 失败也照样把方案真实事实落到草稿
         await ensureItineraryFields(base);
         syncItineraryDays(base);
         const sims = similarList(base);

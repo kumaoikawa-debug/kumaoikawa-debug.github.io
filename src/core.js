@@ -1066,6 +1066,27 @@
     }
     return cand || s;
   }
+  /* v215：结构化事实占位符拒收 —— 方案 / AI 可能回填「10月xx日」「价格待定」这类占位，
+     一旦落库会直接泄漏到详情页（老板截图里就出现了「10月xx日」）。
+     用途：应用 AI 结果（applyAIResult）、方案事实回盖（applyPlanFieldsOverride）、详情页渲染（日期 pill）
+     时过这道闸挡掉占位符；抽字段阶段【不】调用它 —— v205 契约要求把占位符留在确认卡供用户补全。
+       date：必须含具体「日」数字（26日 / 26号 / 2026-10-01）且不能含 xx / 待定 / 某 / 几 / 上中下旬；
+       price：必须含至少一个数字（金额；「待定 / 免费 / 详询」无数字 → 拒绝，不覆盖好数据）。 */
+  function factPlaceholderReject(v, kind) {
+    const s = String(v == null ? "" : v).replace(/\s+/g, " ").trim();
+    if (!s) return "";
+    if (kind === "date") {
+      if (/xx|XX|待定|暂定|TBD|tbd|待确认|预计|约摸|大概|某|几|上旬|中旬|下旬/.test(s)) return "";
+      if (/\d/.test(s) && /日|号|\/|-|\.|年/.test(s)) return s;
+      return "";
+    }
+    if (kind === "price") {
+      if (/待定|暂定|TBD|tbd|待确认|免费|详询|价格待/.test(s)) return "";
+      if (/\d/.test(s)) return s.replace(/[^\d.]/g, "");
+      return "";
+    }
+    return s;
+  }
   function effectiveUnitPrice(a, dep, tier) {
     const base = priceBaseOf(a, dep);
     if (base == null) return null;
@@ -1572,6 +1593,10 @@ const REQUIRED_MODULE_FILES = {
   /* v214：Blueprint 接管导语 / 金句（渲染层读它们，缺了页头就退回模板句） */
   directorLeadOf: "contentDirector.js",
   directorQuoteOf: "contentDirector.js",
+  /* v215 导语/金句接地闸门：拒收与活动文案无 2-gram 重合的 AI 废话 */
+  cdLeadGrounded: "contentDirector.js",
+  /* v215 方案事实回盖 AI 写丢的字段（applyAIResult 末尾调用） */
+  applyPlanFieldsOverride: "publish.js",
   /* v213 诚实价格：显示层把「未定价」（0/空）归一到 详询/价格待定/免费，
      front.js 的 C 端列表卡与报名页也直接调它们 —— 缺一个是「印出 ¥0」 */
   priceDisplayBaseOf: "core.js",
@@ -1579,6 +1604,12 @@ const REQUIRED_MODULE_FILES = {
   priceTextOf: "core.js",
   /* v214 地点短名：文案模板 {P} 只吃短名，避免「四川省…鱼子西不是散步的路线。」病句 */
   shortPlaceOf: "core.js",
+  /* V3 Content Engine 前端数据层 + 渲染层：缺任意一个，详情页会**静默**回退 legacy 轨道，
+     看上去像「V3 没生效」，所以必须登记。 */
+  contentV3DocOf: "contentV3.js",
+  contentV3Generate: "contentV3.js",
+  contentV3CanvasHtml: "contentV3Renderer.js",
+  contentV3StyleVars: "contentV3Renderer.js",
 };
 const REQUIRED_MODULES = Object.keys(REQUIRED_MODULE_FILES);
 /* 返回「缺失的模块名 → 应在文件」清单；全部就绪返回空数组 */

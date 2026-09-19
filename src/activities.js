@@ -78,8 +78,12 @@
     return imgLabel + "·" + structLabel + " ｜ " + ang + "·" + densLabel;
   }
   function editorialVariantSwitch(a) {
+    /* V3 入口：没生成过就给「V3 排版」按钮（走后端受控管线），已在 V3 轨道就给状态徽标。
+       徽标 / 按钮本身不含任何营销话术，只是入口与状态提示。 */
+    const v3ui = (typeof contentV3Badge === "function") ? contentV3Badge(a) : "";
     return `<div class="detail-mode-switch editorial-variant-switch">`
       + `<button type="button" class="dms-chip" data-action="regenStyle" title="重生成角度 / 标题 / 节奏 / 图片策略 / 版式，守住已确认事实">${ICON("sparkles")} 换一种排版</button>`
+      + v3ui
       + `<span class="dms-cur">${esc(editorialVariantSummary(a))}</span>`
       + `</div>`;
   }
@@ -633,6 +637,22 @@
     const edTocHtml = edTocList.map(function (it, i) {
       return `<button type="button" class="xh-ed-toc-item" data-action="edTocGo" data-target="${it[0]}"><i>${String(i + 1).padStart(2, "0")}</i><b>${it[1]}</b><span>${it[2]}</span></button>`;
     }).join("");
+    /* ===== Content Engine V3 双轨（任务 I）=====
+       有「合法且未过期」的 PromoDocument → 图文故事区改由 V3 动态 block 序列渲染；
+       没有（默认 / 后端未配 / 生成失败 / 事实已被改过）→ 完全沿用 legacy outline 叙事。
+       为什么只替换叙事区：Hero / 数据条 / 报名信息 / 清单 / 评价 / CTA 属 Info Stack，
+       本来就由 canonical 事实字段驱动，换渲染轨道不该牵动它们 —— 这是零回归的关键。
+       另一个双轨点：V3 文档自带 cta Block 时，下面不再重复渲染 legacy CTA（否则同屏两个报名按钮）。 */
+    const v3doc = (typeof contentV3DocOf === "function") ? contentV3DocOf(a) : null;
+    const v3Canvas = (v3doc && typeof contentV3CanvasHtml === "function") ? contentV3CanvasHtml(a, v3doc) : "";
+    const v3HasCta = (v3doc && typeof contentV3HasBlock === "function") ? contentV3HasBlock(v3doc, "cta") : false;
+    const v3Hero = (v3doc && typeof contentV3HeroCopy === "function") ? contentV3HeroCopy(v3doc) : null;
+    /* 大标题绝不交给 AI 覆盖（非虚构硬约定：活动名是老板给的事实，不是 AI 的创作空间）；
+       V3 hero 只在页面本身没有副标题时补一句，且补的是 block 原文而非渲染器自撰。 */
+    const subV3 = (!sub && v3Hero && v3Hero.sub) ? gateOwn(v3Hero.sub) : sub;
+    const v3BodyCls = v3doc ? " v3-root" : "";
+    const v3StyleAttr = (v3doc && typeof contentV3StyleVars === "function") ? ` style="${contentV3StyleVars(v3doc)}"` : "";
+    const v3BodyMain = v3doc ? v3Canvas : (leadHtml + secHtml + quoteHtml + galleryHtml);
     return `
       <div class="activity-page xh-ed typo-${esc(layout.typo)} tone-${esc(style.family)}${ac.warm ? " warm-tone" : ""} ed-theme-${edTheme}">
       <div class="ps-topbar">${psLogo()}</div>
@@ -645,20 +665,17 @@
         <div class="xh-ed-hero-txt">
           <div class="xh-ed-eyebrow">${esc(eyebrow || "OUTDOOR")}</div>
           <h1 class="xh-ed-title">${esc(heroTitle)}</h1>
-          ${sub ? `<p class="xh-ed-sub">${esc(sub)}</p>` : ""}
-          <div class="xh-ed-pill">${ICON("calendar")} ${esc(a.date || a.dateMD || "日期待定")}<span class="xh-ed-pill-div"></span>${ICON("map-pin")} ${esc(a.meeting || "集合点待定")}</div>
+          ${subV3 ? `<p class="xh-ed-sub">${esc(subV3)}</p>` : ""}
+          <div class="xh-ed-pill">${ICON("calendar")} ${esc(factPlaceholderReject(a.date, "date") || factPlaceholderReject(a.dateMD, "date") || "日期待定")}<span class="xh-ed-pill-div"></span>${ICON("map-pin")} ${esc(a.meeting || "集合点待定")}</div>
         </div>
       </header>
-      <div class="xh-ed-body" id="ed-story">
+      <div class="xh-ed-body${v3BodyCls}" id="ed-story"${v3StyleAttr}>
         ${kvHtml}
-        ${leadHtml}
-        ${secHtml}
-        ${quoteHtml}
-        ${galleryHtml}
+        ${v3BodyMain}
         ${decisionHtml}
         ${prepHtml}
         ${reviewsHtml}
-        ${ctaHtml}
+        ${v3HasCta ? "" : ctaHtml}
         ${orgHtml}
       </div>
       </div>

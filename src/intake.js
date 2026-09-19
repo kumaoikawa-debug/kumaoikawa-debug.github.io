@@ -405,6 +405,38 @@ function intakeRouteOf(s) {
   const uniq = []; names.forEach(function (n) { if (uniq.indexOf(n) < 0) uniq.push(n); });
   return uniq.slice(0, 4).join("—");
 }
+/* v215：从方案全文抽「费用包含 / 费用不含」清单 —— 之前漏抽导致详情页「费用说明」只剩一张图。
+   只认明确的「费用包含 / 费用不含」小标题后的条目行（顿号 / 逗号 / 分号 / 斜杠拆分，去序号），
+   不猜、不编；抽不到就留空，让详情页回到诚实空态而非塞垃圾。 */
+function intakeFeeItemsFromLines(text) {
+  const lines = String(text || "").split("\n").map(function (s) { return s.trim(); }).filter(Boolean);
+  const inc = [], exc = [];
+  let mode = 0; // 1 = 费用包含, -1 = 费用不含, 0 = 无关
+  /* 小标题同时可能带内容（「费用包含：往返车费」），要拆出冒号后的首项；
+     先判排除标题（避免「费用不含」里的「含：」被包含正则误吸），再判包含标题；
+     标题行本身不再当条目，避免重复。 */
+  const HEADER = /^(费用包含|费用包括|包含项目|费用含|包含：|服务项目|费用明细|费用不含|不包含|不含项目|自理项目|不含：|费用不|不含费用)[：:]?\s*(.*)$/;
+  const STOP = /^(活动时间|活动地点|集合|人数|价格|人均|出发|活动日期|出行时间|出行日期|集合时间|上车|行程|报名|联系)/;
+  const push = function (arr, s) {
+    String(s || "").split(/[、，,；;／/｜|]+/).map(function (x) {
+      return x.replace(/^[\d①-⑨⑩⑪-⑳]+[.、)）]?\s*/, "").replace(/^[（(]\d+[)）]\s*/, "").trim();
+    }).filter(Boolean).forEach(function (it) { if (arr.indexOf(it) < 0) arr.push(it); });
+  };
+  for (let i = 0; i < lines.length; i++) {
+    const L = lines[i];
+    if (STOP.test(L)) { mode = 0; continue; }
+    const hm = L.match(HEADER);
+    if (hm) {
+      const label = hm[1], rest = hm[2];
+      mode = /不含|自理/.test(label) ? -1 : 1;
+      if (rest) push(mode === 1 ? inc : exc, rest);
+      continue;
+    }
+    if (mode === 0) continue;
+    push(mode === 1 ? inc : exc, L);
+  }
+  return { feeInclude: inc.slice(0, 12), feeExclude: exc.slice(0, 12) };
+}
 function intakeParseFields(text) {
   const lines = String(text || "").split("\n").map(function (s) { return s.trim(); }).filter(Boolean);
   const f = {};
@@ -428,6 +460,7 @@ function intakeParseFields(text) {
       const n = v.match(/(\d{2,5})/); if (n && !f.price) f.price = n[1];
     } else if (lab === "活动地点" || lab === "地点") {
       if (!f.route) f.route = intakeRouteOf(v);
+      if (!f.place) f.place = v.slice(0, 60);
     }
   }
   /* 无标签行的强模式兜底：时刻段（08:00 - 12:00）后两三行里出现「集合出发」才算集合时间 */
@@ -462,6 +495,9 @@ function intakeParseFields(text) {
     const m3 = t.match(/(?:位于|目的地?为?)([^\n。]{4,40}?)(?:境内|[。\n ]|$)/);
     if (m3) f.route = intakeRouteOf(m3[1]);
   }
+  const fee = intakeFeeItemsFromLines(text);
+  if (fee.feeInclude.length) f.feeInclude = fee.feeInclude;
+  if (fee.feeExclude.length) f.feeExclude = fee.feeExclude;
   return f;
 }
 

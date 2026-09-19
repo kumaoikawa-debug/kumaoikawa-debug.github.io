@@ -228,20 +228,59 @@ function cdReaderFacing(t, max) {
   if (max && s.length > max) return "";
   return s;
 }
-/* 导语：openingStrategy（首选）→ coreThesis（兜底）；都不合格返回 ""（调用方回退风格包模板） */
+/* 导语：openingStrategy（首选）→ coreThesis（兜底）；过接地闸门，无接地则回退风格包模板 */
 function directorLeadOf(a) {
   const bp = a && a.pageBlueprint;
   if (!bp) return "";
   const bb = bp.pageBlueprint || {};
-  return cdReaderFacing(bb.openingStrategy, 120) || cdReaderFacing(bb.coreThesis, 120);
+  const lead = cdReaderFacing(bb.openingStrategy, 120) || cdReaderFacing(bb.coreThesis, 120);
+  return cdLeadGrounded(a, lead);
 }
-/* 金句：insight（首选）→ coreThesis；与导语重复则不用（同屏两句一样的话很蠢） */
+/* 金句：insight（首选）→ coreThesis；过接地闸门，与导语重复则不用（同屏两句一样的话很蠢） */
 function directorQuoteOf(a) {
   const bp = a && a.pageBlueprint;
   if (!bp) return "";
   const bb = bp.pageBlueprint || {};
-  const q = cdReaderFacing(bp.insight, 60) || cdReaderFacing(bb.coreThesis, 60);
+  const q = cdLeadGrounded(a, cdReaderFacing(bp.insight, 60) || cdReaderFacing(bb.coreThesis, 60));
   return (q && q !== directorLeadOf(a)) ? q : "";
+}
+
+/* v215：导语 / 金句接地闸门 —— AI 总监（尤其 demo / 弱 Key）可能返回与活动毫无关系的废话
+   （如「因为山不议程」「所有议程由风制定。所有结论由脚步推导。」），直接贴页头等于把垃圾给读者看。
+   接地规则：导语 / 金句必须「含具体数字」或「命中活动自有文案（标题 / 地点 / 类型 / 原始方案 raw /
+   _planText / 照片说明 / 为什么去 / 体验 / 收获 / 亮点）的 2-gram 锚点」才算接了地；否则拒收
+   （调用方回退风格包模板句）。
+   ★不破坏 v214 文学导语契约：v214 fixture 的文学导语「先看到日落，再等到日出。」复现活动文案里的
+   「日落」意象，2-gram 命中 → 放行；垃圾句与活动文案无 2-gram 重合 → 拒收。 */
+const CD_STOP_BI = /^(我们|你们|他们|她们|这里|那里|这个|那个|哪个|一场|这次|可以|就是|以及|还有|不仅|而且|因为|所以|但是|如果|它们|这些|那些|一个|一种|一些|已经|不会|一定|可能|觉得|认为|通过|对于|关于|进行|成为|这种|这样|那样|什么|怎么|为什么|自己|大家|朋友|一起|时候|开始|需要|能够|看到|感受|体验|享受|收获|其实|来说|而言|上面|下面|里面|出来|起来|之后|之前|之间|之上|之下|一下|一直|还是|不是|没有|这么|那么|多么|非常|十分|比较|更加|或者|只是)$/;
+function cdTextBigrams(s) {
+  const str = String(s == null ? "" : s).replace(/[\s，。、；：！？“”"'（）()\[\]【】…—\-\.,!?]/g, "");
+  const out = [];
+  for (let i = 0; i + 1 < str.length; i++) out.push(str.slice(i, i + 2));
+  return out;
+}
+function cdAnchorBigrams(a) {
+  const src = [
+    a ? a.title : "", a ? a.place : "", a ? a.type : "",
+    a ? (a._planText || "") : "", a ? (a.raw || "") : "",
+    a ? (a.photoCaptions || []).join("") : "",
+    a ? (a.whyGo || "") : "", a ? (a.experience || "") : "",
+    a ? (a.gain || "") : "",
+    a ? (a.highlights || []).map(function (h) { return (h && (h[0] || h.text || "")) || ""; }).join("") : ""
+  ].join("");
+  const set = {};
+  cdTextBigrams(src).forEach(function (b) { if (b.length === 2 && !CD_STOP_BI.test(b)) set[b] = 1; });
+  return Object.keys(set);
+}
+function cdLeadGrounded(a, t) {
+  const s = cdReaderFacing(t, 0);
+  if (!s) return "";
+  if (/\d/.test(s)) return s;                 // 含具体数字 → 已接地
+  const anchors = cdAnchorBigrams(a);
+  if (!anchors.length) return s;              // 没有可比对的活动文案 → 无法判定，放行
+  const bg = cdTextBigrams(s).filter(function (b) { return b.length === 2 && !CD_STOP_BI.test(b); });
+  for (let i = 0; i < bg.length; i++) if (anchors.indexOf(bg[i]) >= 0) return s;
+  return "";                                  // 与活动毫无 2-gram 重合 → 拒收
 }
 
 /* ===================== M2 Diversity Controller =====================

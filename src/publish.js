@@ -1210,6 +1210,29 @@ function applyVisionBatch(map) {
   }
 
   // 把 LLM JSON 映射到 state.activity，保持详情页渲染所需的字段形态
+  /* v215：方案抽出的结构化事实（_planFields）是「最高优先预填来源」，但 applyAIResult 之前会把
+     AI 返回的 JSON 盲目覆盖到草稿上 —— demo / 弱 Key 返回垃圾时把好数据也毁了（老板截图的根因）。
+     这里在 AI 写完后，用方案的真实事实回盖 date / price / meeting / meetTime / limit / days / place /
+     feeInclude / feeExclude（方案没填的字段不动，AI 填对的保留）。同时兜底拒绝占位符。 */
+  function applyPlanFieldsOverride(base) {
+    const pf = base && base._planFields;
+    if (!pf || typeof pf !== "object") return;
+    if (pf.date) { const d = factPlaceholderReject(pf.date, "date"); if (d) { base.date = cleanFactText(d, 24) || d; base.dateMD = toDateMD(base.date); } }
+    if (pf.price != null && pf.price !== "") { const pr = factPlaceholderReject(String(pf.price), "price"); if (pr) base.price = +pr; }
+    if (pf.meeting) base.meeting = cleanFactText(pf.meeting, 30) || base.meeting;
+    if (pf.meetTime) base.meetTime = cleanFactText(pf.meetTime, 16) || base.meetTime;
+    if (pf.limit != null && pf.limit !== "") base.limit = +pf.limit;
+    if (pf.days != null && pf.days !== "") base.days = +pf.days;
+    if (pf.place) base.place = cleanFactText(pf.place, 60) || base.place;
+    if (Array.isArray(pf.feeInclude) && pf.feeInclude.length) { base.feeInclude = pf.feeInclude.slice(0, 12); base.included = pf.feeInclude.slice(0, 12); }
+    if (Array.isArray(pf.feeExclude) && pf.feeExclude.length) base.feeExclude = pf.feeExclude.slice(0, 12);
+    /* 方案给了日期 / 价格但 AI 没建团期 → 按方案补一团期，保证结算块有东西 */
+    if (base.date) {
+      const dm = base.dateMD || toDateMD(base.date);
+      if (!base.departures || !base.departures.length) { const d = departureFromDate(base.date, base.price); if (d) base.departures = [d]; }
+      else if (base.departures[0] && base.departures[0].date !== dm) { base.departures[0].date = dm; if (base.price != null) base.departures[0].price = base.price; }
+    }
+  }
   function applyAIResult(json, base) {
     const a = base || blankActivity();
     a.raw = json._raw || a.raw || "";
@@ -1248,8 +1271,9 @@ function applyVisionBatch(map) {
     if (json.type) a.type = cleanFactText(json.type, 12) || a.type;
     if (json.place) a.place = cleanFactText(json.place, 24) || a.place;
     if (json.days) a.days = +json.days;
-    if (json.startDate || json.date) { const d = cleanFactText(json.startDate || json.date, 24) || (json.startDate || json.date); a.date = d; a.dateMD = toDateMD(d); }
-    if (json.price != null) a.price = +json.price;
+    /* v215：AI 也可能回填占位符（「10月xx日」「价格待定」）—— 直接拒收，不覆盖好数据 */
+    if (json.startDate || json.date) { const d = (cleanFactText(json.startDate || json.date, 24) || (json.startDate || json.date)); if (d && factPlaceholderReject(d, "date")) { a.date = d; a.dateMD = toDateMD(d); } }
+    if (json.price != null) { const pr = factPlaceholderReject(String(json.price), "price"); if (pr) a.price = +pr; }
     if (json.meeting) a.meeting = cleanFactText(json.meeting, 30) || a.meeting;
     if (json.meetTime) a.meetTime = cleanFactText(json.meetTime, 16) || a.meetTime;
     if (json.returnTime) a.returnTime = cleanFactText(json.returnTime, 16) || a.returnTime;
@@ -1345,6 +1369,7 @@ function applyVisionBatch(map) {
     };
     a.missing = [];
     syncItineraryDays(a);
+    applyPlanFieldsOverride(a);   // v215：方案事实回盖 AI 写丢 / 写错的字段（在派生字段写定之后）
     // 开场钩子模板化检测：命中固定对比句式则提示用户重新生成
     a.aiNotice = (a.hook && /你以为|前半段|后半段/.test(a.hook)) ? "开场钩子疑似套用固定句式，建议点「重新生成」换一版。" : "";
     // 新架构：内容一致性检查 + 评分（规则引擎，不额外消耗 AI）
