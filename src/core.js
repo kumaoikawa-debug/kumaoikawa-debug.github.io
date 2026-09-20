@@ -1610,6 +1610,10 @@ const REQUIRED_MODULE_FILES = {
   contentV3Generate: "contentV3.js",
   contentV3CanvasHtml: "contentV3Renderer.js",
   contentV3StyleVars: "contentV3Renderer.js",
+  /* Phase 3 编辑器：缺它，「编辑排版」按钮点了没反应、面板永不出现 */
+  contentV3EditorPanel: "contentV3Editor.js",
+  contentV3EditorBegin: "contentV3Editor.js",
+  contentV3EditorSave: "contentV3Editor.js",
 };
 const REQUIRED_MODULES = Object.keys(REQUIRED_MODULE_FILES);
 /* 返回「缺失的模块名 → 应在文件」清单；全部就绪返回空数组 */

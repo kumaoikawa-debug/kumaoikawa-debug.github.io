@@ -5933,3 +5933,25 @@ s.pp-base, .dm-v s.pp-base { text-decoration: line-through; }
 /* V3 状态徽标 */
 .v3-badge.on { display: inline-flex; align-items: center; gap: 5px; color: var(--brand-700); }
 .v3-badge.on svg { width: 13px; height: 13px; }
+
+/* ===== Content Engine V3 编辑器面板（Phase 3，后台人工微调） ===== */
+.v3-editor { margin: 14px 0 4px; border: 1px solid var(--brand-soft); border-radius: var(--radius); background: #fff; box-shadow: 0 6px 22px rgba(0,0,0,.06); overflow: hidden; }
+.v3-editor-h { display: flex; align-items: baseline; gap: 10px; padding: 12px 14px; font-weight: 800; color: var(--brand-800); background: var(--brand-tint); border-bottom: 1px solid var(--brand-soft); }
+.v3-editor-hint { font-weight: 500; font-size: 12px; color: var(--muted); }
+.v3-editor-cards { padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; max-height: 60vh; overflow: auto; }
+.v3-edit-card { border: 1px solid #eee; border-radius: 10px; padding: 10px 12px; background: #fcfcfd; }
+.v3-edit-card-h { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.v3-edit-type { font-weight: 700; color: var(--brand-700); font-size: 13px; }
+.v3-edit-ops { display: inline-flex; gap: 6px; }
+.v3-edit-ops .mini { min-width: 26px; height: 26px; border: 1px solid #ddd; border-radius: 6px; background: #fff; cursor: pointer; font-size: 13px; line-height: 1; }
+.v3-edit-ops .mini:hover:not(:disabled) { border-color: var(--brand-400); color: var(--brand-700); }
+.v3-edit-ops .mini:disabled { opacity: .35; cursor: not-allowed; }
+.v3-edit-ops .mini.danger:hover { border-color: #e56; color: #c23; }
+.v3-ef { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; font-size: 12px; color: var(--muted); }
+.v3-ef span { font-weight: 600; }
+.v3-ef input, .v3-ef textarea { width: 100%; border: 1px solid #ddd; border-radius: 7px; padding: 7px 9px; font: inherit; color: #222; background: #fff; }
+.v3-ef textarea { min-height: 64px; resize: vertical; }
+.v3-ef-none { font-size: 12px; color: var(--muted); font-style: italic; }
+.v3-editor-add { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--brand-soft); background: #fafaff; }
+.v3-editor-add select { border: 1px solid #ddd; border-radius: 7px; padding: 6px 8px; font: inherit; }
+.v3-editor-actions { display: flex; gap: 10px; justify-content: flex-end; padding: 10px 14px 14px; }

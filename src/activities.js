@@ -85,7 +85,8 @@
       + `<button type="button" class="dms-chip" data-action="regenStyle" title="重生成角度 / 标题 / 节奏 / 图片策略 / 版式，守住已确认事实">${ICON("sparkles")} 换一种排版</button>`
       + v3ui
       + `<span class="dms-cur">${esc(editorialVariantSummary(a))}</span>`
-      + `</div>`;
+      + `</div>`
+      + ((typeof contentV3EditorPanel === "function") ? contentV3EditorPanel(a) : "");
   }
   /* v190 图片比例自适应：容器宽高比跟随「图片真实比例」，竖图/横图/方图各得其形。
      此前的固定高度(280/190/150px) + contain 会让竖图左右露出大片米色留白，这是老板反馈的「图片处理很差」。 */

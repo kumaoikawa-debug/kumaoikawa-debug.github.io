@@ -266,7 +266,8 @@ function contentV3Badge(a) {
   if (typeof ICON !== "function") return "";
   var live = !!contentV3DocOf(a);
   if (live) {
-    return `<span class="dms-cur v3-badge on" title="本页正在按 Content Engine V3 动态 block 序列渲染">${ICON("sparkles")} V3 已完成</span>`;
+    var editBtn = (typeof contentV3EditorButton === "function") ? contentV3EditorButton(a) : "";
+    return `<span class="dms-cur v3-badge on" title="本页正在按 Content Engine V3 动态 block 序列渲染">${ICON("sparkles")} V3 已完成</span>` + editBtn;
   }
   if (!contentV3Available()) return "";
   return `<button type="button" class="dms-chip" data-action="edV3Generate" title="用 Content Engine V3 重新排版（由后端受控管线生成动态排版）">${ICON("sparkles")} V3 排版</button>`;

@@ -378,6 +378,48 @@ function showView(view, params) {
         break;
       }
 
+      /* Content Engine V3 编辑器（Phase 3）：人工微调 PromoDocument。
+         所有变更先在草稿上进行，只有「保存」才落回 a.v3Document。 */
+      case "edV3Edit": {
+        const ea = viewingActivity() || (state.draft ? state.draft : null);
+        if (ea && typeof contentV3EditorBegin === "function") contentV3EditorBegin(ea);
+        break;
+      }
+      case "edV3MoveUp": {
+        const ea = viewingActivity() || (state.draft ? state.draft : null);
+        const i = Number(el && el.dataset ? el.dataset.v3I : NaN);
+        if (ea && isFinite(i) && typeof contentV3EditorMove === "function") contentV3EditorMove(ea, i, -1);
+        break;
+      }
+      case "edV3MoveDown": {
+        const ea = viewingActivity() || (state.draft ? state.draft : null);
+        const i = Number(el && el.dataset ? el.dataset.v3I : NaN);
+        if (ea && isFinite(i) && typeof contentV3EditorMove === "function") contentV3EditorMove(ea, i, 1);
+        break;
+      }
+      case "edV3Delete": {
+        const ea = viewingActivity() || (state.draft ? state.draft : null);
+        const i = Number(el && el.dataset ? el.dataset.v3I : NaN);
+        if (ea && isFinite(i) && typeof contentV3EditorDelete === "function") contentV3EditorDelete(ea, i);
+        break;
+      }
+      case "edV3Add": {
+        const ea = viewingActivity() || (state.draft ? state.draft : null);
+        let atype = "";
+        try { const sel = document.querySelector("[data-v3-add]"); if (sel) atype = sel.value; } catch (e) {}
+        if (ea && atype && typeof contentV3EditorAdd === "function") contentV3EditorAdd(ea, atype);
+        break;
+      }
+      case "edV3Save": {
+        const ea = viewingActivity() || (state.draft ? state.draft : null);
+        if (ea && typeof contentV3EditorSave === "function") contentV3EditorSave(ea);
+        break;
+      }
+      case "edV3Close": {
+        if (typeof contentV3EditorClose === "function") contentV3EditorClose();
+        break;
+      }
+
 
       case "clToggle": {
         // v195 出行清单：勾选状态按活动持久化；同步刷新「已勾 / 总数」进度
