@@ -7760,6 +7760,17 @@ confirmedFacts：${JSON.stringify(f)}
   if (!out || !out.gzh || !out.gzh.sections) out = fallbackRecruitCopy(a, m, dir);
   out = qualityCheck(out, dir, "recruit", f) || out;
   if (out && out.xhs) out.xhs = normalizeXhs(out.xhs);
+  /* Phase 4/5：后端已配时，用 V3 渠道管线产出 gzh + xhs 覆盖本地生成；
+     其余平台与渲染结构不变。任何失败都退回上面的本地生成。 */
+  if (typeof contentV3Available === "function" && contentV3Available()) {
+    try {
+      const wd = await v3ChannelGenerate("wechat", a, {});
+      if (wd) out.gzh = v3WechatToLegacy(wd);
+      const xd = await v3ChannelGenerate("xiaohongshu", a, {});
+      if (xd) out.xhs = v3XhsToLegacy(xd);
+      if (wd || xd) out._v3Channel = true;
+    } catch (e) { /* 回退本地生成，不中断 */ }
+  }
   /* v203：AI 与本地回退两条来源都要过闸门 —— 出口统一，不依赖上游自觉。 */
   return gatePublishOut(out, "recruit");
 }
@@ -7905,8 +7916,159 @@ async function genRecap(a, m, strategy, photos, notes) {
     q.note = (q.note || "") + " 已阻断无来源的现场事件叙述（" + fabEvents.join("、") + "）。";
   }
   if (out && out.xhs) out.xhs = normalizeXhs(out.xhs);
+  /* Phase 5：后端已配时，用 V3 回顾管线产出 gzh + xhs 覆盖本地生成；
+     moments/wechat/next 保留本地生成。任何失败都退回上面的本地生成。 */
+  if (typeof contentV3Available === "function" && contentV3Available()) {
+    try {
+      const rd = await v3ChannelGenerate("recap", a, { actual: actual });
+      if (rd) {
+        const r = v3RecapToLegacy(rd);
+        out.gzh = { title: r.title, summary: r.summary, sections: r.sections, next: (out.gzh && out.gzh.next) || "" };
+        out.xhs = r.xhs;
+        out._v3Recap = true;
+      }
+    } catch (e) { /* 回退本地生成，不中断 */ }
+  }
   /* v203：回顾同样是宣传文案（朋友圈/微信群/小红书都会转发）—— 一并过闸门。 */
   return gatePublishOut(out, "recap");
+}
+
+/* ================= V3 渠道生成（Phase 4/5）：publish.js 正式生成改走 V3 API =================
+   文档 §十八/§十九/§二十：公众号 / 小红书 / 回顾的正式生成改调后端 V3 渠道管线，
+   旧 XF_FAMILY 本地生成保留为 fallback。
+   铁律（与 detail 同源）：
+     - 后端未配 / 不可达 / 401 重试仍失败 / 出参不合法 → 一律返回 null，调用方保持 XF_FAMILY。
+     - 映射只覆盖 gzh + xhs 两段（V3 文档聚焦的两个渠道）；moments/wechat/voice/poster/next
+       仍由本地生成，渲染器与落库结构不变 —— 故默认（无后端）路径零行为变化。
+     - 预览用 doc.sections 的纯文本段落重渲染（不依赖后端 html 里可能失效的图片 src）；
+       doc.html 另存为 v3RawHtml / v3Raw，供「复制粘贴进公众号后台」使用。 */
+
+/* 构造渠道请求体（shape 与 detail 完全一致，复用 contentV3.js 的 payload 助手） */
+function v3ChannelBody(a, opts) {
+  opts = opts || {};
+  if (!a) return null;
+  var body = {
+    activityId: String(a.id || opts.activityId || ""),
+    activity: (typeof contentV3ActivityPayload === "function") ? contentV3ActivityPayload(a) : a,
+    planFacts: (typeof contentV3PlanFactsPayload === "function") ? contentV3PlanFactsPayload(a) : null,
+    photos: (typeof contentV3PhotoPayload === "function") ? contentV3PhotoPayload(a) : null
+  };
+  if (!body.activityId) return null;
+  var mt = [];
+  var txt = (a && a._planText) ? String(a._planText) : "";
+  if (txt) mt.push(txt.slice(0, 4000));
+  if (Array.isArray(a && a.photoCaptions)) {
+    for (var i = 0; i < a.photoCaptions.length && mt.length < 40; i++) {
+      var c = a.photoCaptions[i];
+      if (c && String(c).trim()) mt.push(String(c).trim().slice(0, 200));
+    }
+  }
+  if (mt.length) body.materialText = mt;
+  if (opts.actual) body.actual = opts.actual;
+  return body;
+}
+
+/* 调后端 /api/content/:scenario/generate；返回合法渠道文档或 null（任何失败都 null） */
+async function v3ChannelGenerate(scenario, a, opts) {
+  opts = opts || {};
+  if (!a || (scenario !== "wechat" && scenario !== "xiaohongshu" && scenario !== "recap")) return null;
+  if (typeof contentV3Available !== "function" || !contentV3Available()) return null;
+  var auth = (typeof contentV3AuthHeader === "function") ? await contentV3AuthHeader() : null;
+  if (!auth) return null;
+  var body = v3ChannelBody(a, opts);
+  if (!body) return null;
+  var base = (typeof contentV3ApiBase === "function") ? contentV3ApiBase() : "";
+  if (!base) return null;
+  var url = base + "/" + scenario + "/generate";
+  var json = function (res) { return res && res.json ? res.json().catch(function () { return {}; }) : Promise.resolve({}); };
+  try {
+    let res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": auth },
+      body: JSON.stringify(body)
+    });
+    if (res && res.status === 401 && typeof clearBackendToken === "function") {
+      clearBackendToken();
+      auth = (typeof contentV3AuthHeader === "function") ? await contentV3AuthHeader() : null;
+      if (!auth) return null;
+      res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": auth },
+        body: JSON.stringify(body)
+      });
+    }
+    if (!res || !res.ok) return null;
+    var d = await json(res);
+    var doc = d && d.data && (d.data.document || d.data);
+    if (!doc || Number(doc.schemaVersion) !== 3) return null;
+    if (doc.scenario && doc.scenario !== scenario) return null;
+    return doc;
+  } catch (e) { return null; }
+}
+
+/* WechatDocument → legacy gzh 形状（预览用 sections 段落；html 存 v3RawHtml） */
+function v3WechatToLegacy(wd) {
+  var sections = Array.isArray(wd.sections) ? wd.sections : [];
+  var mapped = sections.length
+    ? sections.map(function (s) {
+        var paras = (s.paragraphs || []).map(function (p) { return "<p>" + esc(p) + "</p>"; }).join("");
+        return { h: s.heading || "", html: paras };
+      })
+    : [{ h: "", html: (wd.html || "") }];
+  return {
+    title: wd.title || (wd.titleOptions && wd.titleOptions[0]) || "",
+    subtitle: "",
+    summary: wd.digest || "",
+    sections: mapped,
+    titleOptions: wd.titleOptions || [],
+    v3RawHtml: wd.html || "",
+    v3ImageOrder: wd.imageOrder || [],
+    v3CoverIndex: (typeof wd.coverIndex === "number") ? wd.coverIndex : -1
+  };
+}
+
+/* XiaohongshuDocument → legacy xhs 形状 */
+function v3XhsToLegacy(xd) {
+  var body = [xd.hook, xd.body].filter(function (x) { return x && String(x).trim(); }).join("\n\n");
+  var imageOrder = Array.isArray(xd.imageSequence) ? xd.imageSequence.map(function (s) { return s.photoIndex; }) : [];
+  return {
+    titles: xd.titleOptions || [],
+    body: body,
+    coverText: (typeof xd.coverSuggestion === "number") ? ("封面 #" + xd.coverSuggestion) : (xd.coverSuggestion || ""),
+    hashtags: xd.tags || [],
+    imageOrder: imageOrder,
+    v3Raw: xd
+  };
+}
+
+/* RecapDocument → legacy gzh + xhs（回顾只覆盖这两段；moments/wechat/next 保留本地） */
+function v3RecapToLegacy(rd) {
+  var sections = Array.isArray(rd.sections) ? rd.sections : [];
+  var mapped = sections.length
+    ? sections.map(function (s) {
+        var paras = (s.paragraphs || []).map(function (p) { return "<p>" + esc(p) + "</p>"; }).join("");
+        return { h: s.heading || "", html: paras };
+      })
+    : [{ h: "", html: (rd.html || "") }];
+  var title = (rd.insight && rd.insight.coreMemory) || "";
+  var summary = (rd.insight && rd.insight.whyItMatters) || "";
+  var xhsBody = [title, summary].filter(Boolean).join("\n\n");
+  if (rd.html) xhsBody += "\n\n" + stripTags(rd.html);
+  return {
+    title: title,
+    summary: summary,
+    sections: mapped,
+    v3RawHtml: rd.html || "",
+    v3ImageOrder: rd.imageOrder || [],
+    v3CoverIndex: (typeof rd.coverIndex === "number") ? rd.coverIndex : -1,
+    xhs: {
+      titles: title ? [title] : [],
+      body: xhsBody,
+      coverText: (typeof rd.coverIndex === "number") ? ("封面 #" + rd.coverIndex) : "",
+      hashtags: [],
+      imageOrder: rd.imageOrder || []
+    }
+  };
 }
 
 /* ---------- 质量检查（§39 ContentQualityCheck / §40 EditorialQualityCheck） ---------- */
