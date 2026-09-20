@@ -11,7 +11,9 @@
  * 铁律（与 detail 同源）：
  *  - 后端未配 / 不可达 / 401 重试仍失败 / 出参不合法 → 一律返回 null，调用方保持 XF_FAMILY。
  *  - 映射只覆盖 gzh + xhs 两段；其余渠道与渲染器不变 —— 默认（无后端）路径零行为变化。
- *  - 预览用 doc.sections 的纯文本段落重渲染（不依赖后端 html 里可能失效的图片 src）；
+ *  - 预览：三个渠道文档形状不同 —— xiaohongshu 用 hook/body/tags/imageSequence；
+ *    recap 有 sections[]；**wechat 没有 sections（正文全在 html，已带 inline style）**，
+ *    故各映射器的 sections 分支会在缺失时回退为「整篇 html 单段」。
  *    doc.html 另存 v3RawHtml / v3Raw，供「复制粘贴进公众号后台」使用。
  *
  * 依赖（由 contentV3.js 提供，扁平 classic script 共享顶层作用域，本文件须在其后加载）：
@@ -19,6 +21,50 @@
  *  contentV3ActivityPayload / contentV3PlanFactsPayload / contentV3PhotoPayload
  * 另用全局 esc / stripTags（core.js / publish.js 提供）。
  * ========================================================================== */
+
+/* legacy actualActivityData 形状 → 后端 ActualActivityData 契约
+   ----------------------------------------------------------------------------
+   ★2026-09-20 修复的真缺陷：后端 recap 契约字段是
+     { attendance, weather, actualRoute, highlights[], feedbacks[], onSiteNotes[] }，
+     而前端 extractActualActivityData() 产出的是
+     { actualParticipants, actualWeather, actualHighlights[], actualFeedback[], ... }，
+     两边**字段名零交集** → 后端永远读不到现场素材 → 回顾渠道恒定「无现场素材」诚实空态
+     （用户填了实际人数/天气/亮点也无效，且不报错）。
+   硬规则：attendance 只取「实到」(actualParticipants)，**绝不用报名数顶替**（P0-6）；
+          无任何现场素材时返回 null，让请求不带 actual（保持后端诚实空态）。 */
+function v3ActualPayload(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  /* 已是后端契约形状（未来或其它调用方直传）→ 原样使用 */
+  if (raw.highlights || raw.feedbacks || raw.onSiteNotes || raw.attendance != null || raw.weather != null) return raw;
+  var str = function (x) {
+    if (x == null) return '';
+    return (Array.isArray(x) ? x.filter(Boolean).join('；') : String(x)).trim();
+  };
+  var arr = function (x) {
+    if (Array.isArray(x)) return x.filter(Boolean).map(function (y) { return String(y).trim(); }).filter(Boolean);
+    var t = str(x);
+    return t ? t.split(/[；;\n]/).map(function (y) { return y.trim(); }).filter(Boolean) : [];
+  };
+  var out = {};
+  /* 实到人数：只有用户明确确认过才带；缺失即不写（后端 attendance?: number） */
+  var n = raw.actualParticipants;
+  if (n != null && n !== '' && !isNaN(+n) && +n > 0) out.attendance = +n;
+  var w = str(raw.actualWeather);
+  if (w) out.weather = w.slice(0, 60);
+  var rt = str(raw.actualRouteChange);
+  if (rt) out.actualRoute = rt.slice(0, 120);
+  var hl = arr(raw.actualHighlights);
+  if (hl.length) out.highlights = hl.slice(0, 8);
+  var fb = arr(raw.actualFeedback);
+  if (fb.length) out.feedbacks = fb.slice(0, 8);
+  var notes = arr(raw.memorableMoments);
+  if (str(raw.completionSummary)) notes.push(str(raw.completionSummary).slice(0, 200));
+  if (str(raw.providedNotes)) notes.push(str(raw.providedNotes).slice(0, 300));
+  if (notes.length) out.onSiteNotes = notes.slice(0, 10);
+  var hasAny = out.highlights || out.feedbacks || out.onSiteNotes ||
+    out.attendance != null || out.weather || out.actualRoute;
+  return hasAny ? out : null;
+}
 
 /* 构造渠道请求体（shape 与 detail 完全一致，复用 contentV3.js 的 payload 助手） */
 function v3ChannelBody(a, opts) {
@@ -41,7 +87,10 @@ function v3ChannelBody(a, opts) {
     }
   }
   if (mt.length) body.materialText = mt;
-  if (opts.actual) body.actual = opts.actual;
+  if (opts.actual) {
+    var ap = v3ActualPayload(opts.actual);
+    if (ap) body.actual = ap;
+  }
   return body;
 }
 
@@ -83,7 +132,9 @@ async function v3ChannelGenerate(scenario, a, opts) {
   } catch (e) { return null; }
 }
 
-/* WechatDocument → legacy gzh 形状（预览用 sections 段落；html 存 v3RawHtml） */
+/* WechatDocument → legacy gzh 形状。
+   ★后端 wechat 文档没有 sections 字段（正文全在 html），因此实际走 mapped 的兜底分支；
+   预览直接渲染 html（自带 inline style），v3RawHtml 供「复制进公众号后台」。 */
 function v3WechatToLegacy(wd) {
   var sections = Array.isArray(wd.sections) ? wd.sections : [];
   var mapped = sections.length

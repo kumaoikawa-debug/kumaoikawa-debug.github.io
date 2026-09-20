@@ -1644,6 +1644,8 @@ const REQUIRED_MODULE_FILES = {
   v3WechatToLegacy: "contentChannels.js",
   v3XhsToLegacy: "contentChannels.js",
   v3RecapToLegacy: "contentChannels.js",
+  /* v220：legacy actualActivityData → 后端 ActualActivityData 契约（字段名桥接） */
+  v3ActualPayload: "contentChannels.js",
   /* v219 后端连接失败原因单一真源：shell.js「测试后端连接」原样回显它。
      不登记的话若被误删，界面只会回到「请检查地址/口令/商家ID」这种无法定位的提示 */
   backendLastError: "core.js",
