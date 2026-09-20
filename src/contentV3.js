@@ -243,10 +243,14 @@ async function contentV3Generate(a, opts) {
   }
 }
 
-/* 挂到活动并落库（同时记下事实指纹） */
+/* 挂到活动并落库（同时记下事实指纹）
+   ★ v222：后端现回传落库后的文档 id —— 必须存下来，否则 §十八 单块 AI 改写 / 重新设计
+   （POST /:id/rewrite-block、/:id/regenerate-layout）与 §二十四 发布埋点（POST /:id/publish）
+   全都拿不到 :id，按钮点了只会弹「该文档还没存到后端」/ 指标永远 0。 */
 function contentV3Attach(a, doc) {
   if (!a || !contentV3IsValidDoc(doc)) return false;
   a.v3Document = doc;
+  if (doc && doc.id != null && String(doc.id) !== "") a.v3DocId = String(doc.id);
   a.v3TruthKey = contentV3TruthKey(a);
   try { if (typeof saveState === "function") saveState(); } catch (e) {}
   return true;
@@ -255,9 +259,61 @@ function contentV3Attach(a, doc) {
 /* 摘掉 V3 文档 → 立刻回退 legacy 轨道（给「回到旧版排」留的出口） */
 function contentV3Detach(a) {
   if (!a) return false;
-  try { delete a.v3Document; delete a.v3TruthKey; } catch (e) { a.v3Document = null; a.v3TruthKey = null; }
+  try { delete a.v3Document; delete a.v3TruthKey; delete a.v3DocId; } catch (e) { a.v3Document = null; a.v3TruthKey = null; a.v3DocId = null; }
   try { if (typeof saveState === "function") saveState(); } catch (e) {}
   return true;
+}
+
+/* 历史活动（v222 之前生成的）本地没存后端文档 id —— 用 activityId 反查补齐。
+   不补这一步，「标记已发布 / 单块 AI 改写 / 重新设计」对存量活动永远是死的。 */
+async function contentV3EnsureDocId(a) {
+  if (!a) return null;
+  if (a.v3DocId) return a.v3DocId;
+  if (a.v3Document && a.v3Document.id != null && String(a.v3Document.id) !== "") {
+    a.v3DocId = String(a.v3Document.id);
+    return a.v3DocId;
+  }
+  var base = (typeof contentV3ApiBase === "function") ? contentV3ApiBase() : "";
+  if (!base) return null;
+  var auth = (typeof contentV3AuthHeader === "function") ? await contentV3AuthHeader() : null;
+  if (!auth) return null;
+  try {
+    var res = await fetch(base + "/activity/" + encodeURIComponent(String(a.id)) + "?scenario=detail", {
+      headers: { Authorization: auth }
+    });
+    if (!res || !res.ok) return null;
+    var j = await res.json();
+    var id = j && j.data && j.data.id;
+    if (id) {
+      a.v3DocId = String(id);
+      try { if (typeof saveState === "function") saveState(); } catch (e) {}
+      return a.v3DocId;
+    }
+  } catch (e) { /* 取不到就保持 null，调用方给提示 */ }
+  return null;
+}
+
+/* §二十四 发布埋点：告诉后端「这份内容已对外发布」，写入 publishedAt。
+   它是 Direct Publish Rate 与 Time-to-Publish 的唯一时间基准点 —— 不埋这个点，
+   两个指标恒为 0（线上核验已证实：published=0 / sample=0）。 */
+async function contentV3Publish(a) {
+  if (!a) return false;
+  var docId = (typeof contentV3EnsureDocId === "function") ? await contentV3EnsureDocId(a) : null;
+  if (!docId) return false;
+  var base = (typeof contentV3ApiBase === "function") ? contentV3ApiBase() : "";
+  if (!base) return false;
+  var auth = (typeof contentV3AuthHeader === "function") ? await contentV3AuthHeader() : null;
+  if (!auth) return false;
+  try {
+    var res = await fetch(base + "/" + encodeURIComponent(docId) + "/publish", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: auth },
+      body: JSON.stringify({})
+    });
+    return !!(res && res.ok);
+  } catch (e) {
+    return false;
+  }
 }
 
 /* ---------------------------------------------------------------- UI 辅助 */
@@ -267,7 +323,10 @@ function contentV3Badge(a) {
   var live = !!contentV3DocOf(a);
   if (live) {
     var editBtn = (typeof contentV3EditorButton === "function") ? contentV3EditorButton(a) : "";
-    return `<span class="dms-cur v3-badge on" title="本页正在按 Content Engine V3 动态 block 序列渲染">${ICON("sparkles")} V3 已完成</span>` + editBtn;
+    /* 发布埋点（§二十四）：id 在点击时补齐（contentV3EnsureDocId），
+       故按钮始终给 —— 存量活动也能标记，取不到 id 时给明确提示而不是静默消失。 */
+    var pubBtn = `<button type="button" class="dms-chip" data-action="edV3Publish" title="标记这份内容已对外发布 —— 作为「直发率 / 发布耗时」两个质量指标的时间基准">${ICON("check")} 标记已发布</button>`;
+    return `<span class="dms-cur v3-badge on" title="本页正在按 Content Engine V3 动态 block 序列渲染">${ICON("sparkles")} V3 已完成</span>` + editBtn + pubBtn;
   }
   if (!contentV3Available()) return "";
   return `<button type="button" class="dms-chip" data-action="edV3Generate" title="用 Content Engine V3 重新排版（由后端受控管线生成动态排版）">${ICON("sparkles")} V3 排版</button>`;

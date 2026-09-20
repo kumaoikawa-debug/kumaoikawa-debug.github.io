@@ -432,6 +432,20 @@ function showView(view, params) {
         if (typeof contentV3EditorClose === "function") contentV3EditorClose();
         break;
       }
+      /* §二十四 发布埋点：写 publishedAt，作为「直发率 / 发布耗时」的时间基准点 */
+      case "edV3Publish": {
+        const pa = viewingActivity() || (state.draft ? state.draft : null);
+        if (!pa) break;
+        if (typeof contentV3Publish !== "function") break;
+        if (!pa.v3DocId && !(pa.v3Document && pa.v3Document.id)) {
+          toast("这份内容还没存到后端，无法记录发布时间");
+          break;
+        }
+        contentV3Publish(pa).then(function (okp) {
+          toast(okp ? "已标记为对外发布（计入直发率 / 发布耗时）" : "标记发布失败，请稍后重试");
+        });
+        break;
+      }
 
       /* §二十四 质量指标仪表盘：点开才加载，不在活动页常驻噪音；再点收起。
          指标只在后端可用时出现，未接入时按钮根本不渲染（见 activities.js）。 */

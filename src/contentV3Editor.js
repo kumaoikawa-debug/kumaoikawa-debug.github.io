@@ -56,7 +56,7 @@ function contentV3EditorButton(a) {
  * Editor.js 集成（文档 §十二）—— 仅在编辑模式按需加载
  * ======================================================================= */
 
-var V3_EDITORJS_SRC = "vendor/editorjs/editorjs.umd.js?v=221";
+var V3_EDITORJS_SRC = "vendor/editorjs/editorjs.umd.js?v=222";
 var _v3EditorJsPromise = null;
 
 /* 动态加载 vendor 里的 Editor.js（固定版本，不引不锁版本公共 CDN）。
@@ -338,16 +338,18 @@ function contentV3EditorToolNameOf(type) {
 /* 单块 AI 改写 / 重新设计：走后端 §十八 的编辑器端点。
    ★ 需要后端已保存的文档 id；本地草稿没落库时诚实告知，不假装改写成功。 */
 function contentV3EditorAiCall(a, i, kind) {
-  var docId = (a && (a.v3DocId || (a.v3Document && a.v3Document.id))) || null;
-  if (!docId) {
-    if (typeof toast === "function") toast("该文档还没存到后端，单块 AI 改写需要后端生成的文档");
-    return Promise.resolve(false);
-  }
   if (typeof contentV3ApiBase !== "function") return Promise.resolve(false);
   var base = contentV3ApiBase();
   if (!base) return Promise.resolve(false);
   var path = kind === "redesign" ? "regenerate-layout" : "rewrite-block";
   return (async function () {
+    /* v222：后端的 :id 现在会随生成结果回传（a.v3DocId）；存量活动没有存过，
+       用 activityId 反查补齐 —— 否则这里的改写 / 重新设计永远走不到后端。 */
+    var docId = (typeof contentV3EnsureDocId === "function") ? await contentV3EnsureDocId(a) : null;
+    if (!docId) {
+      if (typeof toast === "function") toast("该文档还没存到后端，单块 AI 改写需要后端生成的文档");
+      return false;
+    }
     try {
       var auth = (typeof contentV3AuthHeader === "function") ? await contentV3AuthHeader() : null;
       if (!auth) return false;
