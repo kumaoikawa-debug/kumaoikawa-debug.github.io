@@ -1644,6 +1644,19 @@ const REQUIRED_MODULE_FILES = {
   v3WechatToLegacy: "contentChannels.js",
   v3XhsToLegacy: "contentChannels.js",
   v3RecapToLegacy: "contentChannels.js",
+  /* §二十四 质量指标仪表盘：缺它，「质量指标」按钮点击后面板不出现、指标无从查看 */
+  contentV3MetricsAvailable: "contentV3Metrics.js",
+  contentV3MetricsPanel: "contentV3Metrics.js",
+  contentV3MetricsRefresh: "contentV3Metrics.js",
+  /* §十二 Editor.js 块级编辑层：
+     缺 Tools → 编辑器静默退回卡片模式（能编辑但失去块级体验）；
+     缺映射函数 → Editor.js 的改动无法落回 PromoDocument Schema（数据格式反向绑死业务的反面）。 */
+  contentV3EditorTools: "contentV3EditorTools.js",
+  contentV3BlocksToEditorData: "contentV3EditorTools.js",
+  contentV3EditorDataToBlocks: "contentV3EditorTools.js",
+  contentV3EditorJsInit: "contentV3Editor.js",
+  contentV3EditorAiRewrite: "contentV3Editor.js",
+  contentV3EditorRedesign: "contentV3Editor.js",
   /* v220：legacy actualActivityData → 后端 ActualActivityData 契约（字段名桥接） */
   v3ActualPayload: "contentChannels.js",
   /* v219 后端连接失败原因单一真源：shell.js「测试后端连接」原样回显它。

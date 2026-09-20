@@ -415,8 +415,39 @@ function showView(view, params) {
         if (ea && typeof contentV3EditorSave === "function") contentV3EditorSave(ea);
         break;
       }
+      /* §十二：单块 AI 改写 —— 只改这一块的文案，不动事实层 */
+      case "edV3AiRewrite": {
+        const ra = viewingActivity() || (state.draft ? state.draft : null);
+        const ri = Number(el && el.dataset ? el.dataset.v3I : NaN);
+        if (ra && isFinite(ri) && typeof contentV3EditorAiRewrite === "function") contentV3EditorAiRewrite(ra, ri);
+        break;
+      }
+      /* §十二：重新设计这一段 —— 换一种呈现（走后端 regenerate-layout），再刷新编辑器 */
+      case "edV3Redesign": {
+        const da = viewingActivity() || (state.draft ? state.draft : null);
+        if (da && typeof contentV3EditorRedesign === "function") contentV3EditorRedesign(da, 0);
+        break;
+      }
       case "edV3Close": {
         if (typeof contentV3EditorClose === "function") contentV3EditorClose();
+        break;
+      }
+
+      /* §二十四 质量指标仪表盘：点开才加载，不在活动页常驻噪音；再点收起。
+         指标只在后端可用时出现，未接入时按钮根本不渲染（见 activities.js）。 */
+      case "v3-metrics-toggle": {
+        try {
+          const host = document.getElementById("v3MetricsHost");
+          if (host && typeof contentV3MetricsPanel === "function") {
+            const open = host.innerHTML.indexOf("v3m-panel") >= 0;
+            host.innerHTML = open ? "" : contentV3MetricsPanel();
+            if (!open && typeof contentV3MetricsRefresh === "function") contentV3MetricsRefresh();
+          }
+        } catch (e) {}
+        break;
+      }
+      case "v3-metrics-refresh": {
+        if (typeof contentV3MetricsRefresh === "function") contentV3MetricsRefresh();
         break;
       }
 

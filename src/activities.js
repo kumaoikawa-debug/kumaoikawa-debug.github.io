@@ -86,6 +86,10 @@
       + v3ui
       + `<span class="dms-cur">${esc(editorialVariantSummary(a))}</span>`
       + `</div>`
+      /* §二十四 质量指标仪表盘：只在接了后端时出现，点开才加载（俱乐部级指标，不做成常驻噪音） */
+      + ((typeof contentV3MetricsAvailable === "function" && contentV3MetricsAvailable())
+          ? `<div class="v3m-entry"><button type="button" class="dms-chip" data-action="v3-metrics-toggle" title="查看内容质量指标（§二十四）：直发率 / 修改率 / 多样性 / 事实接地 / 发布耗时">质量指标</button><div id="v3MetricsHost"></div></div>`
+          : "")
       + ((typeof contentV3EditorPanel === "function") ? contentV3EditorPanel(a) : "");
   }
   /* v190 图片比例自适应：容器宽高比跟随「图片真实比例」，竖图/横图/方图各得其形。

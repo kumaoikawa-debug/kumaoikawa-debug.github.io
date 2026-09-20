@@ -5955,3 +5955,39 @@ s.pp-base, .dm-v s.pp-base { text-decoration: line-through; }
 .v3-editor-add { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--brand-soft); background: #fafaff; }
 .v3-editor-add select { border: 1px solid #ddd; border-radius: 7px; padding: 6px 8px; font: inherit; }
 .v3-editor-actions { display: flex; gap: 10px; justify-content: flex-end; padding: 10px 14px 14px; }
+
+/* ================= §二十四 内容质量指标仪表盘 ================= */
+.v3m-entry { margin-top: 8px; }
+.v3m-panel { margin-top: 10px; border: 1px solid var(--brand-soft); border-radius: 12px; background: #fff; overflow: hidden; }
+.v3m-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--brand-soft); background: #fafaff; }
+.v3m-h { font-size: 13px; font-weight: 700; color: var(--ink); }
+.v3m-btn { border: 1px solid #ddd; background: #fff; border-radius: 7px; padding: 5px 12px; font: inherit; cursor: pointer; }
+.v3m-btn:hover { border-color: var(--brand); color: var(--brand); }
+.v3m-body { padding: 12px 14px; }
+.v3m-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+.v3m-card { border: 1px solid #eee; border-radius: 10px; padding: 10px 12px; background: #fcfcff; }
+.v3m-title { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.v3m-value { font-size: 18px; font-weight: 700; color: var(--ink); line-height: 1.2; }
+.v3m-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.v3m-note { margin-top: 8px; font-size: 11px; color: var(--muted); }
+.v3m-empty { font-size: 12px; color: var(--muted); font-style: italic; padding: 6px 0; }
+.v3m-ok { color: #2e7d32; }
+.v3m-info { color: #1565c0; }
+.v3m-warn { color: #ef6c00; }
+.v3m-bad { color: #c62828; }
+
+/* ================= §十二 Editor.js 块级编辑层 ================= */
+.v3-editorjs-host { min-height: 40px; padding: 4px 2px; }
+.v3-editorjs-host:empty { display: none; }
+.v3ed-block { border: 1px dashed #e3e3ef; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; background: #fff; }
+.v3ed-field { outline: none; padding: 3px 0; line-height: 1.6; }
+.v3ed-field:empty::before { content: attr(data-placeholder); color: #b9b9c6; }
+.v3ed-field:focus { background: #f7f7ff; }
+.v3ed-headline { font-size: 16px; font-weight: 700; color: var(--ink); }
+.v3ed-body { font-size: 14px; color: #333; white-space: pre-wrap; }
+.v3ed-caption { font-size: 12px; color: var(--muted); }
+.v3ed-media { margin-top: 8px; border-top: 1px dotted #eee; padding-top: 8px; }
+.v3ed-media-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+.v3ed-media-ids { width: 100%; border: 1px solid #ddd; border-radius: 7px; padding: 6px 8px; font: inherit; resize: vertical; }
+.v3ed-pick { margin-top: 6px; border: 1px solid #ddd; background: #fff; border-radius: 7px; padding: 4px 12px; font: inherit; cursor: pointer; }
+.v3ed-pick:hover { border-color: var(--brand); color: var(--brand); }

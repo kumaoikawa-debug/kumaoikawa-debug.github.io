@@ -100,6 +100,49 @@ function directorFacts(a) {
   return facts.join("\n");
 }
 
+/* ===================== 品牌语言（文档 §十三：BrandProfile） ===================== */
+/* 彻底删除原先写死的「远拓旅游：年轻、松弛、山系高级感」——那是单俱乐部时期的遗留，
+   不适用于多俱乐部 SaaS：会给没做过品牌设定的俱乐部套上别人的调性。
+   现在：
+     · 未设置 BrandProfile → 中性默认品牌语言（不注入任何具体调性）
+     · 设置了 → 用该俱乐部自己的 toneKeywords / visualKeywords / contentRules
+   ★ 绝不再默认所有俱乐部都是「年轻、松弛、山系高级感」。 */
+
+/* 当前品牌档案：后台从 /api/content/brand-profile 取到后调用 setBrandProfile 注入。 */
+var CURRENT_BRAND_PROFILE = null;
+function setBrandProfile(profile) { CURRENT_BRAND_PROFILE = profile || null; }
+function getBrandProfileOf() { return CURRENT_BRAND_PROFILE; }
+
+function currentBrandProfile(a) {
+  if (a && a.brandProfile) return a.brandProfile;
+  if (CURRENT_BRAND_PROFILE) return CURRENT_BRAND_PROFILE;
+  try {
+    if (typeof window !== "undefined" && window.__CLUBOS_BRAND_PROFILE__) {
+      return window.__CLUBOS_BRAND_PROFILE__;
+    }
+  } catch (e) { /* 非浏览器环境（如 node epilogue）忽略 */ }
+  return null;
+}
+
+/* 拼一段写进 prompt 的品牌语言。没有品牌档案/没填关键词 → 中性默认。 */
+function brandBrief(a) {
+  var p = currentBrandProfile(a);
+  if (!p) {
+    return "\n\n【品牌调性】未设置品牌档案：使用中性、克制的品牌语言，不套任何固定调性；文案有语言美感而非堆数字。";
+  }
+  var tone = [].concat(p.toneKeywords || []);
+  var visual = [].concat(p.visualKeywords || []);
+  if (!tone.length && !visual.length) {
+    return "\n\n【品牌调性】未设置品牌关键词：使用中性、克制的品牌语言，不套任何固定调性；文案有语言美感而非堆数字。";
+  }
+  var name = p.brandName ? "（" + p.brandName + "）" : "";
+  var parts = tone.concat(visual).filter(Boolean);
+  var s = "\n\n【品牌调性】该俱乐部的品牌语言偏好：" + parts.join("、") + name
+    + "。请基于活动事实与这一品牌偏好推导，不得编造事实或数字。";
+  if (p.contentRules) s += "\n【品牌内容规则】" + p.contentRules;
+  return s;
+}
+
 /* ===================== AI Content Director（单次调用 → Blueprint） ===================== */
 /* 返回结构：
    { insight, directions:[{id,name,thesis,why,fitScore}], chosen,
@@ -120,7 +163,7 @@ async function aiContentDirector(a) {
     + "照片数量不足时不要承诺不存在的视觉。"
     + "输出严格 JSON，不要任何解释文字。";
   const user = "【活动事实】\n" + facts
-    + "\n\n【品牌调性】远拓旅游：年轻、松弛、山系高级感，文案有语言美感而非堆数字；图片主导。"
+    + brandBrief(a)
     + "\n\n【最近创意记忆（避免重复）】\n" + mem
     + "\n\n请产出 JSON：\n"
     + "{\n"
@@ -403,7 +446,7 @@ async function aiContentDirectorCandidates(a, n) {
     + "照片数量不足时不要承诺不存在的视觉。"
     + "输出严格 JSON，不要任何解释文字。";
   let user = "【活动事实】\n" + facts
-    + "\n\n【品牌调性】远拓旅游：年轻、松弛、山系高级感，文案有语言美感而非堆数字；图片主导。"
+    + brandBrief(a)
     + "\n\n【最近创意记忆（避免重复）】\n" + mem
     + "\n\n请产出 JSON，包含 " + n + " 套彼此差异化的完整策划候选（candidates 数组），每套结构如下：\n"
     + "{\n"
