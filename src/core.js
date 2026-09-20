@@ -1652,6 +1652,20 @@ const REQUIRED_MODULE_FILES = {
      缺 EnsureDocId → 存量活动拿不到后端文档 id（v222 前未回传），发布与单块 AI 改写全是死的 */
   contentV3Publish: "contentV3.js",
   contentV3EnsureDocId: "contentV3.js",
+  /* §十三 品牌语言档案：缺 ensure/save → 设置页表单保存没反应、AI 永远走中性默认；
+     缺 brandKeywordsOf → 「逗号/空格/顿号」分隔的输入切不出关键词数组 */
+  /* §二十四 渠道发布：缺 PublishDoc → 渠道「已发布」按钮点了没反应；
+     缺 ScenarioOfChannel → 分不清 xhs / gzh 对应哪个 scenario */
+  contentV3PublishDoc: "contentV3.js",
+  contentV3PublishChannel: "contentV3.js",
+  contentV3ScenarioOfChannel: "contentV3.js",
+  ensureBrandProfile: "contentDirector.js",
+  refreshBrandProfile: "contentDirector.js",
+  saveBrandProfile: "contentDirector.js",
+  brandKeywordsOf: "contentDirector.js",
+  setBrandProfile: "contentDirector.js",
+  getBrandProfileOf: "contentDirector.js",
+  renderBrandProfileCard: "activities.js",
   /* §十二 Editor.js 块级编辑层：
      缺 Tools → 编辑器静默退回卡片模式（能编辑但失去块级体验）；
      缺映射函数 → Editor.js 的改动无法落回 PromoDocument Schema（数据格式反向绑死业务的反面）。 */

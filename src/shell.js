@@ -432,6 +432,42 @@ function showView(view, params) {
         if (typeof contentV3EditorClose === "function") contentV3EditorClose();
         break;
       }
+      /* §二十四 渠道文档发布埋点：公众号 / 小红书 / 回顾各自有文档 id */
+      case "opMarkPublished": {
+        const ma = (typeof viewingActivity === "function") ? viewingActivity() : null;
+        const aid = el && el.dataset ? el.dataset.aid : "";
+        const ch = el && el.dataset ? el.dataset.channel : "";
+        const target = (ma && String(ma.id) === String(aid)) ? ma
+          : (state.activities || []).find((x) => String(x.id) === String(aid));
+        if (!target) break;
+        const scen = (typeof contentV3ScenarioOfChannel === "function") ? contentV3ScenarioOfChannel(ch) : null;
+        const cid = (scen && target.v3ChannelDocIds) ? target.v3ChannelDocIds[scen] : null;
+        if (!cid) { toast("这份文案不是 V3 管线生成的，无法记录发布时间"); break; }
+        if (typeof contentV3PublishChannel !== "function") break;
+        contentV3PublishChannel(target, scen).then(function (okc) {
+          toast(okc ? "已标记为对外发布（计入直发率 / 发布耗时）" : "标记发布失败，请稍后重试");
+        });
+        break;
+      }
+      /* §十三 品牌语言档案：保存 tone/avoid/visual 关键词与内容规则 */
+      case "saveBrandProfile": {
+        if (typeof saveBrandProfile !== "function") break;
+        const bpPick = function (k) {
+          try { const el = document.querySelector('[data-bp="' + k + '"]'); return el ? String(el.value || "") : ""; } catch (e) { return ""; }
+        };
+        const bpWords = (typeof brandKeywordsOf === "function") ? brandKeywordsOf : function (s) { return String(s || "").split(/[\s,，、;；]+/).filter(Boolean); };
+        saveBrandProfile({
+          brandName: bpPick("brandName").trim() || null,
+          toneKeywords: bpWords(bpPick("toneKeywords")),
+          avoidKeywords: bpWords(bpPick("avoidKeywords")),
+          visualKeywords: bpWords(bpPick("visualKeywords")),
+          contentRules: bpPick("contentRules").trim() || null,
+        }).then(function (r) {
+          toast(r && r.ok ? "品牌语言已保存" : ("保存失败：" + ((r && r.message) || "未知原因")));
+          if (r && r.ok && typeof showView === "function") showView(state.view, state.params);
+        });
+        break;
+      }
       /* §二十四 发布埋点：写 publishedAt，作为「直发率 / 发布耗时」的时间基准点 */
       case "edV3Publish": {
         const pa = viewingActivity() || (state.draft ? state.draft : null);

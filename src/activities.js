@@ -1363,6 +1363,14 @@ function channelMeta(ch) {
       <div class="op-copy-grid">
         ${keys.map((ch) => {
           const meta = channelMeta(ch);
+          /* §二十四：渠道文档也参与「直发率 / 发布耗时」。有 V3 文档 id 才给发布入口 ——
+             没有 id 说明这份文案不是 V3 管线出的（本地生成），本来也不在指标口径里。 */
+          const scen = (typeof contentV3ScenarioOfChannel === "function") ? contentV3ScenarioOfChannel(ch) : null;
+          const a0 = (state.activities || []).find((x) => String(x.id) === String(aid));
+          const cid = (scen && a0 && a0.v3ChannelDocIds) ? a0.v3ChannelDocIds[scen] : null;
+          const pubBtn = cid
+            ? `<button class="btn btn-soft btn-xs" data-action="opMarkPublished" data-aid="${aid}" data-channel="${ch}" title="标记这份渠道文案已对外发布 —— 计入直发率 / 发布耗时">${ICON("check")} 已发布</button>`
+            : "";
           return `<div class="op-copy-card">
             <div class="op-copy-card-h">
               <span class="op-copy-channel">${ICON(meta.icon)} ${esc(meta.name)}</span>
@@ -1371,6 +1379,7 @@ function channelMeta(ch) {
             <div class="op-copy-card-body">${esc(copies[ch])}</div>
             <div class="op-copy-card-f">
               <button class="btn btn-ghost btn-xs" data-action="opCopyRegenerate" data-aid="${aid}" data-channel="${ch}">${ICON("refresh")} 重新生成</button>
+              ${pubBtn}
             </div>
           </div>`;
         }).join("")}
@@ -1690,8 +1699,40 @@ function channelMeta(ch) {
     `;
   }
 
+  /* §十三 品牌语言档案（BrandProfile）—— 决定 AI 文案用什么语气说话。
+     与上面的「机构与品牌」是两件事：那边管 Logo / 口号 / 界面配色，这边管 AI 的品牌语言。
+     ★ 未设置时内容引擎走中性默认，绝不默认所有俱乐部都是同一种调性。 */
+  function renderBrandProfileCard() {
+    if (typeof getBrandProfileOf !== "function") return "";
+    const p = getBrandProfileOf() || null;
+    const tone = (p && p.toneKeywords) ? p.toneKeywords.join("、") : "";
+    const avoid = (p && p.avoidKeywords) ? p.avoidKeywords.join("、") : "";
+    const visual = (p && p.visualKeywords) ? p.visualKeywords.join("、") : "";
+    const rules = (p && p.contentRules) ? p.contentRules : "";
+    const name = (p && p.brandName) ? p.brandName : "";
+    return `
+      <div class="card card-pad" style="margin-top:14px">
+        <div class="panel-head"><h3>品牌语言档案</h3><span class="tiny muted">决定 AI 文案的语气与用词</span></div>
+        <p class="muted small" style="margin:0 0 10px">留空即为「中性、克制」的品牌语言 —— 系统不会替你猜一种调性，也不会给所有俱乐部套同一套风格。</p>
+        <div class="field"><label>品牌名称（选填）</label><input class="input" data-bp="brandName" value="${esc(name)}" placeholder="如：远拓旅游" maxlength="80"></div>
+        <div class="field"><label>调性关键词</label><input class="input" data-bp="toneKeywords" value="${esc(tone)}" placeholder="如：年轻、松弛、克制（逗号或空格分隔）">
+          <div class="tiny muted">会写进 AI 提示词，作为品牌语言偏好。</div></div>
+        <div class="field"><label>避雷关键词</label><input class="input" data-bp="avoidKeywords" value="${esc(avoid)}" placeholder="如：奢华、打卡、网红（逗号或空格分隔）">
+          <div class="tiny muted">进入 AI 的禁用清单，生成时会被主动回避。</div></div>
+        <div class="field"><label>视觉关键词</label><input class="input" data-bp="visualKeywords" value="${esc(visual)}" placeholder="如：山系、自然光、留白（逗号或空格分隔）"></div>
+        <div class="field"><label>内容规则（选填）</label><textarea class="textarea" data-bp="contentRules" placeholder="如：不写「逃离城市」，不承诺未确认的行程" maxlength="500">${esc(rules)}</textarea></div>
+        <button class="btn btn-primary" style="margin-top:12px" data-action="saveBrandProfile">${ICON("check")} 保存品牌语言</button>
+      </div>`;
+  }
+
   function renderSettings() {
     const b = state.brand;
+    /* 进设置页时拉一次品牌档案；拉到了才重渲染一次（拉回来是空则不重渲染，避免渲染循环） */
+    if (typeof ensureBrandProfile === "function" && typeof getBrandProfileOf === "function" && !getBrandProfileOf()) {
+      ensureBrandProfile().then(function (p) {
+        if (p && typeof showView === "function" && state.view === "settings") showView(state.view, state.params);
+      });
+    }
     const aiBal = aiBalance();
     const mallSales = state.mallSalesMonth || 0;
     const nextMilestone = AI_MILESTONES.find((m) => mallSales < m.t);
@@ -1722,6 +1763,8 @@ function channelMeta(ch) {
         <input type="color" data-brand="primary" value="${esc(b.primary)}" style="width:100%;height:42px;border:1px solid var(--line);border-radius:11px">
         <button class="btn btn-primary" style="margin-top:12px" data-action="saveSettingsBrand">${ICON("check")} 保存机构与品牌</button>
       </div>
+
+      ${renderBrandProfileCard()}
 
       <div class="card card-pad" style="margin-top:14px">
         <div class="panel-head"><h3>界面装修</h3><span class="tiny muted">自定义 C 端首页</span></div>

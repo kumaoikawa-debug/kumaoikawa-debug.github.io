@@ -128,6 +128,16 @@ async function v3ChannelGenerate(scenario, a, opts) {
     var doc = d && d.data && (d.data.document || d.data);
     if (!doc || Number(doc.schemaVersion) !== 3) return null;
     if (doc.scenario && doc.scenario !== scenario) return null;
+    /* v223：后端现在回传落库 id（d.data.id）。之前只取 document，id 被丢掉 →
+       渠道文档永远无法发布，§二十四「直发率 / 发布耗时」的分母里躺着一堆发不出去的渠道文档。 */
+    var rid = d && d.data && d.data.id;
+    if (rid && a) {
+      try {
+        if (!a.v3ChannelDocIds || typeof a.v3ChannelDocIds !== "object") a.v3ChannelDocIds = {};
+        a.v3ChannelDocIds[scenario] = String(rid);
+        if (typeof saveState === "function") saveState();
+      } catch (e) { /* 落 state 失败不影响本次生成 */ }
+    }
     return doc;
   } catch (e) { return null; }
 }

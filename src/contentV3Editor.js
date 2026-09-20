@@ -56,7 +56,7 @@ function contentV3EditorButton(a) {
  * Editor.js 集成（文档 §十二）—— 仅在编辑模式按需加载
  * ======================================================================= */
 
-var V3_EDITORJS_SRC = "vendor/editorjs/editorjs.umd.js?v=222";
+var V3_EDITORJS_SRC = "vendor/editorjs/editorjs.umd.js?v=223";
 var _v3EditorJsPromise = null;
 
 /* 动态加载 vendor 里的 Editor.js（固定版本，不引不锁版本公共 CDN）。

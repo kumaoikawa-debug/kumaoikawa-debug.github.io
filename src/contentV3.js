@@ -296,16 +296,15 @@ async function contentV3EnsureDocId(a) {
 /* §二十四 发布埋点：告诉后端「这份内容已对外发布」，写入 publishedAt。
    它是 Direct Publish Rate 与 Time-to-Publish 的唯一时间基准点 —— 不埋这个点，
    两个指标恒为 0（线上核验已证实：published=0 / sample=0）。 */
-async function contentV3Publish(a) {
-  if (!a) return false;
-  var docId = (typeof contentV3EnsureDocId === "function") ? await contentV3EnsureDocId(a) : null;
+/* 按文档 id 直接发布（渠道文档用：它们各自有 id，不挂在 a.v3DocId 上） */
+async function contentV3PublishDoc(docId) {
   if (!docId) return false;
   var base = (typeof contentV3ApiBase === "function") ? contentV3ApiBase() : "";
   if (!base) return false;
   var auth = (typeof contentV3AuthHeader === "function") ? await contentV3AuthHeader() : null;
   if (!auth) return false;
   try {
-    var res = await fetch(base + "/" + encodeURIComponent(docId) + "/publish", {
+    var res = await fetch(base + "/" + encodeURIComponent(String(docId)) + "/publish", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: auth },
       body: JSON.stringify({})
@@ -314,6 +313,31 @@ async function contentV3Publish(a) {
   } catch (e) {
     return false;
   }
+}
+
+async function contentV3Publish(a) {
+  if (!a) return false;
+  var docId = (typeof contentV3EnsureDocId === "function") ? await contentV3EnsureDocId(a) : null;
+  if (!docId) return false;
+  return contentV3PublishDoc(docId);
+}
+
+/* 渠道文档发布：scenario = wechat | xiaohongshu | recap */
+async function contentV3PublishChannel(a, scenario) {
+  if (!a) return false;
+  var ids = a.v3ChannelDocIds || {};
+  var docId = ids[scenario];
+  if (!docId) return false;
+  return contentV3PublishDoc(docId);
+}
+
+/* 渠道 key（运营任务卡片用的 ch）→ V3 scenario。非 V3 渠道返回 null。 */
+function contentV3ScenarioOfChannel(ch) {
+  var k = String(ch || "").toLowerCase();
+  if (k === "wechat" || k === "gzh") return "wechat";
+  if (k === "xhs" || k === "xiaohongshu" || k === "red") return "xiaohongshu";
+  if (k === "recap" || k === "review") return "recap";
+  return null;
 }
 
 /* ---------------------------------------------------------------- UI 辅助 */
