@@ -781,6 +781,17 @@
   function setBackendToken(v) { try { if (v && v.trim()) localStorage.setItem(BACKEND_TOKEN_LS, v.trim()); else localStorage.removeItem(BACKEND_TOKEN_LS); } catch (e) {} }
   function clearBackendToken() { setBackendToken(""); }
 
+  /* 最近一次「后端连接」失败原因（单一真源，供 UI 原样回显）。
+     ★为什么必须有它：ensureBackendToken() 任何失败都只返回 null，界面便只能给出
+     「请检查地址 / 口令 / 商家ID」这种无用提示 —— 而真实原因至少有三类，修法完全不同：
+       ① `Failed to fetch`（浏览器 fetch 抛错）→ 多半是**后端没开 CORS**（预检缺
+          Access-Control-Allow-Origin 时浏览器直接抛错，服务端 curl 却是通的）或地址写错；
+       ② HTTP 401 → 管理员口令与后端 ADMIN_CODE 不一致（也可能是登录路径不对）；
+       ③ HTTP 404 → 后端路径不存在（版本不匹配 / 反代前缀错了）。
+     不记录的话用户只能看到一个笼统 toast，线上排查全靠猜。 */
+  var _backendLastError = "";
+  function backendLastError() { return _backendLastError; }
+
   // 当前可用 AI 模式：'backend'（走总平台代理）| 'key'（本地直连演示）| false（未配置）
   function aiAuthMode() {
     if (getBackendURL()) return "backend";
@@ -789,24 +800,37 @@
   }
 
   // 用管理员口令 + 商家ID 向后端换取 JWT（缓存于 localStorage；401 时由调用方清掉重试）
+  // ★失败时把原因写进 _backendLastError（见 backendLastError()），别让 UI 只能提示"请检查xxx"
   async function ensureBackendToken() {
-    const url = getBackendURL(); if (!url) return null;
-    const code = getBackendAdminCode(); if (!code) return null;
+    const url = getBackendURL(); if (!url) { _backendLastError = "未填写总平台后端地址"; return null; }
+    const code = getBackendAdminCode(); if (!code) { _backendLastError = "未填写管理员口令"; return null; }
     const mid = getBackendMerchantId();
     const cached = getBackendToken();
     if (cached) return cached;
+    let r;
     try {
-      const r = await fetch(url + "/api/pay/admin/login", {
+      r = await fetch(url + "/api/pay/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: code, merchant_id: mid }),
       });
-      if (!r.ok) return null;
-      const d = await r.json().catch(() => ({}));
-      const token = d && d.data && d.data.token;
-      if (token) { setBackendToken(token); return token; }
+    } catch (e) {
+      // fetch 抛错 = 网络不可达 / 地址写错 / 后端未开 CORS（预检被浏览器拦）
+      _backendLastError = "网络请求被阻断（Failed to fetch）—— 检查地址是否正确，或后端是否允许跨域(CORS)";
       return null;
-    } catch (e) { return null; }
+    }
+    if (!r.ok) {
+      let msg = "";
+      try { const e = await r.json(); msg = (e && e.message) || ""; } catch (e2) { msg = ""; }
+      _backendLastError = "后端返回 HTTP " + r.status + (msg ? "：" + msg : "") +
+        (r.status === 401 ? "（管理员口令与后端 ADMIN_CODE 不一致）" : (r.status === 404 ? "（后端登录路径不存在）" : ""));
+      return null;
+    }
+    const d = await r.json().catch(() => ({}));
+    const token = d && d.data && d.data.token;
+    if (token) { setBackendToken(token); _backendLastError = ""; return token; }
+    _backendLastError = "后端未返回 token（响应结构不符）";
+    return null;
   }
 
   function safeJsonParse(c) {
@@ -1620,6 +1644,9 @@ const REQUIRED_MODULE_FILES = {
   v3WechatToLegacy: "contentChannels.js",
   v3XhsToLegacy: "contentChannels.js",
   v3RecapToLegacy: "contentChannels.js",
+  /* v219 后端连接失败原因单一真源：shell.js「测试后端连接」原样回显它。
+     不登记的话若被误删，界面只会回到「请检查地址/口令/商家ID」这种无法定位的提示 */
+  backendLastError: "core.js",
 };
 const REQUIRED_MODULES = Object.keys(REQUIRED_MODULE_FILES);
 /* 返回「缺失的模块名 → 应在文件」清单；全部就绪返回空数组 */

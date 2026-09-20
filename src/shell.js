@@ -2538,7 +2538,8 @@ function showView(view, params) {
     toast("正在连接后端…");
     clearBackendToken();
     const tok = await ensureBackendToken();
-    if (!tok) return toast("后端连接失败：请检查地址 / 口令 / 商家ID");
+    // 原样回显真实失败原因（CORS 被拦 / 401 口令错 / 404 路径不存在）—— 别只说「请检查地址/口令/商家ID」
+    if (!tok) return toast("后端连接失败 —— " + ((typeof backendLastError === "function" && backendLastError()) || "请检查地址 / 口令 / 商家ID"));
     const r = await clubLLMviaBackend({ system: "", user: "用一句话介绍本周末的徒步活动", json: false, temperature: 0.7 });
     if (r === "__fallback__") return toast("后端不可达（网络 / 地址错误）");
     if (r == null) return toast("后端已连通，但 AI 代理返回空（检查 PLATFORM_LLM_KEY 或 AI 积分）");
