@@ -1614,6 +1614,12 @@ const REQUIRED_MODULE_FILES = {
   contentV3EditorPanel: "contentV3Editor.js",
   contentV3EditorBegin: "contentV3Editor.js",
   contentV3EditorSave: "contentV3Editor.js",
+  /* Phase 4/5 渠道生成：抽到 contentChannels.js，缺它 → V3 已配后端但公众号/小红书/回顾不调 V3 */
+  v3ChannelGenerate: "contentChannels.js",
+  v3ChannelBody: "contentChannels.js",
+  v3WechatToLegacy: "contentChannels.js",
+  v3XhsToLegacy: "contentChannels.js",
+  v3RecapToLegacy: "contentChannels.js",
 };
 const REQUIRED_MODULES = Object.keys(REQUIRED_MODULE_FILES);
 /* 返回「缺失的模块名 → 应在文件」清单；全部就绪返回空数组 */
