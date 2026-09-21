@@ -1065,12 +1065,17 @@ function applyVisionBatch(map) {
   }
 
 
+  /* v237：把 clubLLM 记录的真实失败原因透出给用户（不再只有一句「失败」） */
+  function aiErrText(fbMsg) {
+    const why = (typeof clubLLM === "function" && clubLLM._lastErrMsg) ? String(clubLLM._lastErrMsg) : "";
+    return why ? fbMsg + "：" + why : fbMsg;
+  }
   async function parseActivityWithAI(inputText) {
     if (!aiAuthMode()) return { _needKey: true, raw: inputText };
     const strategy = await aiStrategy(inputText);
-    if (!strategy) return { _error: "策略分析失败", raw: inputText };
+    if (!strategy) return { _error: aiErrText("策略分析失败"), raw: inputText };
     const content = await aiNarrative(inputText, strategy);
-    if (!content) return { _error: "内容生成失败", raw: inputText };
+    if (!content) return { _error: aiErrText("内容生成失败"), raw: inputText };
     // 合并：事实来自策略层（facts），正文来自叙事层；详情页渲染只需最终活动字段
     const merged = Object.assign({}, strategy.facts || {}, content);
     merged._raw = inputText;
@@ -2351,83 +2356,6 @@ function applyVisionBatch(map) {
       "3) 没有依据的天气 / 景色 / 事件 / 体验一律不写；允许创造表达，不允许创造事实。"
     ];
     return lines.join("\n");
-  }
-
-  // P0-2：纯本地、由基因派生的文案（无 Key / LLM 失败时的兜底，确保 4 种徒步也明显不同）
-  function dnaCopyFor(dna) {
-    dna = dna || {};
-    const sig = dna.sceneSignature || "";
-    const theme = dna.mainTheme || "走一段值得记住的路";
-    const angles = dna.copyAngles || [];
-    const tones = dna.toneWords || [];
-    const tags = dna.sceneTags || [];
-    const envLabel = dna.environmentLabel || "山野";
-    const heroHook = (angles[0] || theme) + (sig ? "。" + sig.slice(0, 24) : "");
-    const hook = angles[0] || theme;
-    const editorialTitle = dna.editorialTitle || theme;
-    const pullQuote = dna.pullQuote || theme;
-    const intro = ((angles[1] || theme) + "。") + (sig ? sig + "。" : "") + "这一程，把脚步交给" + envLabel + "本身。";
-    // 结构化叙事字段（供消费者详情页「场景体验 / 活动价值 / 适合谁」区块直接消费）
-    const whyGo = ((angles[1] || theme) + "。") + (sig ? sig + "。" : "");
-    const experience = sig || (tags.length ? tags.slice(0, 4).join("、") + "，构成这一段路的基本样子。" : "这一段路的具体样子，留给现场。");
-    const gain = angles[2] || (tones.join("、") + "，是这趟行程留给你的余韵。");
-    const fitFor = (dna.targetAudience || "想换个节奏的人") + "，都可以在这里找到自己的步频。";
-    const body = [
-      "为什么值得去：" + whyGo,
-      "来了会体验什么：" + experience,
-      "参加完能得到什么：" + gain,
-      "适不适合你：" + fitFor
-    ];
-    const sellingPoints = [
-      { title: envLabel + "本场才有的画面", desc: sig || "这一程最具体的风景，只属于这条路线。" },
-      { title: theme, desc: "围绕「" + theme + "」组织整场表达，让参与者一眼知道为什么来。" },
-      { title: (angles[1] || "具体而真实的体验"), desc: (angles[1] || "用真实场景替代空泛形容词，让文案站得住脚。") }
-    ];
-    const forewordTitles = [
-      (dna.season ? dna.season + "的" : "") + envLabel + "，值得用脚步丈量",
-      theme,
-      (tags[1] ? tags[1] + "里的一场" + (dna.activityFormLabel || "出行") : (dna.activityFormLabel || "出行") + "邀请"),
-      (angles[1] || "走一段少有人走的路"),
-      (dna.targetAudience ? "写给" + dna.targetAudience : "把日子过成户外")
-    ];
-    return {
-      heroHook, hook, editorialTitle, pullQuote, intro, body, sellingPoints, forewordTitles,
-      whyGo, experience, gain, fitFor,
-      posterTagline: (dna.season ? dna.season + "，" : "") + envLabel + "在等你",
-      storyPurpose: theme
-    };
-  }
-
-  // P0-2：把基因文案兜底填进活动对象（缺啥补啥，不覆盖 AI 已生成的内容）
-  function applyDnaCopyFallback(a) {
-    if (!a) return a;
-    if (!a.activityDNA) a.activityDNA = buildActivityDNA(a);
-    const c = dnaCopyFor(a.activityDNA);
-    if (!a.heroHook) a.heroHook = c.heroHook;
-    if (!a.hook) a.hook = c.hook;
-    if (!a.editorialTitle) a.editorialTitle = c.editorialTitle;
-    if (!a.pullQuote) a.pullQuote = c.pullQuote;
-    if (!a.intro) a.intro = c.intro;
-    if (!a.whyGo) a.whyGo = c.whyGo;
-    if (!a.experience) a.experience = c.experience;
-    if (!a.gain) a.gain = c.gain;
-    if (!a.fitFor) a.fitFor = c.fitFor;
-    if (!Array.isArray(a.body) || !a.body.length) a.body = c.body;
-    if (!Array.isArray(a.sellingPoints) || !a.sellingPoints.length) {
-      a.sellingPoints = c.sellingPoints;
-      const mt = dedupeTitles ? dedupeTitles(c.forewordTitles) : c.forewordTitles.slice();
-      a.forewordTitles = (typeof fillTitlesFromPool === "function") ? fillTitlesFromPool(mt, a) : mt;
-      const first = (a.forewordTitles && a.forewordTitles[0]) || a.title || "";
-      a.titleVariants = { brand: first, info: first, wechat: first, xhs: first, moments: first };
-      if (!a.title) a.title = first;
-    }
-    if (!a.posterTagline) a.posterTagline = c.posterTagline;
-    if (!a.storyPurpose) a.storyPurpose = c.storyPurpose;
-    if (!a.contentStrategy) a.contentStrategy = { name: (a.activityDNA && a.activityDNA.coreMotivationLabel) || "主表达", headline: c.heroHook, reason: c.intro, intro: c.intro, posterLine: c.posterTagline };
-    a.pipeline = a.pipeline || { foreword: { titles: [] }, itinerary: { days: a.days || 1 }, details: {} };
-    a.pipeline.foreword = { titles: a.forewordTitles || [], intro: a.intro || "" };
-    a.pipeline.sellingPoints = (a.sellingPoints || []).map((s) => ({ title: String((s && s.title) || ""), desc: String((s && s.desc) || "") }));
-    return a;
   }
 
   /* ===== P0-5 行程结构化：结构型时间表（事实层）+ 内容型叙事（表达层）=====
@@ -5854,7 +5782,7 @@ function buildEditorialOutline(a) {
     const vTypo = layout.typo, vFamily = style.family;
     const dna = (typeof activityDNAOf === "function") ? activityDNAOf(a) : null;
     const dn = photoDayNight(a.photos);
-    const fb = (typeof dnaCopyFor === "function") ? dnaCopyFor(dna || {}) : {};
+    const fb = { whyGo: "", experience: "", gain: "", fitFor: "" }; /* v237：本地模板文案兜底已删除——无 AI 文案就不显示该节 */
     /* P0-C：换风格生成的内容包优先 —— 有包用包（正文本就是这次风格重生成的产物），
        无包回退旧路径。事实章节（行程/费用/装备）永远来自 canonical 字段，不受内容包影响。 */
     const pk = (typeof editorialStylePackOf === "function") ? editorialStylePackOf(a) : null;
@@ -6159,7 +6087,7 @@ function buildEditorialOutline(a) {
     const d = pl.details;
     const refund = (d.refund && d.refund.length) ? `<div class="note-block"><div class="note-h">退改守则</div>${d.refund.map((t) => `<div class="note-row">${esc(t)}</div>`).join("")}</div>` : "";
     const alt = (d.altitude && d.altitude.length) ? `<div class="note-block"><div class="note-h">高海拔提示</div>${d.altitude.map((t) => `<div class="note-row">${esc(t)}</div>`).join("")}</div>` : "";
-    // 防御：pipeline.details 可能来自本地兜底（applyDnaCopyFallback 会写成 {}），
+    // 防御：pipeline.details 可能来自旧版本本地兜底（历史数据可能写成 {}），
     // 此时 must/suggest 缺失 → 旧代码 .map 直接抛错，导致整页详情崩溃。
     const must = Array.isArray(d.must) ? d.must : [];
     const suggest = Array.isArray(d.suggest) ? d.suggest : [];

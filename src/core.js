@@ -852,7 +852,7 @@
   /* v224：AI 请求统一带超时。此前 clubLLM 两路 fetch 都没有 signal ——
      Render 免费实例冷启动（50–100s）或网关挂住时，请求永不返回，
      「AI 生成活动」点了之后遮罩播完动画就停在原地、没有任何跳转（老板实测反馈①）。
-     加超时后：超时 → 走既有的兜底链（后端→直连→本地基因模板）→ 必然进入确认卡。
+     加超时后：超时 → 如实报错（v237：本地模板兜底已删除，不出假内容冒充 AI）。
      AbortSignal.timeout 旧 Safari 不支持 → 探测后再用，不支持就维持原行为。 */
   function aiFetchSignal(ms) {
     try { return (typeof AbortSignal !== "undefined" && AbortSignal.timeout) ? { signal: AbortSignal.timeout(ms) } : {}; }
@@ -892,26 +892,36 @@
     if (opts.json) body.response_format = { type: "json_object" };
     const headers = { "Content-Type": "application/json", Authorization: "Bearer " + token };
     try {
-      let res = await fetch(url + "/api/pay/membership/ai-proxy", Object.assign({ method: "POST", headers: headers, body: JSON.stringify(body) }, aiFetchSignal(60000)));
+      let res = await fetch(url + "/api/pay/membership/ai-proxy", Object.assign({ method: "POST", headers: headers, body: JSON.stringify(body) }, aiFetchSignal(120000)));
       if (res.status === 401) {
         // JWT 过期 → 清缓存刷新一次
         clearBackendToken();
         token = await ensureBackendToken();
         if (!token) return "__fallback__";
-        res = await fetch(url + "/api/pay/membership/ai-proxy", Object.assign({}, { method: "POST", headers: Object.assign({}, headers, { Authorization: "Bearer " + token }), body: JSON.stringify(body) }, aiFetchSignal(60000)));
+        res = await fetch(url + "/api/pay/membership/ai-proxy", Object.assign({}, { method: "POST", headers: Object.assign({}, headers, { Authorization: "Bearer " + token }), body: JSON.stringify(body) }, aiFetchSignal(120000)));
       }
-      if (!res.ok) return null;
+      if (!res.ok) {
+        /* v237：失败原因如实透出（余额不足/限流/参数错），不再静默吞掉 */
+        let msg = "HTTP " + res.status;
+        try { const eb = await res.json(); if (eb && eb.message) msg = eb.message; } catch (e) {}
+        clubLLM._lastErrMsg = msg;
+        return null;
+      }
       const d = await res.json().catch(() => ({}));
       const c = d && d.data && d.data.content;
       if (!c) return null;
       return opts.json ? safeJsonParse(c) : c.trim();
-    } catch (e) { return "__fallback__"; }
+    } catch (e) {
+      clubLLM._lastErrMsg = (e && e.name === "TimeoutError")
+        ? "服务唤醒超时（免费实例冷启动最长约 1 分半），请重试一次"
+        : "后端连接失败";
+      return "__fallback__";
+    }
   }
 
   // 统一入口：有后端优先走代理；代理不可达/未鉴权时回退浏览器直连（演示态）
-  /* v208：AI 调用失败原来是「静默返回 null」，上层回退本地模板，
-     老板看到的是本地内容，会以为「AI 没干活」甚至以为功能坏了。
-     这里在失败时给一次可见提示（6 秒内只提示一次，避免批量调用刷屏）。 */
+  /* v208/v237：AI 调用失败给一次可见提示（6 秒内只提示一次，避免批量调用刷屏）。
+     v237 起上层不再回退本地模板——失败就是失败，如实说明，不出假内容。 */
   function noteAiFailure(kind) {
     try {
       const now = Date.now();
@@ -919,15 +929,23 @@
       clubLLM._lastFailAt = now;
       if (typeof toast === "function") {
         toast(kind === "auth"
-          ? "AI 这次没成功（Key 无效或额度用完了），已先用本地内容顶上"
-          : "AI 这次没成功（网络或接口问题），已先用本地内容顶上");
+          ? "AI 调用没成功（Key 无效或额度不足），这条内容没有生成"
+          : "AI 调用没成功（网络或服务问题），这条内容没有生成，稍后可重试");
       }
       try { console.warn("[clubLLM] 调用失败:", kind); } catch (e) {}
     } catch (e) {}
   }
   async function clubLLM(opts) {
     let r = "__fallback__";
-    if (getBackendURL()) r = await clubLLMviaBackend(opts);
+    if (getBackendURL()) {
+      r = await clubLLMviaBackend(opts);
+      /* v237：Render 免费实例冷启动（50–100s）常让第一次请求失败——
+         歇 3 秒重试一次再放弃（第一次请求通常已把实例唤醒，重试命中率很高） */
+      if (r === "__fallback__") {
+        await new Promise((res) => setTimeout(res, 3000));
+        r = await clubLLMviaBackend(opts);
+      }
+    }
     if (r === "__fallback__") r = await clubLLMdirect(opts);
     /* 两条路都试过仍是 null = 真的失败（有 Key 却没拿到内容） */
     if (r == null && typeof getAIKey === "function" && getAIKey()) noteAiFailure("net");

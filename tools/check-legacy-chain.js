@@ -108,6 +108,18 @@ function run() {
     ok(!/blocks\.js/.test(html) && !/contentDirector\.js/.test(html) && /brandProfile\.js/.test(html), h + ' 已卸载旧文件并挂载 brandProfile.js');
   }
 
+  console.log('— v237：本地模板兜底链物理删除（AI 失败不再伪造内容）—');
+  const coreSrc = read('src/core.js');
+  const intakeSrc = read('src/intake.js');
+  ok(!/applyDnaCopyFallback/.test(publishSrc) && !/applyDnaCopyFallback/.test(shell), 'applyDnaCopyFallback 已删除（DNA 模板兜底）');
+  ok(!/dnaCopyFor/.test(publishSrc), 'dnaCopyFor（本地模板文案）已删除');
+  ok(!/已整理成活动概述/.test(intakeSrc) && !/条行程（生成时会直接用到行程页）/.test(intakeSrc), 'intake 旧预览卡（行程/描述）已删除');
+  ok(!/本地基因模板/.test(publishSrc + shell + coreSrc + intakeSrc), '「本地基因模板」话术已清零');
+  ok(!/已先用本地内容顶上/.test(coreSrc), 'AI 失败提示不再谎称「本地内容顶上」');
+  ok(/aiFetchSignal\(120000\)/.test(coreSrc), '后端 AI 调用超时放宽到 120s（扛 Render 冷启动）');
+  ok(/_lastErrMsg/.test(coreSrc) && /aiErrText/.test(publishSrc), 'AI 失败原因如实透出（_lastErrMsg → toast）');
+  ok(/setTimeout\(res, 3000\)/.test(coreSrc), 'clubLLM 后端失败后自动重试一次');
+
   console.log('— 回滚点 —');
   let hasTag = false;
   try {

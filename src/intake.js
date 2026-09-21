@@ -674,28 +674,11 @@ function intakePanelHtml() {
       + '<div class="intake-row intake-row-busy"><span class="intake-spin"></span>'
       + '<span class="intake-row-n">' + esc(it.busyText || "正在读取方案…") + "</span></div></div>";
   }
-  if (!items.length && !it.description && !(it.itinerary || []).length) return "";
+  if (!items.length && !it.warn) return "";
   const warn = it.warn ? '<div class="intake-warn">' + ICON("alert-triangle") + "<span>" + esc(it.warn) + "</span></div>" : "";
-  /* v206：行程是行程页的原材料，单独列出来让老板核对有没有读全 */
-  let itinHtml = "";
-  const itins = it.itinerary || [];
-  if (itins.length) {
-    const cnt = itins.reduce(function (n, d) { return n + (d.items || []).length; }, 0);
-    itinHtml = '<div class="intake-itin"><div class="intake-desc-h">' + ICON("map")
-      + " 已读出 " + itins.length + " 天 / " + cnt + " 条行程（生成时会直接用到行程页）</div>"
-      + itins.map(function (d) {
-        return '<div class="intake-itin-d"><b>' + esc(d.label) + "</b>"
-          + (d.sub ? '<span class="intake-itin-s">' + esc(d.sub) + "</span>" : "")
-          + '<div class="intake-itin-i">' + (d.items || []).map(function (t) {
-            return "<span>" + esc(t.time) + " " + esc(t.text) + "</span>";
-          }).join("") + "</div></div>";
-      }).join("") + "</div>";
-  }
-  const desc = it.description
-    ? '<div class="intake-desc"><div class="intake-desc-h">' + ICON("check") + " 已整理成活动描述（已填到下面的输入框，可直接修改）</div>"
-      + '<div class="intake-desc-b">' + esc(it.description) + "</div></div>"
-    : "";
-  return '<div class="intake-panel" id="intakePanel">' + items.map(intakeRowHtml).join("") + warn + itinHtml + desc + "</div>";
+  /* v237：行程/描述预览卡已删除（旧确认流残留——§30 直接出成品，行程在详情页里看）。
+     这里只保留逐文件读取状态与必要的如实警示。 */
+  return '<div class="intake-panel" id="intakePanel">' + items.map(intakeRowHtml).join("") + warn + "</div>";
 }
 /* 全部读完后：有 AI 就整理，没 AI 就原样回填（并如实说明） */
 async function intakeComposeDescription(merged) {

@@ -644,7 +644,7 @@ function showView(view, params) {
       case "resetLocalData": resetLocalData(); break;
       case "voice": toast("语音输入为视觉占位，Demo 中请直接输入文字"); break;
       case "paste": { const ta = $("#createInput"); if (ta) { ta.value = PASTE_SAMPLE; ta.focus(); } toast("已填入一段示例旧文案"); break; }
-      case "example": { const ta = $("#createInput"); if (ta) { ta.value = d.text; } else { state.draft = blankActivity(); state.draft.raw = d.text; parseActivityWithAI(d.text).then(async (json) => { if (json && !json._error && !json._needKey) { applyAIResult(json, state.draft); await ensureNarrativeFields(state.draft); } else { if (typeof syncDerived === "function") syncDerived(state.draft); applyDnaCopyFallback(state.draft); } await ensureItineraryFields(state.draft); syncItineraryDays(state.draft); finalizeDraftToPage(); }); } break; }
+      case "example": { const ta = $("#createInput"); if (ta) { ta.value = d.text; } else { state.draft = blankActivity(); state.draft.raw = d.text; parseActivityWithAI(d.text).then(async (json) => { if (json && !json._error && !json._needKey) { applyAIResult(json, state.draft); await ensureNarrativeFields(state.draft); } else { /* v237：AI 失败不再用本地模板伪造——如实报错，不出成品 */ toast((json && json._needKey) ? "还没配置 AI：填一次「后端地址 + 管理员口令 + 商家ID」就能生成" : "AI 生成失败：" + ((json && json._error) || "网络或服务暂时不可用") + "——请稍后重试"); return; } await ensureItineraryFields(state.draft); syncItineraryDays(state.draft); finalizeDraftToPage(); }); } break; }
       case "back": {
         const prev = backStack.pop();
         if (prev) showView(prev); else showView("dashboard");
@@ -1997,21 +1997,23 @@ function showView(view, params) {
     }
     showGenerating();
     parseActivityWithAI(text).then(async (json) => {
-      // P0-2：无 Key / AI 失败，用本地 Activity DNA 兜底生成（差异化，不依赖 LLM），仍进入确认卡
+      /* v237：本地模板兜底已删除——AI 不可用/失败就不出成品，如实说明原因（不出假内容冒充 AI） */
       if (!json || json._needKey || json._error) {
-        const base = state.draft;
-        base.raw = base.raw || text;
-        if (typeof syncDerived === "function") syncDerived(base);
-        applyDnaCopyFallback(base);
-        restorePlanItinerary(base);
-        applyPlanFieldsOverride(base);   // v215：无 Key / AI 失败也照样把方案真实事实落到草稿
-        await ensureItineraryFields(base);
-        syncItineraryDays(base);
-        const sims = similarList(base);
-        if (sims.length) base._similarList = sims.map((s) => ({ id: s.id, title: s.title }));
-        await finalizeDraftToPage(); // v236：不再进「6 项过目」确认卡，直接出成品详情页
-        if (json && json._needKey) toast("未配置 AI Key，已用本地基因模板生成（配 Key 可解锁 AI 文案）");
-        else if (json && json._error) toast("AI 生成失败，已用本地基因模板兜底");
+        if (json && json._needKey) {
+          toast("还没配置 AI：填一次「后端地址 + 管理员口令 + 商家ID」就能生成");
+          openAISettings();
+          setTimeout(function () {
+            const box = document.getElementById("aiSettingsBox");
+            if (box) {
+              try { box.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {}
+              box.classList.add("flash-hint");
+              setTimeout(function () { box.classList.remove("flash-hint"); }, 2600);
+            }
+          }, 80);
+        } else {
+          const why = (json && json._error) || "网络或服务暂时不可用";
+          toast("AI 生成失败：" + why + "——内容没有生成，请稍后重试");
+        }
         return;
       }
       applyAIResult(json, state.draft);
