@@ -69,7 +69,7 @@ function showView(view, params) {
     state.view = view; state.params = params || {};
     const app = $("#app");
     if (view === "login") { app.innerHTML = renderLogin(); return; }
-    const backend = ["dashboard", "create", "advice", "editor", "factConfirm", "list", "activityPage", "prep", "economics", "customers", "operator", "mallConsole", "settings", "decorate", "analytics", "signups", "membership", "ai", "brand", "plans", "memberMarketing", "membershipAdmin"];
+    const backend = ["dashboard", "create", "advice", "editor", "factConfirm", "list", "activityPage", "prep", "economics", "customers", "operator", "cardset", "mallConsole", "settings", "decorate", "analytics", "signups", "membership", "ai", "brand", "plans", "memberMarketing", "membershipAdmin"];
     if (backend.includes(view)) {
       let content = "";
       if (view === "dashboard") content = safeRender(renderDashboard, view);
@@ -83,6 +83,7 @@ function showView(view, params) {
       else if (view === "economics") content = safeRender(renderEconomics, view); // AI 经营分析（不是财务报表）
       else if (view === "customers") content = safeRender(renderCustomers, view);
       else if (view === "operator") content = safeRender(renderFabu, view);
+      else if (view === "cardset") content = safeRender(renderCardset, view);
       else if (view === "mallConsole") { state.mallCtx = "console"; content = safeRender(renderClubMallConsole, view); }
       else if (view === "settings") content = safeRender(renderSettings, view);
       else if (view === "decorate") content = safeRender(renderDecorate, view);
@@ -612,6 +613,21 @@ function showView(view, params) {
       }
       case "sendCode": toast("验证码已发送（Demo：1234）"); break;
       case "generate": generateFromInput(); break;
+      case "cardsetGenerate": {
+        const ta = document.getElementById("cardsetInput");
+        const sel = document.getElementById("cardsetAct");
+        cardsetGenerate(ta ? ta.value : "", sel ? sel.value : "");
+        break;
+      }
+      case "cardsetClear": {
+        const ta = document.getElementById("cardsetInput");
+        if (ta) ta.value = "";
+        const g = document.getElementById("cardsetGrid");
+        if (g) g.innerHTML = '<div class="cardset-empty">生成后这里会显示 4 张卡片预览</div>';
+        break;
+      }
+      case "cardsetDownloadOne": cardsetDownloadOne(parseInt(d.idx, 10) || 0); break;
+      case "cardsetDownloadAll": cardsetDownloadAll(); break;
       case "voice": toast("语音输入为视觉占位，Demo 中请直接输入文字"); break;
       case "paste": { const ta = $("#createInput"); if (ta) { ta.value = PASTE_SAMPLE; ta.focus(); } toast("已填入一段示例旧文案"); break; }
       case "example": { const ta = $("#createInput"); if (ta) { ta.value = d.text; } else { state.draft = blankActivity(); state.draft.raw = d.text; parseActivityWithAI(d.text).then(async (json) => { if (json && !json._error && !json._needKey) { applyAIResult(json, state.draft); await ensureNarrativeFields(state.draft); } else { if (typeof syncDerived === "function") syncDerived(state.draft); applyDnaCopyFallback(state.draft); } await ensureItineraryFields(state.draft); syncItineraryDays(state.draft); showView("factConfirm"); }); } break; }

@@ -1718,6 +1718,15 @@ const REQUIRED_MODULE_FILES = {
   /* v219 后端连接失败原因单一真源：shell.js「测试后端连接」原样回显它。
      不登记的话若被误删，界面只会回到「请检查地址/口令/商家ID」这种无法定位的提示 */
   backendLastError: "core.js",
+  /* v225 一键卡片组：activities.js 渲染入口、shell.js 动作派发都直接调它们 */
+  renderCardset: "activities.js",
+  parseCardsetInput: "cardset.js",
+  planCardset: "cardset.js",
+  drawCardsetCard: "cardset.js",
+  cardsetRenderAll: "cardset.js",
+  cardsetGenerate: "cardset.js",
+  cardsetDownloadOne: "cardset.js",
+  cardsetDownloadAll: "cardset.js",
 };
 const REQUIRED_MODULES = Object.keys(REQUIRED_MODULE_FILES);
 /* 返回「缺失的模块名 → 应在文件」清单；全部就绪返回空数组 */

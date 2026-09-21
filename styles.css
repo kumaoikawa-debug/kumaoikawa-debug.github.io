@@ -6007,3 +6007,16 @@ s.pp-base, .dm-v s.pp-base { text-decoration: line-through; }
   .activity-page .dm-ic svg { width: 13px; height: 13px; }
   .activity-page .dm-v { font-size: 13.5px; overflow-wrap: anywhere; }
 }
+
+/* ========== v225 一键卡片组 ========== */
+.cardset-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; margin-top: 16px; }
+.cardset-empty { grid-column: 1 / -1; padding: 48px 16px; text-align: center; color: var(--muted); background: var(--card); border: 1px dashed var(--line); border-radius: 14px; }
+.cardset-head { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cardset-head-t { font-weight: 700; color: var(--ink); }
+.cardset-card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.cardset-card-label { font-weight: 700; color: var(--ink); font-size: 15px; }
+.cardset-canvas { width: 100%; height: auto; display: block; border-radius: 12px; background: #fff; box-shadow: 0 6px 18px rgba(0,0,0,.08); }
+.cardset-dl { align-self: flex-start; }
+@media (max-width: 720px) {
+  .cardset-grid { grid-template-columns: 1fr; }
+}

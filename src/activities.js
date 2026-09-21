@@ -1048,6 +1048,7 @@
         ${navItem("create", "AI 创建活动", "sparkles", active)}
         ${navItem("list", "活动内容", "list", active)}
         ${navItem("operator", "AI 宣发", "send", active)}
+        ${navItem("cardset", "卡片组", "grid", active)}
         <div class="nav-group-label">用户经营</div>
         ${navItem("customers", "客户管理", "users", active)}
         ${navItem("membershipAdmin", "会员与积分", "crown", active)}
@@ -1697,6 +1698,28 @@ function channelMeta(ch) {
         </div>
         ${state._recall ? `<div class="recall-out"><div class="recall-out-h">召回文案 · ${esc(state._recall.seg)}<button class="btn btn-ghost btn-xs" data-action="copyText" data-text="${esc(state._recall.text)}">${ICON("copy")} 复制</button></div><div class="recall-out-body">${esc(state._recall.text)}</div></div>` : ""}
       </div>
+    `;
+  }
+
+  /* v225 一键卡片组：结构化事实 / 老板一句话 → 多张图文卡片（封面 / 行程 / 亮点 / 出行提示） */
+  function renderCardset() {
+    const acts = (state.activities || []).filter(Boolean);
+    return `
+      <div class="section-head"><div class="section-title">一键卡片组</div><div class="section-sub">粘贴活动文案或老板一句话，自动生成封面 / 按天行程 / 亮点 / 出行提示 四张图文卡片，直接下载发朋友圈、小红书、公众号</div></div>
+      <div class="card card-pad">
+        <div class="field"><label>① 粘贴活动文案 / 老板一句话</label>
+          <textarea class="textarea" id="cardsetInput" rows="5" placeholder="例如：赵公山周末轻装徒步，9月12日天府广场07:30集合，12公里环线爬升1100米，限25人，168元/人含保险。亮点：一日往返、小队领队随队。装备：防滑鞋、登山杖、饮水路餐。"></textarea>
+        </div>
+        <div class="field"><label>② 或选择已有活动（优先使用其结构化数据）</label>
+          <select class="select" id="cardsetAct"><option value="">— 不用，纯靠上面的文案 —</option>${acts.map((a) => `<option value="${esc(a.id)}">${esc(a.title)}</option>`).join("")}</select>
+        </div>
+        <div class="row gap-10">
+          <button class="btn btn-primary" data-action="cardsetGenerate">${ICON("sparkles")} 生成卡片组</button>
+          <button class="btn btn-ghost" data-action="cardsetClear">清空</button>
+        </div>
+        <p class="tiny muted" style="margin-top:8px">生成后每张卡片可单独下载；封面卡优先使用活动照片，无照片时用品牌色块垫底。含跨域照片时浏览器可能禁止下载，建议用本地上传的照片。</p>
+      </div>
+      <div id="cardsetGrid" class="cardset-grid"><div class="cardset-empty">生成后这里会显示 4 张卡片预览</div></div>
     `;
   }
 
