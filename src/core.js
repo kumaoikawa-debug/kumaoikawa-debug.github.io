@@ -1751,6 +1751,8 @@ const REQUIRED_MODULE_FILES = {
   /* 第三阶段活动回顾：缺这两个 → 「生成活动回顾」按钮点了没反应 */
   generateVnextRecap: "aiVnext.js",
   renderVnextRecapSection: "aiVnext.js",
+  /* v233 宣发中心主入口：缺这个 → 「生成宣传内容」按钮点了没反应（旧链已断开，无回落） */
+  generateVnextChannels: "aiVnext.js",
 };
 const REQUIRED_MODULES = Object.keys(REQUIRED_MODULE_FILES);
 /* 返回「缺失的模块名 → 应在文件」清单；全部就绪返回空数组 */
