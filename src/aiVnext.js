@@ -104,6 +104,27 @@
     toast('已按「' + instruction + '」改稿');
   }
 
+  /* ---------- §29 增强能力：宣传切口 + 反重复度量（让闸门可见） ----------
+     后端默认开启多样性闸门：自动挑一个与近期内容不同的宣传切口。
+     看不见的闸门等于没有闸门 —— 这里把「选了哪个切口 / 与近期内容像不像」直接上屏。 */
+
+  function diversityLine(d) {
+    if (!d) return '';
+    var dir = d.direction;
+    var rep = d.repetition;
+    if (!dir && !rep) return '';
+    var parts = [];
+    if (dir && dir.label) parts.push('本次宣传切口：' + dir.label);
+    if (rep) {
+      var sim = Math.round(Math.max(rep.semantic || 0, rep.layout || 0) * 100);
+      parts.push('与近期内容相似度 ' + sim + '%');
+    }
+    var txt = parts.join(' · ');
+    var bad = !!(rep && rep.repetitive);
+    return '<div class="apc-diversity' + (bad ? ' apc-diversity-bad' : '') + '">' + esc(txt) +
+      (bad ? '　⚠ 与近期内容过于相似，已强制换切口' : '') + '</div>';
+  }
+
   /** 详情页顶部区域：未生成 → 生成按钮；已生成 → Canvas + 改稿入口 */
   function renderVnextSection(a) {
     if (!a) return '';
@@ -121,6 +142,7 @@
         '<span class="apc-bar-t">AI Promo Canvas（动态策划 · 非模板）</span>' +
         '<button class="btn btn-ghost btn-sm" data-action="vnextGenerate">' + ICON('refresh') + ' 重新策划</button>' +
         '</div>' +
+        diversityLine(a.vnextPromo.diversity) +
         canvas +
         '<div class="apc-revise">' +
         '<input id="apc-revise-input" class="apc-revise-input" placeholder="用自然语言改稿：字少一点 / 图片多一点 / 更专业 / 突出徒步 / 重新策划" />' +
@@ -190,7 +212,7 @@
         warn = '<div class="apc-grounding apc-grounding-bad">⚠ 事实校验发现 ' + n + ' 处疑似编造，请复核后再发布。</div>';
       }
       var preview = (typeof renderChannelResult === 'function') ? renderChannelResult(r) : '';
-      return warn + preview;
+      return warn + diversityLine(r.diversity) + preview;
     }).join('');
   }
 
@@ -261,6 +283,7 @@
     return '<div class="rc-region">' +
       '<div class="rc-bar"><span class="rc-bar-t">活动回顾（围绕真实现场重新策划 · 无固定流程）</span>' +
       '<button class="btn btn-ghost btn-sm" data-action="vnextRecapGenerate">' + ICON('refresh') + ' 重新回顾</button></div>' +
+      diversityLine(r.diversity) +
       (r.worthRecording ? '<div class="rc-worth"><b>这一次真正值得记录的是：</b>' + esc(r.worthRecording) + '</div>' : '') +
       canvas +
       '</div>';
