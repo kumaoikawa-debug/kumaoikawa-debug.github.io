@@ -2423,7 +2423,7 @@ function showView(view, params) {
       : `AI 已把关键事实全部替你填好了`;
     const body = gaps.length
       ? `<div class="gc-block">
-        <div class="gc-block-head">${gaps.length} 项请你过目<b class="gc-hint">已按你的历史活动/品牌资料预填，不改也能直接生成</b></div>
+        <div class="gc-block-head">${gaps.length} 项请你过目<b class="gc-hint">你这句话里提到的已直接填入；历史活动值只给候选，点一下采用</b></div>
         ${gaps.map(gapRow).join("")}
       </div>`
       : `<div class="gc-block"><div class="gc-block-head">关键事实已齐全</div><div class="gc-empty">✅ 可以直接生成</div></div>`;
@@ -2460,7 +2460,7 @@ function showView(view, params) {
       </style>
       <div class="eyebrow">AI 已生成内容</div>
       <div class="gc-head">${head}</div>
-      <p class="gc-sub">标题、正文、行程、装备建议、费用说明已由 AI 依据你的那句话 + 你的历史活动生成。下面的建议值都预填好了，<b>不改也能直接出图文详情页</b>。</p>
+      <p class="gc-sub">标题、正文、行程、装备建议、费用说明已由 AI 依据你的那句话生成。你这句话里提到的事实已直接填入；标「历史活动常用」的只给候选<b>不直填</b>，点一下采用或自己写，不会带旧活动数据。</p>
       ${doneList ? `<div class="gc-done"><div class="gc-done-title">AI 已自动完成（${confirmed.length} 项）</div><ul class="gc-done-list">${doneList}</ul></div>` : ""}
       ${body}
       <div class="gc-block" style="background:#f3f8f4;border-color:#d5e8da">

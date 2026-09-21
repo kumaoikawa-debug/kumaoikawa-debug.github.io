@@ -2630,6 +2630,56 @@ function applyVisionBatch(map) {
     if (m) return `${+m[1]}月${+m[2]}日`;
     return "";
   }
+  /* v226：历史值不再直填（改候选 chips），并补 meeting/meetTime 的 raw 提取——v190 只给 date/route 做了，集合点/时间就算新句子写了也永远用历史众数 */
+  function topRaw(list, n, maxLen) {
+    const m = new Map();
+    (list || []).forEach((v) => {
+      const t = String(v == null ? "" : v).trim();
+      if (!t || /^(待定|待确认|missing)/i.test(t)) return;
+      if (maxLen && t.length > maxLen) return;
+      m.set(t, (m.get(t) || 0) + 1);
+    });
+    return Array.from(m.entries()).sort((x, y) => y[1] - x[1]).slice(0, n || 3).map((e) => e[0]);
+  }
+  function stripRawDateTimePrefix(s) {
+    let t = String(s || "").trim(), prev = "";
+    while (t !== prev) {
+      prev = t;
+      t = t.replace(/\d{1,2}\s*月\s*\d{1,2}\s*日/g, "")
+        .replace(/\d{1,2}\s*[::：]\s*\d{2}\s*(?:左右)?/g, "")
+        .replace(/\d{1,2}\s*点半?/g, "")
+        .replace(/^(?:今天|明天|后天|大后天)/, "")
+        .replace(/^(?:周[一二三四五六日末]|星期[一二三四五六日天])/, "")
+        .replace(/^[早中下晚][午上]/, "")
+        .replace(/^[在从于]/, "")
+        .replace(/^[，,。；;\s]+/, "");
+    }
+    return t.trim();
+  }
+  function meetTimeFromRaw(raw) {
+    const r = String(raw || "");
+    let m = r.match(/(\d{1,2})\s*[::：]\s*(\d{2})\s*(?:左右)?(?:在[\u4e00-\u9fa5A-Za-z0-9]{0,15})?(?:集合|集中|上车|出发)/);
+    if (m) return `${+m[1]}:${m[2]}`;
+    m = r.match(/(\d{1,2})\s*点半\s*(?:集合|集中|上车|出发)/);
+    if (m) return `${+m[1]}:30`;
+    m = r.match(/(\d{1,2})\s*点\s*(?:整)?\s*(?:集合|集中|上车|出发)/);
+    if (m) return `${+m[1]}:00`;
+    return "";
+  }
+  function meetingFromRaw(raw) {
+    const r = String(raw || "");
+    let m = r.match(/(?:集合点|集合地|上车点|出发点)[::：]\s*([^，,。；;\n]{2,20})/);
+    if (m) {
+      const v = stripRawDateTimePrefix(m[1]);
+      if (v.length >= 2 && !/^\d+$/.test(v)) return v;
+    }
+    m = r.match(/([^，,。；;\n]{2,25}?)(?:集合|集中|上车|出发)/);
+    if (m) {
+      const v = stripRawDateTimePrefix(m[1]);
+      if (v.length >= 2 && !/^\d+$/.test(v)) return v;
+    }
+    return "";
+  }
   const FACT_SUGGEST = {
     date: (a) => {
       const v = suggestDateFromRaw(a.raw);
@@ -2637,14 +2687,18 @@ function applyVisionBatch(map) {
       return { value: upcomingWeekday(6), src: "rule", label: "默认下一个周六（" + upcomingWeekday(6) + "，可改）" };
     },
     meetTime: (a) => {
-      const h = modeRaw(sameKindHist(a).map((x) => x.meetTime));
-      if (h) return { value: h, src: "history", label: "按你的历史活动" };
+      const v = meetTimeFromRaw(a.raw);
+      if (v) return { value: v, src: "raw", label: "按你这句话里的时间" };
+      const hist = topRaw(sameKindHist(a).map((x) => x.meetTime), 3, 12);
+      if (hist.length) return { value: "", src: "history", label: "历史活动常用（点候选采用）", chips: hist };
       const early = /高海拔|登山|越野|骑行|挑战/.test(String(a.type || "") + String(a.raw || ""));
       return { value: early ? "07:00" : "08:00", src: "rule", label: early ? "长线常规出发时间" : "一日活动常规出发时间" };
     },
     meeting: (a) => {
-      const h = modeRaw(sameKindHist(a).map((x) => x.meeting));
-      if (h) return { value: h, src: "history", label: "按你的历史活动" };
+      const v = meetingFromRaw(a.raw);
+      if (v) return { value: v, src: "raw", label: "按你这句话里的集合点" };
+      const hist = topRaw(sameKindHist(a).map((x) => x.meeting), 3, 18);
+      if (hist.length) return { value: "", src: "history", label: "历史活动常用（点候选采用）", chips: hist };
       const bd = (typeof state !== "undefined" && state && state.brand) ? state.brand : null;
       if (bd && bd.address) return { value: bd.address, src: "brand", label: "按你的门店地址" };
       return { value: "", src: "", label: "需你定（点一下候选即可）", chips: ["市区地铁站 A 口", "俱乐部门店", "客户指定地点"] };
@@ -2654,13 +2708,13 @@ function applyVisionBatch(map) {
       const nums = sameKindHist(a).map((x) => Number(x.price)).filter((n) => n > 0);
       if (nums.length) {
         const avg = Math.max(10, Math.round((nums.reduce((s, n) => s + n, 0) / nums.length) / 10) * 10);
-        return { value: String(avg), src: "history", label: `按你的历史均价 ¥${avg}` };
+        return { value: "", src: "history", label: `历史均价 ¥${avg}（点候选采用）`, chips: [String(avg)] };
       }
       return { value: "", src: "", label: "需你定（点一下候选即可）", chips: ["80", "128", "198", "免费"] };
     },
     services: (a) => {
-      const h = modeRaw(sameKindHist(a).map((x) => ((x.feeInclude || []).length ? x.feeInclude.join("、") : "")));
-      if (h) return { value: h, src: "history", label: "按你的历史活动" };
+      const hist = topRaw(sameKindHist(a).map((x) => ((x.feeInclude || []).length ? x.feeInclude.join("、") : "")), 2, 24);
+      if (hist.length) return { value: "", src: "history", label: "历史活动常用（点候选采用）", chips: hist };
       return { value: "专业领队、户外保险", src: "rule", label: "一日活动常规配置（请核对）" };
     },
     route: (a) => {
@@ -2677,20 +2731,20 @@ function applyVisionBatch(map) {
       return { value: "", src: "", label: "", chips: ["轻松", "适中", "进阶", "挑战"] };
     },
     age: (a) => {
-      const h = modeRaw(sameKindHist(a).map((x) => x.ageRange));
-      if (h) return { value: h, src: "history", label: "按你的历史活动" };
+      const hist = topRaw(sameKindHist(a).map((x) => x.ageRange), 3, 18);
+      if (hist.length) return { value: "", src: "history", label: "历史活动常用（点候选采用）", chips: hist };
       if (typeof isFamilyActivity === "function" && isFamilyActivity(a)) return { value: "5-12岁（需家长陪同）", src: "rule", label: "亲子活动常规" };
       return { value: "", src: "", label: "" };
     },
     limit: (a) => {
-      const h = modeRaw(sameKindHist(a).map((x) => x.limit));
-      if (h) return { value: h, src: "history", label: "按你的历史活动" };
+      const hist = topRaw(sameKindHist(a).map((x) => x.limit), 3, 8);
+      if (hist.length) return { value: "", src: "history", label: "历史活动常用（点候选采用）", chips: hist };
       return { value: "20", src: "rule", label: "小团常规上限" };
     },
     days: (a) => ({ value: String(Number(a.days) || 1), src: "rule", label: "按行程推断" }),
     leaderInfo: (a) => {
-      const h = modeRaw(sameKindHist(a).map((x) => x.leaderName));
-      if (h) return { value: h, src: "history", label: "按你的历史活动" };
+      const hist = topRaw(sameKindHist(a).map((x) => x.leaderName), 3, 12);
+      if (hist.length) return { value: "", src: "history", label: "历史活动常用（点候选采用）", chips: hist };
       return { value: "", src: "", label: "" };
     },
     contact: (a) => {
@@ -2699,8 +2753,8 @@ function applyVisionBatch(map) {
       return { value: "", src: "", label: "" };
     },
     refund: (a) => {
-      const h = modeRaw(sameKindHist(a).map((x) => x.notes));
-      if (h) return { value: h, src: "history", label: "按你的历史活动" };
+      const hist = topRaw(sameKindHist(a).map((x) => x.notes), 2, 24);
+      if (hist.length) return { value: "", src: "history", label: "历史活动常用（点候选采用）", chips: hist };
       return { value: "", src: "", label: "" };
     },
   };
