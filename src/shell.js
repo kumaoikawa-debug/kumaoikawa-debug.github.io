@@ -1968,19 +1968,16 @@ function showView(view, params) {
         const xf = publishState();
         const a = xf._a || (state.activities || []).find((x) => x.id === xf.aid);
         if (!a) { toast("请先重新选择活动再换风格"); break; }
-        xf.styleSeed = Math.floor(Date.now() % 1000000) + Math.floor(Math.random() * 1000);
         xf.genState = "loading"; showView(state.view);
         try {
-          const swPhotos = (typeof activePhotos === "function") ? activePhotos(xf) : (xf.photos || []); // P1-2：换风格时也尊重轻确认里的「删除某图」
-          xf.strategy = await genStrategy(a, swPhotos, xf.notes || xf.recapNotes, xf.scenario);
-          applyCoverOverride(xf); // P1-2：老板选的封面落到生成的 hero
-          if (xf.scenario === "recruit") xf.out = await genRecruit(a, xf.master, xf.strategy);
-          else xf.recap = await genRecap(a, xf.master, xf.strategy, swPhotos, xf.recapNotes);
-          xf.family = xf.strategy.editorialDirection.family;
-          xf.variant = xf.strategy.editorialDirection.variant;
-          xf._styleHistory.push((typeof styleSignature === "function") ? styleSignature(xf) : { family: xf.family, variant: xf.variant });
-          xf.genState = "idle"; xf.platTab = "gzh";
-          toast("已换风格重生成");
+          /* §4：旧链「换风格 = 换 family / variant / styleSeed」已停用（那只是换 CSS 假装多样化）。
+             现在换风格 = 用新引擎重新策划一次，拿到不同的宣传切口与结构。 */
+          const out = await generateVnextChannels(a.id);
+          if (out) {
+                  xf.step = "result"; xf.platTab = "gzh";
+            toast("已换一个宣传切口重新生成");
+          }
+          xf.genState = "idle";
         } catch (e) { xf.genState = "idle"; toast("换风格失败：" + (e && e.message ? e.message : e)); }
         showView(state.view);
         break;
@@ -2190,7 +2187,8 @@ function showView(view, params) {
     return state.view === "detail" || state.view === "activityPage";
   }
 
-  /* 生成宣传内容（原 recruitGen handler 抽出，逻辑不变；notes 为空时不覆盖已有补充资料） */
+  /* 生成宣传内容（§4：旧 AI 生成主链 genStrategy/genRecruit 已停止调用，宣发统一走新引擎）
+     一次点击出齐四个渠道：公众号 / 小红书 / 海报 / 朋友圈，共享同一 Activity Master 各自重策划。 */
   async function runRecruitGen() {
     const xf = publishState();
     const ta = document.querySelector('[data-xf="note"]');
@@ -2202,27 +2200,16 @@ function showView(view, params) {
     xf.master = buildContentMaster(a, actPhotos);
     xf.genState = "loading"; showView(state.view);
     try {
-      xf.strategy = await genStrategy(a, actPhotos, xf.notes, "recruit");
-      applyCoverOverride(xf); // P1-2：老板选的封面落到生成的 hero
-      xf.master.keyImages = await attachPhotoCaptions(xf.master.keyImages, xf.master.confirmedFacts, xf.strategy.editorialDirection);
-      xf.out = await genRecruit(a, xf.master, xf.strategy);
-      // §41：版式质量不达标 → 重选家族/变体（重生成 ED/Layout）一次
-      if (aiAuthMode() && state.xf.quality && state.xf.quality.editorialRisk) {
-        xf.strategy = await genStrategy(a, actPhotos, xf.notes, "recruit");
-        applyCoverOverride(xf); // P1-2
-        xf.out = await genRecruit(a, xf.master, xf.strategy);
-      }
-      xf.family = xf.strategy.editorialDirection.family;
-      xf.variant = xf.strategy.editorialDirection.variant;
-      xf.styleSeed = xf.strategy.editorialDirection.styleSeed;
-      xf._styleHistory.push((typeof styleSignature === "function") ? styleSignature(xf) : { family: xf.family, variant: xf.variant });
+      const out = await generateVnextChannels(a.id);
+      if (!out) { xf.genState = "idle"; showView(state.view); return; }
       xf.step = "result"; xf.genState = "idle"; xf.platTab = "gzh";
-      toast("已生成图文详情页");
+      toast("已生成公众号 / 小红书 / 海报 / 朋友圈");
     } catch (e) { xf.genState = "idle"; toast("生成失败：" + (e && e.message ? e.message : e)); }
     showView(state.view);
   }
 
-  /* 生成活动回顾（原 recapGen handler 抽出，逻辑不变） */
+  /* 生成活动回顾（§4：旧AI生成主链 genStrategy/genRecap 已停止调用，回顾统一走新引擎）
+     输入 = Activity Master + 真实发生数据 + 现场照片 + 领队备注，AI 自己判断值得记录什么。 */
   async function runRecapGen() {
     const xf = publishState();
     const rt = document.querySelector('[data-xf="recapNotes"]');
@@ -2238,35 +2225,17 @@ function showView(view, params) {
       a = xf._a || (state.activities || []).find((x) => x.id === xf.aid);
       if (!a) { toast("所选活动不存在"); return; }
     } else {
-      if (!customFields.title.trim()) { toast("请选择一场活动，或填写活动名称"); return; }
-      a = {
-        title: customFields.title.trim(), type: customFields.type.trim(), place: customFields.place.trim(),
-        dateMD: customFields.date.trim(), signups: customFields.signups ? +customFields.signups : 0,
-        leaderName: customFields.leader.trim(), status: "ended",
-      };
+      toast("请先选择一场已保存的活动（回顾需要读取该活动的真实数据）");
+      return;
     }
     xf._a = a;
     const actPhotos = (typeof activePhotos === "function") ? activePhotos(xf) : (xf.photos || []);
     xf.master = buildContentMaster(a, actPhotos);
     xf.genState = "loading"; showView(state.view);
     try {
-      xf.strategy = await genStrategy(a, actPhotos, xf.recapNotes, "recap");
-      applyCoverOverride(xf); // P1-2：老板选的封面落到生成的 hero
-      xf.master.keyImages = await attachPhotoCaptions(xf.master.keyImages, xf.master.confirmedFacts, xf.strategy.editorialDirection);
-      xf.recap = await genRecap(a, xf.master, xf.strategy, xf.photos, xf.recapNotes);
-      // §41：版式质量不达标 → 重选家族/变体（重生成 ED/Layout）一次
-      if (aiAuthMode() && state.xf.quality && state.xf.quality.editorialRisk) {
-        xf.strategy = await genStrategy(a, actPhotos, xf.recapNotes, "recap");
-        applyCoverOverride(xf); // P1-2
-        xf.recap = await genRecap(a, xf.master, xf.strategy, xf.photos, xf.recapNotes);
-      }
-      xf.recapType = recapType(a, xf.photos);
-      xf.family = xf.strategy.editorialDirection.family;
-      xf.variant = xf.strategy.editorialDirection.variant;
-      xf.styleSeed = xf.strategy.editorialDirection.styleSeed;
-      xf._styleHistory.push((typeof styleSignature === "function") ? styleSignature(xf) : { family: xf.family, variant: xf.variant });
+      const r = await generateVnextRecap(a.id);
+      if (!r) { xf.genState = "idle"; showView(state.view); return; }
       xf.step = "result"; xf.genState = "idle"; xf.platTab = "gzh";
-      toast("已生成活动回顾");
     } catch (e) { xf.genState = "idle"; toast("生成失败：" + (e && e.message ? e.message : e)); }
     showView(state.view);
   }

@@ -7510,6 +7510,19 @@ function heuristicDirection(a, p, family, scenario, photoProfile) {
     copyDirectives: { avoid: ["硬销", "名额仅剩", "最后机会"], must: ["地点真实感", "基于已确认事实"] },
   };
 }
+/* ==========================================================================
+ * ⛔ LEGACY（Clean Rewrite §4）—— 旧 AI 内容生成主链，已停止迭代并从正式路径断开。
+ * 旧链 = genStrategy / genRecruit / genRecap（固定 Family / Variant / Style / 章节骨架）。
+ * 回滚点：git tag clubos-ai-content-legacy。
+ *
+ * 正式路径现在统一走新引擎：
+ *   活动详情 → /api/content-vnext/generate（AI Promo Canvas）
+ *   宣发四渠道 → /api/content-vnext/channel（runRecruitGen）
+ *   活动回顾   → /api/content-vnext/recap（runRecapGen）
+ *
+ * 下面的函数仅用于渲染老板 localStorage 里的**历史产物**（recruitResult/recapResult 的回落分支），
+ * 不要再在任何生成入口调用它们。
+ * ========================================================================== */
 async function genStrategy(a, photos, notes, scenario) {
   const facts = extractConfirmedFacts(a, photos);
   const pp = await photoProfile(a, photos, scenario);
@@ -8949,12 +8962,43 @@ function sectionRegen(xf) {
   </div>`;
 }
 
+/* §4：宣发中心的正式路径已切到新引擎（/api/content-vnext/channel）。
+   有引擎产出就渲染引擎产出；只有老板 localStorage 里的历史产物时才回落到旧渲染。
+   平台 tab → 引擎渠道映射：gzh=公众号 / xhs=小红书 / poster=海报 / moments=朋友圈 / wechat=微信群（与朋友圈同源） */
+function vnextPlateBody(vc, tab) {
+  const map = { gzh: "wechat", xhs: "xiaohongshu", poster: "poster", moments: "moments", wechat: "moments", voice: "" };
+  const key = map[tab] || "";
+  if (!key || !vc[key]) {
+    return `<div class="xf-empty-hint">该渠道本轮无产出${key ? "" : "（新引擎不提供此形态）"}。</div>`;
+  }
+  const r = vc[key];
+  const blocked = r.grounding && !r.grounding.passed
+    ? (r.grounding.issues || []).filter((i) => i.severity === "block").length : 0;
+  const warn = blocked ? `<div class="apc-grounding apc-grounding-bad">⚠ 事实校验发现 ${blocked} 处疑似编造，请复核后再发布。</div>` : "";
+  const label = key === "wechat" ? "复制公众号 HTML" : "复制文案";
+  const preview = (typeof renderChannelResult === "function") ? renderChannelResult(r) : "";
+  return warn +
+    `<div class="xf-gzh-head"><button class="btn btn-primary btn-sm" data-action="vnextCopyChannel" data-channel="${key}">${ICON("copy")} ${label}</button></div>` +
+    preview;
+}
+
+function vnextRecruitResult(xf, vc) {
+  return `
+  <div class="xf-back"><button class="btn btn-ghost btn-sm" data-action="publishReset">${ICON("chevron-left")} 重新选择</button></div>
+  <div class="xf-theme"><span class="xf-theme-lbl">新引擎产出</span><b>四个渠道共享同一份活动理解，各自重新策划</b></div>
+  ${platformTabs(xf.platTab, "recruit")}
+  <div class="xf-plat-body">${vnextPlateBody(vc, xf.platTab)}</div>`;
+}
+
 function recruitResult() {
   const xf = publishState();
   const o = xf.out;
   /* v203：渲染前再兜一次 —— 老板 localStorage 里可能存着闸门上线**之前**生成的文案。 */
   gatePublishOut(o, "recruit");
   if (xf.genState === "loading") return `<div class="xf-loading">${ICON("sparkles")} 正在生成宣传内容…</div>`;
+  const _a = xf._a || (state.activities || []).find((x) => x.id === xf.aid);
+  const _vc = (_a && _a.vnextChannel) || {};
+  if (_vc.wechat || _vc.xiaohongshu || _vc.poster || _vc.moments) return vnextRecruitResult(xf, _vc);
   return `
   <div class="xf-back"><button class="btn btn-ghost btn-sm" data-action="publishReset">${ICON("chevron-left")} 重新选择</button></div>
   <div class="xf-theme"><span class="xf-theme-lbl">本次核心传播主题</span><b>${esc((xf.master || {}).mainTheme || "")}</b></div>
@@ -9421,11 +9465,30 @@ function posterPanel(p, xf) {
   </div>`;
 }
 
+/* §4：回顾同样切到新引擎（/api/content-vnext/recap）。
+   新引擎只产出「这一场真正值得记录的东西」+ 一套 blocks，不按平台分六份，因此不再走平台 tab。 */
+function vnextRecapResult(xf, r) {
+  const blocked = r.grounding && !r.grounding.passed
+    ? (r.grounding.issues || []).filter((i) => i.severity === "block").length : 0;
+  const warn = blocked ? `<div class="apc-grounding apc-grounding-bad">⚠ 事实校验发现 ${blocked} 处疑似编造，请复核后再发布。</div>` : "";
+  const canvas = (typeof renderPromoCanvas === "function") ? renderPromoCanvas(r, {}) : "";
+  return `
+  <div class="xf-back"><button class="btn btn-ghost btn-sm" data-action="publishReset">${ICON("chevron-left")} 重新选择</button></div>
+  <div class="xf-theme"><span class="xf-theme-lbl">这一次真正值得记录的是</span><b>${esc(r.worthRecording || "")}</b></div>
+  ${warn}
+  <div class="xf-gzh-head"><button class="btn btn-primary btn-sm" data-action="copyGzhHtml">${ICON("copy")} 复制回顾（HTML）</button></div>
+  <div id="gzhArticle">${canvas}</div>
+  <p class="tiny muted">回顾由新引擎围绕真实现场重新策划，无固定流程；事实须来自实际发生的数据与现场照片。</p>`;
+}
+
 function recapResult() {
   const xf = publishState();
   const o = xf.recap;
   gatePublishOut(o, "recap");
   if (xf.genState === "loading") return `<div class="xf-loading">${ICON("sparkles")} 正在生成活动回顾…</div>`;
+  const _ra = xf._a || (state.activities || []).find((x) => x.id === xf.aid);
+  const _rr = (_ra && _ra.vnextRecap && Array.isArray(_ra.vnextRecap.blocks) && _ra.vnextRecap.blocks.length) ? _ra.vnextRecap : null;
+  if (_rr) return vnextRecapResult(xf, _rr);
   return `
   <div class="xf-back"><button class="btn btn-ghost btn-sm" data-action="publishReset">${ICON("chevron-left")} 重新选择</button></div>
   <div class="xf-theme"><span class="xf-theme-lbl">本次活动回顾主题</span><b>${esc(xf.recapType)}</b></div>

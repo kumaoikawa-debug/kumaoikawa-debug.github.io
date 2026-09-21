@@ -178,6 +178,11 @@
   /** 复制某渠道产出到剪贴板（公众号=HTML，其余=纯文本） */
   function copyVnextChannel(channel) {
     var a = (typeof viewingActivity === 'function') ? viewingActivity() : null;
+    // 宣发中心视图下 viewingActivity() 取不到活动 → 回落到宣发中心当前选中的活动
+    if (!a && typeof publishState === 'function') {
+      var ps = publishState();
+      a = (ps && ps._a) || null;
+    }
     if (!a || !a.vnextChannel || !a.vnextChannel[channel]) { toast('尚未生成该渠道'); return; }
     var c = a.vnextChannel[channel].content || {};
     var text = '';
@@ -268,6 +273,7 @@
     if (typeof saveState === 'function') saveState();
     if (typeof showView === 'function') showView(state.view, state.params);
     toast('活动回顾已生成');
+    return result;
   }
 
   function renderVnextRecapSection(a) {
@@ -289,10 +295,38 @@
       '</div>';
   }
 
+  /* 宣发中心入口（§4：旧 AI 生成主链停止调用，宣发统一走新引擎）
+     一次点击出齐四个渠道：wechat / xiaohongshu 走 LLM 重策划，poster / moments 为确定性提取（不额外消耗 LLM）。
+     静默执行：不 toast / 不 showView / 中途不重渲，由调用方统一收口，避免四次渲染抖动。 */
+  async function generateVnextChannels(activityId) {
+    var a = (typeof getActivity === 'function') ? getActivity(activityId) : null;
+    if (!a) return null;
+    var body = gatherSources(a);
+    var chans = ['wechat', 'xiaohongshu', 'poster', 'moments'];
+    var out = {};
+    for (var i = 0; i < chans.length; i++) {
+      var payload = {
+        activityId: body.activityId,
+        activity: body.activity,
+        sourceMaterials: body.sourceMaterials,
+        photos: body.photos,
+        channel: chans[i],
+      };
+      var r = await callVnext('/api/content-vnext/channel', payload);
+      if (!r) return null; // callVnext 已提示失败原因（未配置后端 / 未登录 / 积分不足）
+      out[chans[i]] = r;
+    }
+    a.vnextChannel = a.vnextChannel || {};
+    Object.keys(out).forEach(function (k) { a.vnextChannel[k] = out[k]; });
+    if (typeof saveState === 'function') saveState();
+    return out;
+  }
+
   window.generateVnextPromo = generateVnextPromo;
   window.reviseVnextPromo = reviseVnextPromo;
   window.renderVnextSection = renderVnextSection;
   window.generateVnextChannel = generateVnextChannel;
+  window.generateVnextChannels = generateVnextChannels;
   window.copyVnextChannel = copyVnextChannel;
   window.renderVnextChannelSection = renderVnextChannelSection;
   window.generateVnextRecap = generateVnextRecap;

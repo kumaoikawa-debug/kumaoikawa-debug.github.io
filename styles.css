@@ -4762,6 +4762,8 @@ body {
 .xf-tab.active{background:var(--brand);color:#fff}
 .xf-plat-body{min-height:200px}
 .xf-gzh-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.xf-empty-hint{padding:18px 14px;font-size:13px;color:var(--muted);background:var(--surface);border:1px dashed var(--line);border-radius:8px;line-height:1.6}
+.xf-vnext-note{padding:10px 14px;margin-bottom:12px;font-size:12.5px;color:var(--muted);background:var(--bg);border:1px solid var(--line);border-radius:8px}
 .xf-layouts{display:flex;gap:6px;flex-wrap:wrap}
 .xf-layout{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;font-size:12px;color:var(--ink-2);cursor:pointer}
 .xf-layout.active{border-color:var(--brand);background:var(--brand-soft);color:var(--brand);font-weight:700}
