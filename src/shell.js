@@ -69,7 +69,7 @@ function showView(view, params) {
     state.view = view; state.params = params || {};
     const app = $("#app");
     if (view === "login") { app.innerHTML = renderLogin(); return; }
-    const backend = ["dashboard", "create", "advice", "editor", "factConfirm", "list", "activityPage", "prep", "economics", "customers", "operator", "cardset", "mallConsole", "settings", "decorate", "analytics", "signups", "membership", "ai", "brand", "plans", "memberMarketing", "membershipAdmin"];
+    const backend = ["dashboard", "create", "advice", "editor", "factConfirm", "list", "activityPage", "prep", "economics", "customers", "operator", "cardset", "mallConsole", "settings", "decorate", "analytics", "signups", "membership", "ai", "brand", "plans", "memberMarketing", "membershipAdmin", "blockPreview"];
     if (backend.includes(view)) {
       let content = "";
       if (view === "dashboard") content = safeRender(renderDashboard, view);
@@ -84,6 +84,7 @@ function showView(view, params) {
       else if (view === "customers") content = safeRender(renderCustomers, view);
       else if (view === "operator") content = safeRender(renderFabu, view);
       else if (view === "cardset") content = safeRender(renderCardset, view);
+      else if (view === "blockPreview") content = safeRender(renderBlockPreview, view); // v228：6 积木块预览编辑
       else if (view === "mallConsole") { state.mallCtx = "console"; content = safeRender(renderClubMallConsole, view); }
       else if (view === "settings") content = safeRender(renderSettings, view);
       else if (view === "decorate") content = safeRender(renderDecorate, view);
@@ -91,7 +92,7 @@ function showView(view, params) {
       else if (view === "signups") content = safeRender(renderSignups, view);
       else if (view === "membership" || view === "membershipAdmin") content = safeRender(renderMembershipAdmin, view);
       else if (view === "ai" || view === "brand" || view === "plans" || view === "memberMarketing") content = safeRender(renderSettings, view);
-      app.innerHTML = renderShell(content, (view === "activityPage" || view === "prep") ? "list" : view);
+      app.innerHTML = renderShell(content, (view === "activityPage" || view === "prep" || view === "blockPreview") ? "list" : view);
       if (view === "editor") bindEditorExtras();
       // 进入编辑器即按地点联网自动搜索风景图（仅一次、且仅当已有地点且无图时），供「为什么值得去」配图
       if (view === "editor" && state.draft && state.draft.place && !state.draft.placePhotos && !state.draft._autoPhoto) {
@@ -1981,6 +1982,13 @@ function showView(view, params) {
         break;
       }
       case "copyText": { xbCopy(d.text || ""); break; }
+      /* v228：6 积木块预览编辑的动作派发 */
+      case "blockApplyEdits": { await applyBlockEdits(d.id); break; }
+      case "blockRewrite": { await blockRewrite(d.type, d.id); break; }
+      case "blockCoverPick": { await blockCoverPick(d.input, d.id); break; }
+      case "blockToCardset": { blockToCardset(d.id); break; }
+      case "blockToDetail": { blockToDetail(d.id); break; }
+      case "blockExport": { blockExport(d.id); break; }
       default: break;
     }
   }
@@ -2255,7 +2263,7 @@ function showView(view, params) {
     state._pendingPhotos = []; // 照片已并入这场活动，避免下一场活动误带旧图
     state.detailMode = "editorial"; // §七：默认给「有感染力的图文详情页」
     state.draft = null;             // 不挂在编辑器里，老板不需要逐字段改
-    showView("activityPage", { id: fa.id });
+    showView("blockPreview", { id: fa.id }); // v228：生成后先进「6 积木块预览」，详情页仍可从预览进
     toast("活动详情页已生成");
     autoRunDirector(fa);
   }

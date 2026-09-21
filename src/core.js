@@ -1728,6 +1728,16 @@ const REQUIRED_MODULE_FILES = {
   cardsetDownloadOne: "cardset.js",
   cardsetDownloadAll: "cardset.js",
   resetLocalData: "activities.js",
+  renderBlockPreview: "blocks.js",
+  applyBlockEdits: "blocks.js",
+  blockRewrite: "blocks.js",
+  blockCoverPick: "blocks.js",
+  blockExport: "blocks.js",
+  blockToCardset: "blocks.js",
+  blockToDetail: "blocks.js",
+  buildContentBlocks: "publish.js",
+  applyContentBlocks: "publish.js",
+  parseItinText: "publish.js",
 };
 const REQUIRED_MODULES = Object.keys(REQUIRED_MODULE_FILES);
 /* 返回「缺失的模块名 → 应在文件」清单；全部就绪返回空数组 */

@@ -9479,3 +9479,74 @@ function legacySection() {
     </div>
   </details>`;
 }
+
+
+/* ============ v228：6 积木块 IR（中间表示） ============
+   把「AI 生成详情页」从一步直出，升级为「先拼 6 块、看拼装效果再改」的积木式预览。
+   本段只负责「活动对象 <-> 6 块中间表示」的投影与回写，不碰 DOM
+   （DOM 在 blocks.js 的 renderBlockPreview 里）。
+   数据纪律（贯穿全局，见 core.js sanitizePublishCopy）：
+     · 6 块 = 标签 / Hook / Timeline / Trust / Price / CTA
+     · Trust（领队·含项·保险）与 Price（价格）是硬数据块 -> buildContentBlocks 只
+       只读投影；applyContentBlocks 绝不回写这两块，防止情感文案污染硬数据。
+     · Hook / CTA 是情感传播块 -> 落库前必经 sanitizePublishCopy 闸门。 */
+
+function buildContentBlocks(a) {
+  if (!a) return null;
+  const trust = [];
+  if (a.leaderName) trust.push("领队：" + a.leaderName + (a.leaderYears ? "（" + a.leaderYears + " 年带队）" : ""));
+  if (Array.isArray(a.feeInclude) && a.feeInclude.length) trust.push("含：" + a.feeInclude.join("、"));
+  if (a.insurance) trust.push("保险：" + a.insurance);
+  const priceText = (typeof priceTextOf === "function") ? priceTextOf(a, null) : null;
+  const priceUnpriced = (typeof priceUnpricedTextOf === "function") ? priceUnpricedTextOf(a) : null;
+  return {
+    tags:    { editable: true,  label: "标签 Tags",         value: Array.isArray(a.tags) ? a.tags.slice() : [] },
+    hook:    { editable: true,  label: "传播主张 Hook",      value: a.hook || "" },
+    timeline:{ editable: true,  label: "行程时间线 Timeline", value: Array.isArray(a.itineraryDays) ? a.itineraryDays : [] },
+    trust:   { editable: false, label: "信任背书 Trust",     value: trust },
+    price:   { editable: false, label: "价格 Price",         value: {
+      text: priceText || priceUnpriced || "待定",
+      raw: (a && a.price != null) ? a.price : null,
+      unit: a.limitUnit || "",
+      limit: a.limit != null ? a.limit : null,
+      tbd: !!a.priceTBD
+    } },
+    cta:     { editable: true,  label: "行动召唤 CTA",       value: a.cta || "" }
+  };
+}
+
+/* 把用户改过的 6 块回写到活动对象。Trust / Price 只读，不回写。
+   Hook / CTA 经 sanitizePublishCopy 闸门；tags / timeline 直接取结构化值。 */
+function applyContentBlocks(a, blocks) {
+  if (!a || !blocks) return a;
+  if (blocks.tags && Array.isArray(blocks.tags.value)) a.tags = blocks.tags.value.slice();
+  if (blocks.hook) a.hook = (typeof sanitizePublishCopy === "function")
+    ? sanitizePublishCopy(blocks.hook.value || "")
+    : (blocks.hook.value || "");
+  if (blocks.timeline && Array.isArray(blocks.timeline.value)) a.itineraryDays = blocks.timeline.value;
+  if (blocks.cta) a.cta = (typeof sanitizePublishCopy === "function")
+    ? sanitizePublishCopy(blocks.cta.value || "")
+    : (blocks.cta.value || "");
+  return a;
+}
+
+/* 纯文本 -> itineraryDays[]，供 timeline 文本框「读回」兜底。
+   行格式：以「第N天 / DAY N / Dn」开头的行为一天；其余行按「HH:MM 文本」解析为节点。 */
+function parseItinText(body) {
+  const days = [];
+  if (!body) return days;
+  const lines = String(body).split(/\n+/).map(function (s) { return s.trim(); }).filter(Boolean);
+  let cur = null;
+  lines.forEach(function (line) {
+    if (/^(第\s*\d+\s*天|DAY\s*\d+|D\d+)/i.test(line)) {
+      cur = { label: line.replace(/^[·•\-\s]+/, ""), sub: "", items: [] };
+      days.push(cur);
+      return;
+    }
+    const tm = line.match(/^([0-9]{1,2}[:：][0-9]{2})\s*(.*)$/);
+    const item = { time: tm ? tm[1] : "", text: tm ? tm[2] : line };
+    if (cur) cur.items.push(item);
+    else { cur = { label: "行程", sub: "", items: [item] }; days.push(cur); }
+  });
+  return days;
+}

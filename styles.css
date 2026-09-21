@@ -6020,3 +6020,33 @@ s.pp-base, .dm-v s.pp-base { text-decoration: line-through; }
 @media (max-width: 720px) {
   .cardset-grid { grid-template-columns: 1fr; }
 }
+
+
+/* ============ v228：6 积木块预览编辑 ============ */
+.block-preview { max-width: 720px; margin: 0 auto; padding: 16px 14px 40px; }
+.block-head { margin: 6px 0 14px; }
+.block-head .eyebrow { color: var(--accent, #2b7de9); font-weight: 700; letter-spacing: .04em; }
+.block-cover { margin-bottom: 16px; }
+.block-cover-img { width: 100%; height: 200px; object-fit: cover; border-radius: 14px; background: #eef1f5; display: block; }
+.block-cover-empty { display: flex; align-items: center; justify-content: center; color: var(--muted, #8a94a6); }
+.block-cover-tip { margin: 6px 0; }
+.block-cover-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.block-cover-thumb { position: relative; width: 88px; height: 64px; border-radius: 10px; overflow: hidden; border: 2px solid transparent; }
+.block-cover-thumb.on { border-color: var(--accent, #2b7de9); }
+.block-cover-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.block-cover-set { position: absolute; left: 0; bottom: 0; width: 100%; border: 0; background: rgba(0,0,0,.55); color: #fff; font-size: 11px; padding: 3px 0; cursor: pointer; }
+.block-card { background: var(--card, #fff); border: 1px solid var(--line, #e6e9ef); border-radius: 14px; padding: 14px; margin-bottom: 12px; }
+.block-card-h { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--ink, #1c2533); margin-bottom: 8px; }
+.block-tag { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; }
+.block-tag.editable { background: #e8f1ff; color: #2b7de9; }
+.block-tag.ro { background: #f0f1f4; color: #8a94a6; }
+.block-input { width: 100%; border: 1px solid var(--line, #e6e9ef); border-radius: 10px; padding: 9px 11px; font: inherit; color: var(--ink, #1c2533); background: #fff; box-sizing: border-box; }
+.block-input:focus { outline: none; border-color: var(--accent, #2b7de9); }
+.block-ta { resize: vertical; line-height: 1.5; }
+.block-ai { margin-top: 8px; }
+.block-readonly { background: #fafbfc; }
+.block-trust { margin: 0; padding-left: 18px; color: var(--ink, #1c2533); }
+.block-trust li { margin: 3px 0; }
+.block-price-main { font-size: 22px; font-weight: 800; color: #e0532b; }
+.block-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.block-note { margin-top: 10px; }
