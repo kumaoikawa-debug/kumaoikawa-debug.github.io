@@ -1727,6 +1727,7 @@ const REQUIRED_MODULE_FILES = {
   cardsetGenerate: "cardset.js",
   cardsetDownloadOne: "cardset.js",
   cardsetDownloadAll: "cardset.js",
+  resetLocalData: "activities.js",
 };
 const REQUIRED_MODULES = Object.keys(REQUIRED_MODULE_FILES);
 /* 返回「缺失的模块名 → 应在文件」清单；全部就绪返回空数组 */

@@ -1063,11 +1063,28 @@
             <div class="tiny muted">机构主页已上线</div>
             <div class="small" style="margin:4px 0 10px">把专业活动页发给客户 👇</div>
             <button class="btn btn-soft btn-sm btn-block" data-action="openFrontHome">查看机构主页</button>
+            <button class="btn btn-soft btn-sm btn-block" data-action="resetLocalData" style="margin-top:8px;color:#c0392b;border-color:rgba(192,57,43,.4)">重置本地数据</button>
           </div>
         </div>
       </aside>
       <main class="content" id="content">${content}</main>
     </div>`;
+  }
+
+  /* v225 一键卡片组：重置本地测试数据（清活动/状态/创意记忆，保留连接配置） */
+  function resetLocalData() {
+    if (typeof confirm === "function" && !confirm("确定清空本地缓存的活动/状态/创意记忆等测试数据？后端地址、管理员口令、AI Key、视觉配置将保留，不会退出登录。")) return;
+    var KEEP = ["clubos_backend_url", "clubos_backend_admin_code", "clubos_backend_merchant_id", "clubos_backend_token", "clubos_ai_key", "clubos_ai_provider", "clubos_vision_provider", "clubos_vision_key", "clubos_vision_model", "clubos_vision_baseurl"];
+    var toRemove = [];
+    try {
+      for (var j = 0; j < localStorage.length; j++) {
+        var key = localStorage.key(j);
+        if (key && key.indexOf("clubos_") === 0 && KEEP.indexOf(key) < 0) toRemove.push(key);
+      }
+    } catch (e) {}
+    for (var m = 0; m < toRemove.length; m++) { try { localStorage.removeItem(toRemove[m]); } catch (e) {} }
+    if (typeof alert === "function") alert("本地测试数据已清空，正在刷新…");
+    if (typeof location !== "undefined" && location && location.reload) location.reload();
   }
 
   /* ---------------- 平台运营总后台（V2.0 平台视角） ----------------

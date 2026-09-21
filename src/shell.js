@@ -628,6 +628,7 @@ function showView(view, params) {
       }
       case "cardsetDownloadOne": cardsetDownloadOne(parseInt(d.idx, 10) || 0); break;
       case "cardsetDownloadAll": cardsetDownloadAll(); break;
+      case "resetLocalData": resetLocalData(); break;
       case "voice": toast("语音输入为视觉占位，Demo 中请直接输入文字"); break;
       case "paste": { const ta = $("#createInput"); if (ta) { ta.value = PASTE_SAMPLE; ta.focus(); } toast("已填入一段示例旧文案"); break; }
       case "example": { const ta = $("#createInput"); if (ta) { ta.value = d.text; } else { state.draft = blankActivity(); state.draft.raw = d.text; parseActivityWithAI(d.text).then(async (json) => { if (json && !json._error && !json._needKey) { applyAIResult(json, state.draft); await ensureNarrativeFields(state.draft); } else { if (typeof syncDerived === "function") syncDerived(state.draft); applyDnaCopyFallback(state.draft); } await ensureItineraryFields(state.draft); syncItineraryDays(state.draft); showView("factConfirm"); }); } break; }
