@@ -1636,27 +1636,11 @@ const REQUIRED_MODULE_FILES = {
   intakeParseItinerary: "intake.js",
   visionReadPoster: "vision.js",
   /* M1 活动详情页 AI Content Director：接管 regenStyle 与 renderActivityEditorial 的 outline 生成 */
-  aiContentDirector: "contentDirector.js",
-  runContentDirector: "contentDirector.js",
-  directorOutline: "contentDirector.js",
-  aiDirectorReady: "contentDirector.js",
   /* M2 Diversity Controller：多候选 + 自有打分器选最优（取代盲信 AI fitScore） */
-  aiContentDirectorCandidates: "contentDirector.js",
-  scoreDirectorCandidate: "contentDirector.js",
-  selectBestDirector: "contentDirector.js",
   /* M3 三层反重复：copySimilarity/layoutSimilarity/semanticSimilarity 撞车检测 + 局部重生成 */
-  repetitionReport: "contentDirector.js",
-  aiDirectorRepair: "contentDirector.js",
-  directorFingerprintOf: "contentDirector.js",
   /* M4 压力测试 harness：30 场连续压测 + 记忆隔离（线上控制台可自检） */
-  cdStressScenarios: "contentDirector.js",
-  cdStressRun: "contentDirector.js",
-  creativeMemoryWrite: "contentDirector.js",
   /* v214：Blueprint 接管导语 / 金句（渲染层读它们，缺了页头就退回模板句） */
-  directorLeadOf: "contentDirector.js",
-  directorQuoteOf: "contentDirector.js",
   /* v215 导语/金句接地闸门：拒收与活动文案无 2-gram 重合的 AI 废话 */
-  cdLeadGrounded: "contentDirector.js",
   /* v215 方案事实回盖 AI 写丢的字段（applyAIResult 末尾调用） */
   applyPlanFieldsOverride: "publish.js",
   /* v213 诚实价格：显示层把「未定价」（0/空）归一到 详询/价格待定/免费，
@@ -1697,12 +1681,12 @@ const REQUIRED_MODULE_FILES = {
   contentV3PublishDoc: "contentV3.js",
   contentV3PublishChannel: "contentV3.js",
   contentV3ScenarioOfChannel: "contentV3.js",
-  ensureBrandProfile: "contentDirector.js",
-  refreshBrandProfile: "contentDirector.js",
-  saveBrandProfile: "contentDirector.js",
-  brandKeywordsOf: "contentDirector.js",
-  setBrandProfile: "contentDirector.js",
-  getBrandProfileOf: "contentDirector.js",
+  ensureBrandProfile: "brandProfile.js",
+  refreshBrandProfile: "brandProfile.js",
+  saveBrandProfile: "brandProfile.js",
+  brandKeywordsOf: "brandProfile.js",
+  setBrandProfile: "brandProfile.js",
+  getBrandProfileOf: "brandProfile.js",
   renderBrandProfileCard: "activities.js",
   /* §十二 Editor.js 块级编辑层：
      缺 Tools → 编辑器静默退回卡片模式（能编辑但失去块级体验）；
@@ -1728,13 +1712,6 @@ const REQUIRED_MODULE_FILES = {
   cardsetDownloadOne: "cardset.js",
   cardsetDownloadAll: "cardset.js",
   resetLocalData: "activities.js",
-  renderBlockPreview: "blocks.js",
-  applyBlockEdits: "blocks.js",
-  blockRewrite: "blocks.js",
-  blockCoverPick: "blocks.js",
-  blockExport: "blocks.js",
-  blockToCardset: "blocks.js",
-  blockToDetail: "blocks.js",
   buildContentBlocks: "publish.js",
   applyContentBlocks: "publish.js",
   parseItinText: "publish.js",

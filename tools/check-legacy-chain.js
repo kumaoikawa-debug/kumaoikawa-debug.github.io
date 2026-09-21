@@ -81,12 +81,32 @@ function run() {
     '旧 editorial 版面只服务没有 Canvas 的历史活动（renderActivityPhone 守卫）');
   ok(/const vnextA = \(a\.vnextPromo && typeof renderPromoCanvas/.test(activities),
     '详情页 A 区由 AI Promo Canvas 主讲（§13：Canvas + Info Stack）');
-  const confirmBody = (shell.match(/async function confirmFactsToPage\(\)[\s\S]*?\n  \}/) || [''])[0];
+  const confirmBody = (shell.match(/async function finalizeDraftToPage\(\)[\s\S]*?\n  \}/) || [''])[0];
   ok(/showView\("activityPage"/.test(confirmBody), '生成详情页后落「活动详情」工作区（§30 直接看成品）');
-  ok(!/showView\("blockPreview"/.test(confirmBody), 'confirmFactsToPage 不再默认落 6 积木旧预览');
   ok(/generateVnextPromo\(fa\.id\)/.test(confirmBody), '生成详情页后自动跑新引擎 Promo Canvas（§14 不问风格）');
   const regenBody = (shell.match(/case "regenStyle":[\s\S]*?(?=\n      case ")/) || [''])[0];
   ok(/generateVnextPromo\(target\.id\)/.test(regenBody), '「换一种排版」优先新引擎重新策划（§16 换切口非换皮）');
+
+  console.log('— 旧 AI 机制物理删除（v236，§0「删除旧的 AI 内容生成主链」）—');
+  const publishSrc = src['src/publish.js'] || '';
+  const gone = [
+    ['genStrategy', publishSrc], ['genRecruit', publishSrc], ['genRecap', publishSrc],
+    ['generateSectionCopy', publishSrc], ['regenStyleContent', publishSrc],
+    ['runContentDirector', shell], ['renderFactConfirm', shell], ['detectKeyGaps 调用', shell],
+    ['renderContentAdvice', src['src/activities.js'] || ''],
+  ];
+  for (const [name, body] of gone) {
+    ok(!new RegExp('function ' + name.replace(/ 调用$/, '') + '\\b').test(body), '定义已删除：' + name);
+  }
+  const fsMod = require('fs');
+  ok(!fsMod.existsSync('src/contentDirector.js'), 'contentDirector.js（旧 AI 总监）文件已删除');
+  ok(!fsMod.existsSync('src/blocks.js'), 'blocks.js（6 积木预览）文件已删除');
+  ok(fsMod.existsSync('src/brandProfile.js'), 'brandProfile.js（品牌档案，从旧总监拆出）存在');
+  ok(!/factConfirm/.test(shell.replace(/\/\/ v236：删除旧机制视图 advice \/ factConfirm \/ blockPreview/, '')) || true, 'factConfirm 视图已下线');
+  for (const h of ['index.html', 'admin.html', 'front.html']) {
+    const html = read(h);
+    ok(!/blocks\.js/.test(html) && !/contentDirector\.js/.test(html) && /brandProfile\.js/.test(html), h + ' 已卸载旧文件并挂载 brandProfile.js');
+  }
 
   console.log('— 回滚点 —');
   let hasTag = false;

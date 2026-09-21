@@ -392,10 +392,8 @@
     const heroTitle = (spack && !spack._auto && spack.title) ? gateSys(spack.title) : gateTitle(a.title);
     const sub = (spack && spack.subtitle) ? gateSys(spack.subtitle) : gateTitle(a.posterTagline || a.hook || "");
     /* M1：若本活动跑过 AI Content Director（a.pageBlueprint 存在），
-       用 directorOutline 把 Blueprint 转成叙事章节；否则回退旧双轴大纲。 */
-    const outline = (a && a.pageBlueprint && typeof directorOutline === "function")
-      ? (directorOutline(a.pageBlueprint) || (typeof buildEditorialOutline === "function" ? buildEditorialOutline(a, variant) : []))
-      : (typeof buildEditorialOutline === "function" ? buildEditorialOutline(a, variant) : []);
+       v236：旧 AI 总监已删除；历史 pageBlueprint 回退旧双轴大纲。 */
+    const outline = (typeof buildEditorialOutline === "function" ? buildEditorialOutline(a, variant) : []);
     const caps = a.photoCaptions || [];
     const usedSet = new Set([coverIdx]);
     let capIdx = 1;
@@ -2102,7 +2100,6 @@ function channelMeta(ch) {
           ${factConfirmHtml(a)}
           <div class="strategy-inline">
           <div><span class="eyebrow">AI 内容方向 · ${esc(a.contentStrategy ? a.contentStrategy.name : "推荐")}</span><h3>${esc(a.headline || "")}</h3><p>${esc(a.contentStrategy ? a.contentStrategy.reason : "")}</p></div>
-          <button class="btn btn-soft btn-sm" data-action="openAdvice">换一个方向</button>
         </div>
         ${a._similarList && a._similarList.length ? `<div class="similar-banner"><div class="sb-ic">${ICON("history")}</div><div class="sb-txt"><b>找到 ${a._similarList.length} 个相似历史活动</b><br><span class="tiny muted">${a._similarList.map((s)=>esc(s.title)).join("、")} · 可直接沿用行程，仅需改日期与价格</span></div><button class="btn btn-soft btn-sm" data-action="reuseHistory" data-id="${a._similarList[0].id}">沿用上次行程</button></div>` : ""}
         <div class="panel" style="margin-bottom:18px">
@@ -2241,34 +2238,6 @@ function channelMeta(ch) {
           </div>
         </div>
       </div>`;
-  }
-
-  function renderContentAdvice() {
-    const a = state.draft;
-    if (!a) return renderCreate();
-    const facts = [a.place, a.type, a.dateMD, a.distance ? `${a.distance}公里` : "", a.elevation ? `${a.elevation}米` : "", a.difficulty, a.ageRange, a.price ? `¥${a.price}/${a.limitUnit}` : ""].filter(Boolean);
-    const directions = (a.contentDirections || []).slice(0, 3);
-    return `<div class="advice-shell">
-      <div class="advice-top"><span class="ai-orb">AI</span><span>CONTENT STRATEGY · AI 生成</span></div>
-      <div class="eyebrow">先选表达方向，再进入编辑</div>
-      <h1>这场活动，最值得强调什么？</h1>
-      <p class="advice-lead">AI 只包装老板给出的真实活动，不改变目的地、不补写行程，也不添加未确认的服务承诺。</p>
-      <div class="advice-facts"><b>本次写作依据</b><span>${esc(facts.join(" · "))}</span></div>
-      ${directions.length ? `<div class="direction-grid">${directions.map((d, i) => `<button class="direction-card ${i === +(a.contentDirection || 0) ? "selected" : ""}" data-action="pickContentDirection" data-i="${i}"><span class="direction-index">0${i + 1} · ${esc(d.name)}</span><strong>${esc(d.headline)}</strong><span class="direction-reason">${esc(d.reason)}</span><span class="direction-use">${i === +(a.contentDirection || 0) ? "当前推荐" : "选择这个方向"}</span></button>`).join("")}</div>` : ""}
-      <div class="advice-preview">
-        <span>当前主传播主题</span>
-        <h2>${esc((a.contentPlan && a.contentPlan.contentStrategy && a.contentPlan.contentStrategy.mainTheme) || (a.contentStrategy && a.contentStrategy.name) || a.title || "未命名活动")}</h2>
-        <p>${esc((a.contentPlan && a.contentPlan.contentStrategy && a.contentPlan.contentStrategy.mainSellingPoint) || (a.contentStrategy && a.contentStrategy.headline) || a.intro || "活动介绍将在事实确认后生成。")}</p>
-        <div class="strat-tags">
-          <span class="${a.whyGo ? "on" : ""}">为什么值得去</span>
-          <span class="${a.experience ? "on" : ""}">好不好玩</span>
-          <span class="${a.gain ? "on" : ""}">能得到什么</span>
-        </div>
-      </div>
-      ${ (a.missingFacts && a.missingFacts.length) ? `<div class="advice-missing"><b>AI 提示缺少的信息</b>${a.missingFacts.map((t) => `<div class="am-item">${esc(t)}</div>`).join("")}</div>` : "" }
-      ${ (a.forewordTitles && a.forewordTitles.length) ? `<div class="title-cands"><div class="tc-h"><span>标题备选（点击采用）</span><button class="tc-refresh mini-regen" data-action="regenField" data-field="forewordTitles">${ICON("refresh")} 换一组</button></div>${a.forewordTitles.map((t, i) => `<button class="tc-item" data-action="pickForewordTitle" data-i="${i}">${esc(t)}</button>`).join("")}</div>` : "" }
-      <div class="advice-actions"><button class="btn btn-ghost" data-action="nav" data-view="create">返回修改输入</button><button class="btn btn-primary btn-lg" data-action="confirmFactsToPage">${ICON("sparkles")} 生成图文详情页</button><button class="btn btn-ghost" data-action="approveDirection">进入编辑器微调 ${ICON("arrow-right")}</button></div>
-    </div>`;
   }
 
   function factConfirmHtml(a) {

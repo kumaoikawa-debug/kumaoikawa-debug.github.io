@@ -5826,7 +5826,7 @@ function applyVisionBatch(map) {
     /* 懒生成：未显式「换过风格」的活动（§七 一键生成 / 历史活动 / 导入活动），
        按当前自动选定的风格直接产出角度化文案包，让默认图文页也是「角度驱动」，
        而不是千篇一律的 canonical 副本（修复「所有文案都一样 / 跟原来一样」）。
-       只「按当前风格产出」、不旋转风格——旋转由 regenStyleContent 负责。 */
+       只「按当前风格产出」、不旋转风格。 */
     if (a && typeof angleEditorialPack === "function") {
       try {
         const dna = (typeof buildActivityDNA === "function") ? buildActivityDNA(a, a.photos) : {};
@@ -5843,81 +5843,7 @@ function applyVisionBatch(map) {
     }
     return null;
   }
-  /* P0-C：换风格 —— 真正重生成内容，并做「连续重复降权」。
-     v198：按钮叫「换一种排版」，老板感知的「排版」= 版式轴（hero 形态/章节结构/图片组合/字体）。
-     旧实现只旋转风格轴、版式轴冻结 —— 文案换了但页面长得一模一样，被老板判「假 AI / 点了没变化」。
-     现在：风格轴 + 版式轴一起旋转（双轴都保证与当前不同），事实层依旧冻结。 */
-  function regenStyleContent(a, opts) {
-    if (!a) return null;
-    opts = opts || {};
-    const curStyle = (typeof editorialStyleOf === "function") ? editorialStyleOf(a) : { id: "" };
-    const curLayout = (typeof editorialLayoutOf === "function") ? editorialLayoutOf(a) : { id: "" };
-    const nextLayout = (typeof pickEditorialLayout === "function" && EDITORIAL_LAYOUTS.length > 1) ? pickEditorialLayout(curLayout.id) : curLayout;
-    const hist = Array.isArray(a._styleHistory) ? a._styleHistory.slice() : [];
-    const recent = hist.slice(-2).map(function (h) { return h && h.contentAngle; }).filter(Boolean);
-    // 选下一个风格：逐个尝试，跳过「近两次已用过的角度」（连续重复降权）
-    let next = null, tried = 0, prevId = curStyle.id;
-    while (tried < EDITORIAL_STYLES.length) {
-      const cand = (typeof pickEditorialStyle === "function") ? pickEditorialStyle(prevId) : null;
-      if (!cand) break;
-      tried++;
-      prevId = cand.id;
-      if (recent.indexOf(cand.angle) < 0 || tried >= EDITORIAL_STYLES.length) { next = cand; break; }
-    }
-    next = next || (typeof pickEditorialStyle === "function" ? pickEditorialStyle(curStyle.id) : curStyle);
-    // 冻结事实 → 只写 style 轴 + layout 轴；事实字段一概不碰
-    a.editorialStyleId = next.id;
-    a.editorialLayoutId = nextLayout.id;
-    const dna = (typeof buildActivityDNA === "function") ? buildActivityDNA(a, a.photos) : null;
-    const variant = { angle: next.angle, structure: nextLayout.structure, img: nextLayout.img, density: next.density, layout: nextLayout.id, style: next.id, typo: nextLayout.typo, family: next.family };
-    const pack = angleEditorialPack(a, variant, dna || {});
-    a.editorialStylePack = pack;
-    a._styleHistory = hist.concat([{ contentAngle: next.angle, styleId: next.id, layoutId: nextLayout.id, createdAt: Date.now() }]).slice(-12);
-    // 同步重生成后置的图片策略（不改 sec.imgCount / imgKind）
-    return pack;
-  }
-  function angleLeadOf(angle, a, fb) {
-    const A = EDITORIAL_ANGLES[angle] || EDITORIAL_ANGLES.scenery;
-    const fbk = fb || {};
-    const lead = (fbk.intro || a.intro || A.cta || "").split(/\n+/).map(function (s) { return s.trim(); }).filter(Boolean)[0] || A.cta;
-    return A.label + " · " + lead;
-  }
-  // 按密度裁剪每段文案长度与段数（画册型短、杂志型中、纪实型全、转化型短而利落）
-  function editorialDensityTrim(density, paras) {
-    const d = EDITORIAL_DENSITY[density] || EDITORIAL_DENSITY.magazine;
-    let out = (paras || []).map(function (p) { return String(p || "").trim(); }).filter(Boolean);
-    if (d.maxPara < 99) out = out.slice(0, d.maxPara);
-    if (d.trunc > 0) out = out.map(function (p) { return p.length > d.trunc ? p.slice(0, d.trunc) + "…" : p; });
-    return out;
-  }
-  function editorialImgCount(imgMode, secKey) {
-    const m = EDITORIAL_IMG[imgMode] || EDITORIAL_IMG["hero-mosaic"];
-    return { count: m.secCount, kind: m.secKind };
-  }
-  function editorialGalleryMode(imgMode) {
-    const m = EDITORIAL_IMG[imgMode] || EDITORIAL_IMG["hero-mosaic"];
-    return m.gallery;
-  }
-  /* Case 4：昼夜节奏判定 —— 返回原始 photos 数组中的「白天/夜晚」索引，
-     供长页在白天素材之后注入「入夜」章节，自动形成 昼→夜 情绪节奏。
-     夜晚信号优先级：照片显式 isNight / analysis.isNight > 内容识别 scene=night / 标签含「夜景」。 */
-  function photoDayNight(photos) {
-    const list = (photos || []).filter(Boolean);
-    const night = [], day = [];
-    list.forEach((p, i) => {
-      let isNight = !!(p && p.isNight) || !!(p && p.analysis && p.analysis.isNight);
-      if (!isNight) {
-        try {
-          const sig = analyzeOnePhoto(typeof p === "string" ? p : (p.src || ""), i, null);
-          isNight = sig.scene === "night" || (sig.tags || []).indexOf("夜景") >= 0;
-        } catch (e) { isNight = false; }
-      }
-      (isNight ? night : day).push(i);
-    });
-    return { night: night, day: day, nightCount: night.length, dayCount: day.length, total: list.length, hasRhythm: night.length > 0 && day.length > 0 };
-  }
-
-  function buildEditorialOutline(a) {
+function buildEditorialOutline(a) {
     a = a || {};
     // P0-12：同一活动按不同「变体」生成不同角度/结构/图片/密度的图文长页
     // P0-13：版式轴(layout→structure/img/typo) 与 风格轴(style→angle/density/family) 解耦
@@ -6439,9 +6365,6 @@ function describePhotoProfile(intel) {
 
 /* ---------- §四 内容层 ---------- */
 
-/* generateSectionCopy(heading, opts) → 单个段落的替代文案（事实驱动，不造事件）
-   opts: { master, activity, seed } */
-
 /* validateClaims(out, facts, adv) → Claim→Fact 校验结果（文档 P2-2）
    只搬运 contentQuality 的既有判定，不新增规则。 */
 function validateClaims(out, facts, adv) {
@@ -6523,7 +6446,6 @@ const AI_ACTIVITY_DIRECTOR = {
 const AI_CONTENT_COMPOSER = {
   label: "AI Content Composer",
   buildContentMaster: function (a, photos) { return (typeof buildContentMaster === "function") ? buildContentMaster(a, photos) : null; },
-  generateSectionCopy: generateSectionCopy,
   validateClaims: validateClaims,
   qualityCheck: function (out, dir, scenario, facts, adv) { return (typeof qualityCheck === "function") ? qualityCheck(out, dir, scenario, facts, adv) : out; },
 };
@@ -6587,8 +6509,7 @@ if (typeof window !== "undefined") {
     buildPageStoryOutline: buildPageStoryOutline,
     buildEditorialOutline: buildEditorialOutline,
     photoDayNight: photoDayNight, // Case 4：昼夜素材判定（昼→夜节奏）
-    generateSectionCopy: generateSectionCopy,
-    heuristicDirection: heuristicDirection,
+      heuristicDirection: heuristicDirection,
     photoContentProfile: photoContentProfile, // Case 1/2：照片色调/主体构成信号（暖调、人物占比）
     photoDominance: photoDominance,           // Case 2：人物主导 / 风景主导判定
     autoEditorialPick: autoEditorialPick,     // Case 1/2：按照片自动选版式轴 + 风格轴
@@ -7510,496 +7431,6 @@ function heuristicDirection(a, p, family, scenario, photoProfile) {
     copyDirectives: { avoid: ["硬销", "名额仅剩", "最后机会"], must: ["地点真实感", "基于已确认事实"] },
   };
 }
-/* ==========================================================================
- * ⛔ LEGACY（Clean Rewrite §4）—— 旧 AI 内容生成主链，已停止迭代并从正式路径断开。
- * 旧链 = genStrategy / genRecruit / genRecap（固定 Family / Variant / Style / 章节骨架）。
- * 回滚点：git tag clubos-ai-content-legacy。
- *
- * 正式路径现在统一走新引擎：
- *   活动详情 → /api/content-vnext/generate（AI Promo Canvas）
- *   宣发四渠道 → /api/content-vnext/channel（runRecruitGen）
- *   活动回顾   → /api/content-vnext/recap（runRecapGen）
- *
- * 下面的函数仅用于渲染老板 localStorage 里的**历史产物**（recruitResult/recapResult 的回落分支），
- * 不要再在任何生成入口调用它们。
- * ========================================================================== */
-async function genStrategy(a, photos, notes, scenario) {
-  const facts = extractConfirmedFacts(a, photos);
-  const pp = await photoProfile(a, photos, scenario);
-  const p = typeProfile(a);
-  const dna = (typeof activityDNAOf === "function") ? activityDNAOf(a, photos) : null;
-  const family = pickFamily(a, photos, scenario);
-  const seed = styleSeed();
-  const variant = pickVariant(family, scenario, seed);
-  let dir = null;
-  if (aiAuthMode()) {
-    const sys = `你是 ClubOS 的户外内容主编兼视觉指导。基于"已确认事实"产出一份 Editorial Direction（编辑方向），它将同时驱动文案写作与视觉排版。
-原则：允许创造表达，禁止创造事件——只能基于给定事实（活动名称/地点/日期/强度/价格/领队/照片分类等），不得虚构天气、领队行为、用户感受、具体人数、未提供的价格。
-★ 文案风格硬约束：你产出的 angle / hook / structure 章节名会被直接用作对外文案，**不得含具体日期、时刻、价格、名额、公里、海拔、年龄、天数、车程小时数**（时间用「这个周末/出发那天/一整天」这类说法）。
-返回 JSON：{
-  angle: 一句话编辑角度（≤18字，带观点而非硬销），
-  tone: 语气关键词,
-  voice: 人称与口吻（如"第一人称松弛"）,
-  hook: 一个情绪/反差钩子（≤14字）,
-  structure: [4-6个章节标题，按消费者决策或回顾逻辑排序],
-  visual: { mood, color:"山系橙/墨绿/夜空蓝/暖米/松石", composition:"大图主导/网格/左右交替/卡片流", coverHint, typographic:"衬线大标题/无衬线粗体/手写感" },
-  copyDirectives: { avoid:[], must:[] },
-  editorialConcept, visualFocus, readingMood, imagePriority: "medium/high", storyStyle, informationStyle, titleTone, ctaStrength: "strong/soft", layoutFamily,
-  layoutRhythm: { maxSamePatternRepeat: 2, cadence: "alternating" },
-  textDensity: "low/medium/high", whitespace: "low/medium/generous", imageRatio: 数字(招募0.5-0.65 / 回顾0.6-0.75)
-}`;
-    const user = `场景：${scenario === "recruit" ? "活动招募" : "活动回顾"}
-事实：${JSON.stringify(facts)}
-照片画像：${JSON.stringify(pp)}
-活动类型画像：${JSON.stringify({ kind: p.kind, themeA: p.themeA, tone: p.tone })}
-活动基因(Activity DNA)：${JSON.stringify(dna)}
-补充资料：${notes || "无"}
-指定编辑家族：${family}（${XF_FAMILIES[family].label}），变体序号：${variant}`;
-    dir = await llmCall(sys, user, true);
-  }
-  if (!dir || !dir.angle) dir = heuristicDirection(a, p, family, scenario, pp);
-  dir.family = family; dir.variant = variant; dir.styleSeed = seed;
-  return {
-    contentStrategy: {
-      mainTheme: p.themeA, secondaryTheme: dir.angle || p.themeA,
-      mainSellingPoint: p.themeA, audienceInsight: targetUser(a),
-      tone: p.tone, angle: dir.angle, hook: dir.hook, scenario: scenario,
-    },
-    activityDNA: dna,
-    photoProfile: pp,
-    photoIntel: (typeof buildPhotoIntelligence === "function") ? buildPhotoIntelligence(photos, a, (dir.structure || []), scenario) : null,
-    editorialDirection: dir,
-  };
-}
-
-/* ---------- 阶段二：AI 完整文案（六平台，全部由 AI 生成） ---------- */
-function sectionBody(h, a, m) {
-  // P0-15：Fallback 章节正文只从 confirmedFacts(f) 推导，绝不把类型推断的
-  // scenicValue/experienceValue/participationValue 当作现场事实写入。
-  const f = m.confirmedFacts;
-  const T = h || "";
-  /* v203：「怎么报名」原本与「真实信息」渲染同一张信息表 —— 两段一字不差地重复。
-     现在真正的信息表只留在信息章节，报名章节给报名方式。 */
-  if (/报名/.test(T) && !/信息|详情|费用|时间|地点|出行/.test(T)) {
-    return `<p>报名方式：${ctaShortOf(a)}。${urgencyTextOf(confirmedCTAOf(a))}</p>`;
-  }
-  if (/信息|详情|报名|费用|时间|地点|怎么报名|出行/.test(T)) {
-    const rows = infoRows(a).map((r) => `<b>${r.k}</b> ${r.v}`);
-    return `<p>${rows.length ? rows.join("；") + "。" : "活动详情以发布页为准。"}</p>`;
-  }
-  if (/玩|体验|行程|内容|安排|路线|活动/.test(T)) {
-    const parts = [];
-    if (f.days > 1) parts.push(f.days + " 天行程");
-    if (f.difficulty) parts.push("强度" + f.difficulty);
-    if (f.distance) parts.push("全程约 " + f.distance + " 公里");
-    if (f.elevation) parts.push("海拔约 " + f.elevation + " 米");
-    if (f.itinerary && f.itinerary.length) parts.push("已规划 " + f.itinerary.length + " 段行程");
-    if (f.gear && f.gear.length) parts.push("建议自备：" + f.gear.slice(0, 5).join("、"));
-    if (f.transport) parts.push("交通：" + f.transport);
-    if (f.meal) parts.push("含餐：" + f.meal);
-    if (f.includedServices && f.includedServices.length) parts.push("费用含：" + f.includedServices.join("、"));
-    // Case 7：资料已填的保险/安全事实，高强度活动页须显性呈现
-    if (a && a.insurance) parts.push("保险：" + a.insurance);
-    if (a && a.safety && a.safety.length) parts.push("安全：" + a.safety.join("、"));
-    return `<p>${parts.length ? parts.join("；") + "。" : "具体玩法与行程以发布页与现场说明为准。"}</p>`;
-  }
-  if (/适合|谁|门槛|匹配|友好/.test(T)) {
-    const parts = [];
-    if (f.ageRange) parts.push("适合 " + f.ageRange);
-    else if (f.audience) parts.push("面向 " + f.audience);
-    if (f.difficulty) parts.push("强度" + f.difficulty + "，报名前请确认与自身情况匹配");
-    if (f.leader) parts.push("本场由 " + f.leader + " 带队");
-    return `<p>${parts.length ? parts.join("；") + "。" : "具体是否适合你，请结合强度、时间与自身情况判断，或向发布方咨询。"}</p>`;
-  }
-  if (/值得|为什么|去|亮点|看点/.test(T)) {
-    const parts = [];
-    if (f.activityType) parts.push("活动类型：" + f.activityType);
-    if (f.place) parts.push("地点在" + f.place);
-    if (f.photosCount > 0) parts.push("已上传 " + f.photosCount + " 张活动照，可在详情页查看");
-    /* v203：原实现在这里播报「9月20日 出发」—— 属参数播报，日期在事实信息章节里。 */
-    return `<p>${parts.length ? parts.join("；") + "。" : "活动亮点与实拍见详情页。"}</p>`;
-  }
-  if (/得到|收获|意义|价值|陪伴|成长/.test(T)) {
-    return `<p>报名后可在群里获取集合、时间与行程提醒；活动信息以发布页为准。</p>`;
-  }
-  if (/预告|下一期|集结/.test(T)) return "更多活动信息可关注机构后续发布。";
-  return `<p>${(f.place ? "在" + f.place + "的" : "") + (f.date || "近期") + "这场活动，信息以发布页为准。"}</p>`;
-}
-
-/* ================= v203 宣发出口闸门：把 v201 的文案分层推广到「所有宣传文案」 =================
-   基元在 core.js 的 v203 块（isPublishInfoSeg / sanitizePublishCopy / sanitizePublishHtml）。
-   本函数按**宣发产物结构**逐平台逐字段处理：
-
-   事实层（一个字都不动）：
-     · gzh.info[].k/.v、gzh.fee（结构化信息表：时间/地点/集合/名额/费用…）
-     · gzh.sections 中**标题命中事实词**的章节（真实信息 / 怎么报名 / 费用…）—— 整段保留
-     · xhs.body、wechat.recruit 里的标签行（「· 时间：9月20日」「🗓 地点：…」）
-     · poster 的 title / place / points / time / price（海报是信息载体）
-
-   文学层（过闸门：句中参数剥离、参数播报句丢弃）：
-     · gzh.title / subtitle / summary / cta / next / sections[].h 与其余章节 html
-     · xhs.titles / coverText 与 body 的非标签行
-     · moments.* / wechat.* / voice.* / poster.sub
-     · 键名兜底：out 顶层键命中 LITERARY_FIELDS 的字符串/数组（防将来新增字段漏接闸门）
-   ------------------------------------------------------------------------- */
-const PUBLISH_FACT_SECTION_RE = /信息|详情|报名|费用|时间|地点|出行|交通|集合|须知|怎么去/;
-function gatePublishOut(out, scenario) {
-  if (!out || typeof out !== "object") return out;
-  const C = (t) => (typeof sanitizePublishCopy === "function") ? sanitizePublishCopy(t) : String(t == null ? "" : t);
-  const H = (t) => (typeof sanitizePublishHtml === "function") ? sanitizePublishHtml(t) : C(t);
-  /* 标题类保护：清完为空 → 保留原文。
-     宁可留着老板自己的字样（哪怕它含日期），也不要交出一个空标题。 */
-  const TS = (orig) => { const g = C(orig); return (g && g.trim()) ? g : String(orig == null ? "" : orig); };
-
-  const gzh = out.gzh;
-  if (gzh && typeof gzh === "object") {
-    ["title", "subtitle", "summary", "cta", "next"].forEach((k) => { if (gzh[k] != null) gzh[k] = (k === "title") ? TS(gzh[k]) : C(gzh[k]); });
-    if (Array.isArray(gzh.sections)) {
-      gzh.sections.forEach((sec) => {
-        if (!sec || typeof sec !== "object") return;
-        const isFactSection = PUBLISH_FACT_SECTION_RE.test(String(sec.h || ""));
-        if (sec.h != null) sec.h = TS(sec.h);
-        /* 事实章节（真实信息/怎么报名）整段保留；表达章节才净化。
-           ★ 这一刀很关键：`<p><b>时间</b> 9月20日；<b>名额</b> 15人</p>` 的值写在标签**外面**，
-             若按文本节点净化会被逐条剥掉 —— 那正是读者要拿来核对的信息。 */
-        if (sec.html != null && !isFactSection) sec.html = H(sec.html);
-      });
-    }
-    // gzh.info / gzh.fee 是事实层，不动
-  }
-
-  const xhs = out.xhs;
-  if (xhs && typeof xhs === "object") {
-    if (Array.isArray(xhs.titles)) xhs.titles = xhs.titles.map(TS).filter(Boolean);
-    if (xhs.body != null) xhs.body = C(xhs.body);
-    if (xhs.coverText != null) xhs.coverText = C(xhs.coverText);
-  }
-
-  if (typeof out.moments === "string") out.moments = C(out.moments);
-  else if (out.moments && typeof out.moments === "object") ["warm", "formal", "last"].forEach((k) => { if (out.moments[k] != null) out.moments[k] = C(out.moments[k]); });
-
-  if (typeof out.wechat === "string") out.wechat = C(out.wechat);
-  else if (out.wechat && typeof out.wechat === "object") ["recruit", "brief"].forEach((k) => { if (out.wechat[k] != null) out.wechat[k] = C(out.wechat[k]); });
-
-  if (out.voice && typeof out.voice === "object") ["s30", "s60"].forEach((k) => { if (out.voice[k] != null) out.voice[k] = C(out.voice[k]); });
-
-  if (out.poster && typeof out.poster === "object") { if (out.poster.sub != null) out.poster.sub = C(out.poster.sub); }
-
-  if (out.next != null) out.next = C(out.next);
-
-  // 键名兜底：将来新增的文学字段只要名字进白名单，就会被自动覆盖
-  if (typeof LITERARY_FIELDS !== "undefined" && Array.isArray(LITERARY_FIELDS)) {
-    Object.keys(out).forEach((k) => {
-      if (LITERARY_FIELDS.indexOf(k) < 0) return;
-      const v = out[k];
-      if (typeof v === "string") out[k] = TS(v);
-      else if (Array.isArray(v)) out[k] = v.map(TS).filter(Boolean);
-    });
-  }
-  return out;
-}
-
-function fallbackRecruitCopy(a, m, dir) {
-  const f = m.confirmedFacts;
-  // P0-15：招募 Fallback 只生成事实安全版本。
-  // 仅使用 confirmedFacts(f) 与活动字段；类型推断的 scenicValue/experienceValue/participationValue
-  // 仅是「表达方向」，绝不作为事实断言写入正文——避免默认 专业领队/新手友好/路线成熟/轻装即可/风景绝美/安全放心。
-  const struct = (dir.structure && dir.structure.length >= 4) ? dir.structure.slice(0, 6) : ["为什么值得去", "来了会体验什么", "参加完你能得到什么", "适不适合我", "真实信息", "怎么报名"];
-  const sections = struct.map((h) => ({ h: h, html: sectionBody(h, a, m) }));
-  const angle = dir.angle || (f.activityName || "这场活动"); // 表达方向（标题/邀约语气），非事实断言
-  const infoData = infoRows(a);
-  const feeTxt = f.price != null ? `¥${f.price}/${f.limitUnit || "人"}${f.limit ? `，限 ${f.limit}${f.limitUnit || "人"}` : ""}` : "详询";
-  /* v203：摘要属文学层 —— 去掉了原有的「9月20日出发」（日期在下面的事实信息里）。
-     同时避免「青城后山一日徒步，在青城后山。」这种把活动名里的地名再说一遍。 */
-  const sumName = f.activityName || "这场活动";
-  const sumPlace = (f.place && sumName.indexOf(f.place) < 0) ? ("在" + f.place) : "";
-  const summary = [sumName, sumPlace].filter(Boolean).join("，") + "。以下基于已确认的活动信息整理，具体以发布页为准。";
-  const xhsInfo = [
-    "· 时间：" + (f.date || "近期"),
-    "· 地点：" + (f.place || "集合点群内发"),
-    (f.price != null ? "· 费用：¥" + f.price + "/" + (f.limitUnit || "人") : "· 费用：详询") + (f.difficulty ? "｜强度" + f.difficulty : ""),
-    (f.limit ? "· 名额：" + f.limit + (f.limitUnit || "人") : ""),
-    (f.gear && f.gear.length ? "· 装备：" + f.gear.slice(0, 4).join("、") : ""),
-    (f.includedServices && f.includedServices.length ? "· 含：" + f.includedServices.join("、") : ""),
-  ].filter((s) => s);
-  return {
-    gzh: {
-      title: `${f.activityName || "这场活动"}｜${angle}`,
-      /* v203：副标题属文学层 —— 去掉了原有的「9月20日出发」。 */
-      subtitle: `${dir.hook ? dir.hook + " · " : ""}${f.place ? "在" + f.place + "的" : ""}${f.season || ""}这一场`,
-      summary: summary,
-      sections: sections,
-      info: infoData,
-      fee: feeTxt,
-      service: (f.includedServices && f.includedServices.length) ? f.includedServices.join("、") : "",
-      cta: m.cta,
-    },
-    xhs: {
-      titles: [xhsTitle(a, m, 1, dir), xhsTitle(a, m, 2, dir), xhsTitle(a, m, 3, dir)],
-      body: [
-        (f.place ? "📍 " + f.place + (publishSeason(a) ? "·" + publishSeason(a) : "") : "📍 地点见发布页"),
-        "✅ 活动信息",
-        xhsInfo.join("\n"),
-        "",
-        "信息以发布页为准。" + ctaShortOf(a) + "。" + urgencyTextOf(confirmedCTAOf(a)),
-      ].join("\n"),
-      coverText: `${f.place || "山里"}·${publishSeason(a) || ""}`,
-      hashtags: tags(a),
-      imageOrder: ["cover", "scenic", "people", "action", "detail"],
-    },
-    moments: {
-      warm: `${dir.hook ? dir.hook + " " : ""}${f.place ? "在" + f.place + "的" : ""}${f.season || ""}这一场已开放报名。${ctaShortOf(a)}。${urgencyTextOf(confirmedCTAOf(a))}`,
-      formal: `【招募】${f.activityName || "本周活动"}\n${summary}\n${ctaShortOf(a)}。${urgencyTextOf(confirmedCTAOf(a))}`,
-      last: `【提醒】${f.activityName || "本周活动"}这一场很快就要出发了。${urgencyTextOf(confirmedCTAOf(a)) || "活动信息以发布页为准。"}`,
-    },
-    wechat: {
-      recruit: `各位群友好👋 ${f.activityName || "本周活动"} 开始招募啦：\n🗓 时间：${f.date || "近期"}\n📍 地点：${f.place || "集合点群内发"}\n💰 ${f.price != null ? "费用：¥" + f.price + "/" + (f.limitUnit || "人") : "费用详询"}${f.difficulty ? "\n🔥 强度：" + f.difficulty : ""}\n\n${ctaShortOf(a)}。${urgencyTextOf(confirmedCTAOf(a))}`,
-      brief: `【一句话】${f.activityName || "活动"}｜${ctaShortOf(a)}`,
-    },
-    voice: {
-      s30: `大家好，这周末咱们去${f.place || "山里"}，主题是${angle}。${f.price != null ? "费用" + f.price + "一人" : "费用详询"}${f.difficulty ? "，强度" + f.difficulty : ""}。${ctaShortOf(a)}。${urgencyTextOf(confirmedCTAOf(a))}`,
-      s60: `大家好，给大伙说个周末的活动。咱们这周末去${f.place || "山里"}，这场活动的主题是${angle}。${f.price != null ? "费用" + f.price + "一人" : "费用详询"}${f.includedServices && f.includedServices.length ? "，含" + f.includedServices.join("、") : ""}${f.difficulty ? "，强度" + f.difficulty : ""}。${ctaShortOf(a)}。${urgencyTextOf(confirmedCTAOf(a))}`,
-    },
-    poster: {
-      title: f.activityName || "户外活动",
-      sub: angle,
-      place: f.place || "",
-      points: [
-        (f.place ? "地点：" + f.place : "地点见发布页"),
-        (f.price != null ? "费用 ¥" + f.price + "/" + (f.limitUnit || "人") : (f.difficulty ? "强度" + f.difficulty : "信息见发布页")),
-      ].slice(0, 2),
-      time: f.date || "近期",
-      price: f.price != null ? "¥" + f.price + " 起/" + (f.limitUnit || "人") : "详询",
-      cta: ctaShortOf(a),
-    },
-  };
-}
-
-async function genRecruit(a, m, strategy) {
-  const f = m.confirmedFacts;
-  const dir = strategy.editorialDirection;
-  const p = typeProfile(a);
-  const sys = `你是 ClubOS 户外俱乐部的多平台内容写手。严格遵循下面的 Editorial Direction 写作，所有事实只来自 confirmedFacts，禁止虚构天气/领队行为/用户感受/具体人数/未给的价格。
-按各平台输出：
-- gzh：公众号图文 JSON {title,subtitle,summary,sections:[{h,html}],info:[{k,v}],fee,service,cta}
-- xhs：小红书 JSON {titles:[3-5],body,coverText:封面短句,hashtags:[],imageOrder:[]}
-- moments：朋友圈三版 {warm,formal,last}
-- wechat：微信群 {recruit,brief}
-- voice：口播 {s30,s60}
-- poster：海报 {title,sub,place,points:[2],time,price,cta}
-所有标题/正文/章节标题/摘要/图片说明/CTA 由你创作，不要使用固定模板句式；章节标题参考 Editorial Direction.structure，但可根据事实调整。
-
-★ 文案硬约束（适用**全部平台**，违反即视为不合格）：
-1) 标题 / 副标题 / 摘要 / 正文段落 / 朋友圈 / 口播 / 海报标语里，**一律不得出现**具体日期与时刻、
-   价格、名额人数、公里数、海拔、年龄、天数、车程小时数 —— 这些数字不是文案，读起来像参数播报。
-   需要表达时间就用「这个周末 / 出发那天 / 一整天 / 早发晚归」这类说法。
-2) **唯一例外**：以「标签：值」形式独立成行的结构化信息（如「· 时间：…」「🗓 地点：…」「费用：…」）
-   可以保留精确值 —— 那是给读者报名用的信息区，不是文案。
-3) 章节正文里不要复述活动参数；参数由信息区统一呈现。`;
-  const user = `Editorial Direction：${JSON.stringify(dir)}
-confirmedFacts：${JSON.stringify(f)}
-价值：${m.scenicValue} / ${m.experienceValue} / ${m.participationValue}
-受众：${m.targetAudience}`;
-  let out = null;
-  if (aiAuthMode()) {
-    out = await llmCall(sys, user, true);
-    if (!out || !out.gzh || !out.gzh.sections || out.gzh.sections.length < 3) {
-      out = await llmCall(sys + "\n（上一次返回不完整，请严格返回全部 6 个平台的完整 JSON，gzh.sections 至少 4 段）", user, true);
-    }
-    out = qualityCheck(out, dir, "recruit", f) || out;
-    // 质量检查不达标 → 自动重生成一次（§41）
-    if (aiAuthMode() && state.xf && state.xf.quality) {
-      if (state.xf.quality.fictionRisk) {
-        const retry = await llmCall(sys + "\n⚠️ 上一版被质量检查判定含虚构表述。请严格只使用 confirmedFacts 中的事实，绝对禁止出现任何天气描写、领队具体行为、用户感受代词（我们/大家纷纷表示）、或任何未提供的数据。", user + "\n请基于已确认事实重新生成，确保零虚构。", true);
-        if (retry && retry.gzh && retry.gzh.sections && retry.gzh.sections.length >= 3) {
-          const rechk = qualityCheck(retry, dir, "recruit", f);
-          if (state.xf.quality && !state.xf.quality.fictionRisk) out = rechk || retry;
-        }
-      } else if (state.xf.quality.contentRisk) {
-        const retry = await llmCall(sys + "\n⚠️ 上一版文案质量分偏低（模板感/空洞词/段落重复/缺报名指引）。请去掉套路化开头与空洞词，确保每段有具体事实，结尾给出清晰报名方式。", user, true);
-        if (retry && retry.gzh && retry.gzh.sections && retry.gzh.sections.length >= 3) {
-          const rechk = qualityCheck(retry, dir, "recruit", f);
-          if (state.xf.quality && !state.xf.quality.contentRisk && !state.xf.quality.fictionRisk) out = rechk || retry;
-        }
-      }
-    }
-  }
-  if (!out || !out.gzh || !out.gzh.sections) out = fallbackRecruitCopy(a, m, dir);
-  out = qualityCheck(out, dir, "recruit", f) || out;
-  if (out && out.xhs) out.xhs = normalizeXhs(out.xhs);
-  /* Phase 4/5：后端已配时，用 V3 渠道管线产出 gzh + xhs 覆盖本地生成；
-     其余平台与渲染结构不变。任何失败都退回上面的本地生成。 */
-  if (typeof contentV3Available === "function" && contentV3Available()) {
-    try {
-      const wd = await v3ChannelGenerate("wechat", a, {});
-      if (wd) out.gzh = v3WechatToLegacy(wd);
-      const xd = await v3ChannelGenerate("xiaohongshu", a, {});
-      if (xd) out.xhs = v3XhsToLegacy(xd);
-      if (wd || xd) out._v3Channel = true;
-    } catch (e) { /* 回退本地生成，不中断 */ }
-  }
-  /* v203：AI 与本地回退两条来源都要过闸门 —— 出口统一，不依赖上游自觉。 */
-  return gatePublishOut(out, "recruit");
-}
-
-/* ---------- 活动回顾 阶段二 ---------- */
-/* P0-4 + P0-16 回顾 Fallback 事实安全化：只输出「原活动事实 + 用户补充事实 + 照片现场记录」，绝不虚构现场事件/感受/故事。
-   没有补充资料、只有照片时：回顾只能做「照片现场记录」（描述照片里实际存在的画面），不得写
-   「我们完成全程 / 大家玩得尽兴 / 有人说… / 合照那一刻 / 返程车上… / 当天下雨 / 大家互相照顾」等未经 actualActivityData 确认的现场。
-   类型推断的 scenicValue/experienceValue/participationValue 一律不得作为回顾正文（那是招募视角，不是回顾事实）。 */
-function fallbackRecapCopy(a, m, dir, photos, notes, type, actual) {
-  const f = m.confirmedFacts;
-  const act = actual || extractActualActivityData(a, notes);
-  const notesTxt = (notes || "").trim();
-  const struct = (dir.structure && dir.structure.length >= 5) ? dir.structure.slice(0, 7) : ["开场", "本次活动核心记忆", "本次参与体验", "值得记住的瞬间", "参与者收获", "照片回顾", "下一期预告"];
-  const sections = struct.map((h) => ({ h: h, html: recapBody(h, a, m, act, notes, type, photos) }));
-  const angle = dir.angle || (type + "的一天");
-  return {
-    gzh: {
-      title: `回顾｜${f.activityName || "这场活动"}`,
-      summary: `${f.date || "这场活动"}，${f.place ? f.place + "的" : ""}这场活动已结束。以下基于已确认的活动信息${notesTxt ? "与你补充的现场记录" : ""}${photos && photos.length ? `、共 ${photos.length} 张现场照片` : ""}整理。`,
-      sections: sections,
-      next: nextText(a),
-    },
-    xhs: {
-      titles: [`回顾｜${f.activityName || "这场活动"}`, `${f.place || "山里"}这一趟，记一下`, `${type}的一天`],
-      body: `刚结束的${f.activityName || "这场活动"}，记一笔📷\n\n${notesTxt ? "🌟 现场记录\n" + notesTxt + "\n\n" : ""}📍 活动信息\n· 时间：${f.date || "近期"}\n· 地点：${f.place || "—"}\n\n${nextText(a)}`,
-      coverText: `活动回顾·${f.place || "山野"}`,
-      hashtags: tags(a).concat(["活动回顾"]),
-      imageOrder: ["cover", "people", "team", "scenic", "action"],
-    },
-    moments: `【活动回顾】${f.activityName || "本周活动"}已结束。${notesTxt ? notesTxt : recapThanksLine(a)}${nextText(a)}`,
-    wechat: `各位群友，${f.activityName || "本次活动"}已经结束。\n\n${notesTxt ? "现场记录：" + notesTxt + "\n\n" : ""}${recapThanksLine(a)}${nextText(a)}`,
-    next: nextText(a),
-  };
-}
-function recapBody(h, a, m, act, notes, type, photos) {
-  const f = m.confirmedFacts;
-  const notesTxt = (notes || "").trim();
-  // 照片现场记录：只描述照片里实际存在的画面，绝不虚构风景/体验/感受/故事
-  const photoList = autoClassifyPhotos(photos || []);
-  const photoCount = photoList.length;
-  const byCat = {};
-  photoList.forEach((p) => { (byCat[p.cat] = byCat[p.cat] || []).push(p); });
-  const has = (c) => (byCat[c] || []).length > 0;
-  const sceneCats = ["scenic", "route", "water", "camp", "cover", "detail"].filter(has);
-  const peopleCats = ["people", "team", "action"].filter(has);
-  const photoRecord = photoCount
-    ? `现场共 ${photoCount} 张照片${sceneCats.length ? "，记录了山野、路线与出发/到达等画面" : ""}${peopleCats.length ? "，也有同行伙伴与队伍的身影" : ""}。`
-    : "";
-  if (/开场|集结/.test(h || "")) return `${f.date || "那天"}，${f.place || "集合点"}，这场「${f.activityName || "活动"}」结束了。`;
-  if (/核心记忆|风景|画面|景/.test(h || "")) {
-    // 只做照片现场记录，不写类型推断的风景判断（scenicValue 属招募视角，非回顾事实）
-    if (photoCount) return photoRecord || `以下为本次活动的现场照片。`;
-    return notesTxt ? `本次核心记录：${notesTxt}` : `（暂无现场照片，可在「补充资料」填写现场记录后再生成。）`;
-  }
-  if (/参与体验|强度|节奏/.test(h || "")) {
-    const bits = [];
-    // P0-17 人数护栏：仅当用户「独立确认」实际参与人数时才写"实际参加 N 人"；报名人数(registeredParticipants) 绝不被视为实际到场，未确认则不写任何参加人数。
-    if (act && act.actualParticipants != null && act.actualParticipants !== "") bits.push("实际参加 " + act.actualParticipants + " 人");
-    if (f.difficulty) bits.push("强度为 " + f.difficulty);
-    if (f.distance) bits.push("路线约 " + f.distance);
-    if (act && act.completionSummary) bits.push(act.completionSummary); // 仅用户确认的实际完成情况
-    if (bits.length) return bits.join("，") + "。";
-    if (photoCount) return `本次以现场照片为准，可看下方影像记录。`;
-    return `以下为本次活动的已确认信息。`;
-  }
-  if (/瞬间|记得|特别/.test(h || "")) return notesTxt ? `这次特别记下：${notesTxt}` : (photoCount ? `现场的照片里留住了当天的若干瞬间。` : "（如需补充现场瞬间，可在「补充资料」里填写。）");
-  if (/收获|得到/.test(h || "")) {
-    // 不写类型推断的「收获」判断；只有用户确认的实际反馈才呈现
-    if (act && act.actualFeedback && act.actualFeedback.length) return `参与者反馈：${act.actualFeedback.join("；")}。`;
-    return photoCount ? `本次的收获与体验以现场照片为准。` : `（参与者收获以现场记录为准；如需补充，请在补充资料填写。）`;
-  }
-  if (/照片|相册|回顾/.test(h || "")) return photoCount ? `以下为本次活动的现场照片（共 ${photoCount} 张）。` : `本次暂未上传现场照片。`;
-  if (/预告|下一期|集结/.test(h || "")) return nextText(a);
-  // 兜底：只描述照片现场，绝不输出类型推断的体验/价值判断
-  return photoCount ? photoRecord : `（本节以现场照片与补充资料为准。）`;
-}
-
-async function genRecap(a, m, strategy, photos, notes) {
-  const f = m.confirmedFacts;
-  const dir = strategy.editorialDirection;
-  const type = recapType(a, photos);
-  // P0-6 报名人数 ≠ 实际参加人数：仅当用户补充资料明确给出实际人数时才可引用
-  const actual = extractActualActivityData(a, notes);
-  const peopleLine = actual.actualParticipants
-    ? `实际参加 ${actual.actualParticipants} 人（用户已确认，可引用）`
-    : `${actual.registeredParticipants ? "报名 " + actual.registeredParticipants + " 人；" : ""}实际参加人数未提供——禁止在正文中写出任何具体参加人数。`;
-  const sys = `你是 ClubOS 户外俱乐部内容主笔，写活动回顾。像真正参加过的人认真回看这一天：真实、克制、有完成感。
-原则：允许创造表达，禁止创造事件——只基于给定事实与补充资料，不得虚构天气/事件/用户感受/领队行为/具体人数。尤其禁止写「我们完成全程/大家玩得尽兴/有人说…/合照那一刻/返程车上…/当天下雨/大家互相照顾」等未经补充资料确认的现场；只有照片、没有备注时，回顾只能做「照片现场记录」（描述照片里实际存在的画面），绝不能虚构故事或感受。
-特别约束：未提供实际参加人数时，正文不得出现任何具体人数；报名人数不能被当作实际参加人数。
-按各平台输出：
-- gzh：公众号回顾 JSON {title,summary,sections:[{h,html}],next}
-- xhs：小红书回顾 JSON {titles:[3],body,coverText:封面短句,hashtags:[],imageOrder:[]}
-- moments：朋友圈回顾文案（字符串）
-- wechat：微信群感谢文案（字符串）
-- next：下一期预告（字符串）
-章节标题参考 Editorial Direction.structure，但可按回顾逻辑调整。`;
-  const user = `Editorial Direction：${JSON.stringify(dir)}
-事实：${JSON.stringify(f)}
-回顾类型：${type}
-人数：${peopleLine}
-补充资料：${notes || "无"}
-照片：${photos.length} 张（已分类）`;
-  let out = null;
-  if (aiAuthMode()) {
-    out = await llmCall(sys, user, true);
-    if (!out || !out.gzh || !out.gzh.sections || out.gzh.sections.length < 4) {
-      out = await llmCall(sys + "\n（请严格返回完整 JSON：gzh.sections 至少 5 段，moments/wechat/next 为字符串）", user, true);
-    }
-    out = qualityCheck(out, dir, "recap", f, actual) || out;
-    // 质量检查不达标 → 自动重生成一次（§41）
-    if (aiAuthMode() && state.xf && state.xf.quality) {
-      if (state.xf.quality.fictionRisk) {
-        const retry = await llmCall(sys + "\n⚠️ 上一版被质量检查判定含虚构表述。请严格只用事实与补充资料，禁止任何天气/事件/用户感受/领队行为描写。", user + "\n请基于事实重新生成，确保零虚构。", true);
-        if (retry && retry.gzh && retry.gzh.sections && retry.gzh.sections.length >= 4) {
-          const rechk = qualityCheck(retry, dir, "recap", f, actual);
-          if (state.xf.quality && !state.xf.quality.fictionRisk) out = rechk || retry;
-        }
-      } else if (state.xf.quality.contentRisk) {
-        const retry = await llmCall(sys + "\n⚠️ 上一版文案质量分偏低（模板感/空洞词/段落重复）。请去掉套路化开头，确保每段基于真实事实，结尾有下一期预告。", user, true);
-        if (retry && retry.gzh && retry.gzh.sections && retry.gzh.sections.length >= 4) {
-          const rechk = qualityCheck(retry, dir, "recap", f, actual);
-          if (state.xf.quality && !state.xf.quality.contentRisk && !state.xf.quality.fictionRisk) out = rechk || retry;
-        }
-      }
-    }
-  }
-  if (!out || !out.gzh || !out.gzh.sections) out = fallbackRecapCopy(a, m, dir, photos, notes, type, actual);
-  // §六 Case 10：回顾只有现场照片（无补充资料、无已确认实际信息）时，先阻断一切无来源的
-  //   「现场事件 / 参与者反应」叙述，再走质量检查 —— 从「检测并提示」升级为「直接删除」。
-  const fabEvents = stripFabricatedRecapEvents(out, notes, actual);
-  if (fabEvents.length && out.gzh && (out.gzh.sections || []).length < 3) {
-    // 叙事被清空 → 退回「照片现场记录」安全版（宁少写，不编造）
-    out = fallbackRecapCopy(a, m, dir, photos, notes, type, actual);
-  }
-  // 末次质检必须带上已确认实际信息（此前漏传 actual，会把用户确认过的反馈/人数误判为无依据并删除）
-  out = qualityCheck(out, dir, "recap", f, actual) || out;
-  if (fabEvents.length && state.xf && state.xf.quality) {
-    const q = state.xf.quality;
-    q.fabricationGuard = fabEvents;
-    q.removed = (q.removed || []).concat(fabEvents).filter((v, i, arr) => arr.indexOf(v) === i);
-    if (q.flag === "ok") q.flag = "fabrication_blocked";
-    q.note = (q.note || "") + " 已阻断无来源的现场事件叙述（" + fabEvents.join("、") + "）。";
-  }
-  if (out && out.xhs) out.xhs = normalizeXhs(out.xhs);
-  /* Phase 5：后端已配时，用 V3 回顾管线产出 gzh + xhs 覆盖本地生成；
-     moments/wechat/next 保留本地生成。任何失败都退回上面的本地生成。 */
-  if (typeof contentV3Available === "function" && contentV3Available()) {
-    try {
-      const rd = await v3ChannelGenerate("recap", a, { actual: actual });
-      if (rd) {
-        const r = v3RecapToLegacy(rd);
-        out.gzh = { title: r.title, summary: r.summary, sections: r.sections, next: (out.gzh && out.gzh.next) || "", v3RawHtml: r.v3RawHtml, v3ImageOrder: r.v3ImageOrder, v3CoverIndex: r.v3CoverIndex };
-        out.xhs = r.xhs;
-        out._v3Recap = true;
-      }
-    } catch (e) { /* 回退本地生成，不中断 */ }
-  }
-  /* v203：回顾同样是宣传文案（朋友圈/微信群/小红书都会转发）—— 一并过闸门。 */
-  return gatePublishOut(out, "recap");
-}
-
 /* ================= V3 渠道生成（Phase 4/5）：publish.js 正式生成改走 V3 API =================
    文档 §十八/§十九/§二十：公众号 / 小红书 / 回顾的正式生成改调后端 V3 渠道管线，
    旧 XF_FAMILY 本地生成保留为 fallback。
@@ -8012,7 +7443,7 @@ async function genRecap(a, m, strategy, photos, notes) {
 
 /* V3 渠道生成（v3ChannelGenerate / v3ChannelBody / v3WechatToLegacy / v3XhsToLegacy / v3RecapToLegacy）
    已抽到 src/contentChannels.js（见该文件，文档 §二十 拆分 publish.js）。
-   本文件 genRecruit / genRecap 继续调用这些全局函数（contentV3Available 守卫 + 覆盖 gzh+xhs 两段）。 */
+   v236：旧生成主链已删除，V3 渠道函数仅服务历史产物回落渲染。 */
 
 /* ---------- 质量检查（§39 ContentQualityCheck / §40 EditorialQualityCheck） ---------- */
 function textOf(out) {
@@ -8703,265 +8134,6 @@ function platformTabs(active, prefix) {
   return `<div class="xf-tabs">${tabs.map(([k, l]) => `<button class="xf-tab ${active === k ? "active" : ""}" data-action="platformTab" data-k="${k}" data-prefix="${prefix}">${l}</button>`).join("")}</div>`;
 }
 
-function styleBar(xf) {
-  const sc = xf.scenario;
-  const fams = Object.keys(XF_FAMILIES).filter((f) => XF_FAMILIES[f].scenario.includes(sc));
-  const dir = xf.strategy && xf.strategy.editorialDirection;
-  const famLabel = (XF_FAMILIES[xf.family] && XF_FAMILIES[xf.family].label) || "";
-  const vs = (XF_FAMILIES[xf.family] && XF_FAMILIES[xf.family].variants) || [""];
-  const vName = vs[xf.variant || 0] || "";
-  const q = xf.quality || {};
-  // P2-5：页面质量评分属内部判断，主 UI 仅显示定性档位徽标，不暴露数字
-  const pq = xf.pageQuality || null;
-  // P1-8 质量信息用户化：**分数**属内部信息，留在「高级信息」内。
-  // 但「缺少事实依据」是合规警告（P2-2），必须默认可见 —— 折进折叠块里等于没提示。
-  const warnText = q.fictionRisk ? ("⚠️ " + (q.note || "发现可能缺少事实依据的描述，请确认。"))
-    : ((q.unsupported && q.unsupported.length) ? ("⚠️ 以下说法缺少事实依据，建议修改或删除：" + q.unsupported.join("、")) : "");
-  // P2-2：图片不足时给出降级提示（信息级，区别于橙色的合规警告）
-  const dgNote = photoDowngrade(xf).hint;
-  const cScore = (q.content && typeof q.content.score === "number") ? q.content.score : null;
-  const eScore = (q.editorial && typeof q.editorial.score === "number") ? q.editorial.score : null;
-  // P1-1 简化结果页：普通老板默认只看到「当前风格 / 换一种版式 / 换一种风格 / 快捷(4)」。
-  // Family/Variant/Editorial Direction/Style Seed/Quality Score 与 局部重生成 全部收进「高级调试区」折叠块。
-  return `<div class="xf-stylebar">
-    <div class="xf-stylebar-row xf-stylebar-main">
-      <span class="xf-stylebar-lbl">当前风格</span>
-      <b class="xf-style-name">${esc(famLabel)}${vName ? " · " + esc(vName) : ""}</b>
-      ${pq ? `<span class="xf-qbadge xf-qb-${esc(pq.band)}">内容质量 ${esc(pq.band)}</span>` : ""}
-      <button class="btn btn-ghost btn-sm" data-action="nextVariant">${ICON("refresh")} 换一种版式</button>
-      <button class="btn btn-ghost btn-sm" data-action="switchStyle">${ICON("sparkles")} 换一种风格</button>
-      <button class="btn btn-primary btn-sm" data-action="confirmPublishPage">${ICON("check")} ${sc === "recap" ? "发布回顾" : "确认发布"}</button>
-    </div>
-    ${warnText ? `<div class="xf-stylebar-row xf-warn">${esc(warnText)}</div>` : ""}
-    ${dgNote ? `<div class="xf-stylebar-row xf-down">${esc(dgNote)}</div>` : ""}
-    <div class="xf-stylebar-row xf-quick"><span class="xf-stylebar-lbl">快捷</span>
-      <button class="xf-chip xf-chip-soft" data-action="quickStyle" data-k="magazine">更杂志</button>
-      <button class="xf-chip xf-chip-soft" data-action="quickStyle" data-k="visual">更视觉</button>
-      <button class="xf-chip xf-chip-soft" data-action="quickStyle" data-k="pro">更专业</button>
-      <button class="xf-chip xf-chip-soft" data-action="quickStyle" data-k="nature">更自然</button>
-    </div>
-    <details class="xf-adv"><summary>高级调试区</summary>
-      <div class="xf-stylebar-row"><span class="xf-stylebar-lbl">局部重生成</span>
-        <button class="xf-chip" data-action="regenTitle">${ICON("refresh")} 只改标题</button>
-        <button class="xf-chip" data-action="regenCta">${ICON("refresh")} 只改结尾</button>
-        <button class="xf-chip" data-action="shufflePhotos">${ICON("refresh")} 只换图片安排</button>
-        <button class="xf-chip" data-action="nextVariant">${ICON("refresh")} 只换布局</button>
-      </div>
-      <div class="xf-stylebar-row"><span class="xf-stylebar-lbl">编辑家族 Family</span>${fams.map((f) => `<button class="xf-chip ${xf.family === f ? "active" : ""}" data-action="switchFamily" data-f="${f}">${XF_FAMILIES[f].label}</button>`).join("")}</div>
-      <div class="xf-stylebar-row"><span class="xf-stylebar-lbl">版式变体 Variant</span>${vs.map((v, i) => `<button class="xf-chip ${xf.variant === i ? "active" : ""}" data-action="switchVariant" data-v="${i}">${v}</button>`).join("")}</div>
-      ${dir ? `<div class="xf-dir">编辑方向 Editorial Direction：<b>${esc(dir.angle || "")}</b>${dir.hook ? ` · 钩子「${esc(dir.hook)}」` : ""} · 视觉 ${esc((dir.visual && dir.visual.color) || "")}/${esc((dir.visual && dir.visual.composition) || "")}</div>` : ""}
-      <div class="xf-stylebar-row xf-debug-kv"><span class="xf-stylebar-lbl">Style Seed</span><code>${xf.styleSeed != null ? esc(String(xf.styleSeed)) : "—"}</code></div>
-      <div class="xf-stylebar-row xf-debug-kv"><span class="xf-stylebar-lbl">Quality Score</span><code>内容 ${cScore != null ? cScore : "—"} ／ 版式 ${eScore != null ? eScore : "—"}</code></div>
-      ${pq ? `<div class="xf-stylebar-row xf-debug-kv"><span class="xf-stylebar-lbl">页面质量(内部)</span><code>总评 ${esc(pq.band)} ｜ 事实 ${esc(qualityBand(pq.dims.factSafety))} ／ 重复 ${esc(qualityBand(pq.dims.repeat))} ／ 主题 ${esc(qualityBand(pq.dims.theme))} ／ 图片 ${esc(qualityBand(pq.dims.image))} ／ 模板 ${esc(qualityBand(pq.dims.template))} ／ 情绪 ${esc(qualityBand(pq.dims.emotion))}</code></div>` : ""}
-    </details>
-  </div>`;
-}
-
-/* §38 平台快速风格控制：仅调 ED 权重/视觉参数 + 换版式，不整跑文案 */
-function quickStyle(kind) {
-  const xf = publishState();
-  if (!xf.strategy) { toast("请先生成内容"); return; }
-  const sc = xf.scenario;
-  const map = sc === "recruit"
-    ? {
-      magazine: { family: "route_editorial", color: "墨绿", typographic: "衬线大标题", composition: "左右交替", whitespace: "medium" },
-      visual: { family: "visual_campaign", color: "暖米", typographic: "无衬线粗体", composition: "卡片流", whitespace: "generous" },
-      pro: { family: "challenge_editorial", color: "夜空蓝", typographic: "无衬线粗体", composition: "数据条+区块", whitespace: "low" },
-      young: { family: "visual_campaign", color: "暖米", typographic: "无衬线粗体", composition: "卡片流", whitespace: "generous" },
-      challenge: { family: "challenge_editorial", color: "夜空蓝", typographic: "无衬线粗体", composition: "数据条+区块", whitespace: "low" },
-      // P1-1：固定快捷预设在 recruit 场景也能解析（更自然 → 大图主导的编辑杂志感）
-      nature: { family: "route_editorial", color: "山系橙", typographic: "衬线大标题", composition: "大图主导", whitespace: "generous" },
-    }
-    : {
-      doc: { family: "brand_journal", color: "山系橙", composition: "大图主导", whitespace: "generous" },
-      warm: { family: "photo_documentary", color: "松石", composition: "手账步骤", whitespace: "generous" },
-      album: { family: "outdoor_lookbook", color: "暖米", composition: "网格画廊", whitespace: "generous" },
-      people: { family: "photo_documentary", color: "松石", composition: "手账步骤", whitespace: "medium", imagePriority: "high" },
-      nature: { family: "brand_journal", color: "山系橙", composition: "大图主导", whitespace: "generous" },
-      // P1-1：固定快捷预设在 recap 场景也能解析（更杂志/更视觉/更专业）
-      magazine: { family: "brand_journal", color: "山系橙", composition: "大图主导", whitespace: "generous" },
-      visual: { family: "outdoor_lookbook", color: "暖米", composition: "网格画廊", whitespace: "generous" },
-      pro: { family: "brand_journal", color: "夜空蓝", typographic: "无衬线粗体", composition: "数据条+区块", whitespace: "low" },
-    };
-  const cfg = map[kind];
-  if (!cfg) return;
-  const dir = xf.strategy.editorialDirection;
-  if (cfg.family && XF_FAMILIES[cfg.family]) {
-    xf.family = cfg.family; dir.family = cfg.family;
-    const vs = (XF_FAMILIES[cfg.family].variants || [""]).length;
-    xf.variant = Math.floor(rand(styleSeed() * 3.3 + 7) * vs) % vs;
-    dir.variant = xf.variant;
-  }
-  if (cfg.color) dir.visual.color = cfg.color;
-  if (cfg.typographic) dir.visual.typographic = cfg.typographic;
-  if (cfg.composition) dir.visual.composition = cfg.composition;
-  if (cfg.whitespace) dir.whitespace = cfg.whitespace;
-  if (cfg.imagePriority) dir.imagePriority = cfg.imagePriority;
-  xf._styleHistory.push(styleSignature(xf));
-  toast("已应用风格");
-  showView(state.view);
-}
-
-/* ---------- P2-1 局部重生成：只改标题 / 只改结尾 / 只换图片安排（不动其他内容与事实） ---------- */
-function bumpSeed(xf) { xf.regenSeed = ((xf.regenSeed || 0) + 1); return xf.regenSeed; }
-function titleCandidates(a, m, dir, scenario) {
-  const f = (m && m.confirmedFacts) || {};
-  const dna = (typeof activityDNAOf === "function") ? activityDNAOf(a) : null;
-  const place = f.place || "";
-  const season = f.season || (dna && dna.season) || "";
-  const dist = f.distance || "";
-  const kind = (dna && dna.coreMotivationLabel) || "";
-  const name = f.activityName || "这场活动";
-  const theme = (m && m.mainTheme) || (dir && dir.angle) || "这一程";
-  const t = [];
-  if (scenario === "recap") {
-    t.push(`回顾｜${name}`);
-    t.push(`${season ? season + "，" : ""}我们在${place || "山野"}的这一程`);
-    t.push(`记一次${f.activityType || "户外"}｜${place || "山野"}`);
-    t.push(`${name} · 现场记录`);
-  } else {
-    t.push(`${name}｜${theme}`);
-    if (place) t.push(`${season ? season + "的" : ""}${place}，${dist ? "约" + dist + "公里" : "值得走一趟"}`);
-    if (kind) t.push(`${kind}${season ? "｜" + season : ""}${place ? " · " + place : ""}`);
-    t.push(`${theme}${dist ? "｜约 " + dist + " 公里" : ""}`);
-  }
-  return t.filter(Boolean);
-}
-function regenTitle() {
-  const xf = publishState();
-  if (!xf.out || !xf.out.gzh) { toast("请先生成内容"); return; }
-  const cands = titleCandidates(xf._a, xf.master, xf.strategy && xf.strategy.editorialDirection, xf.scenario);
-  if (!cands.length) return;
-  const seed = bumpSeed(xf);
-  const pick = cands[seed % cands.length];
-  xf.out.gzh.title = pick;
-  if (xf.out.poster) xf.out.poster.title = pick;
-  if (xf.out.xhs && Array.isArray(xf.out.xhs.titles) && xf.out.xhs.titles.length) xf.out.xhs.titles[0] = pick;
-  toast("已换一版标题");
-  showView(state.view);
-}
-function regenCta() {
-  const xf = publishState();
-  if (!xf.out || !xf.out.gzh) { toast("请先生成内容"); return; }
-  const f = (xf.master && xf.master.confirmedFacts) || {};
-  const seed = bumpSeed(xf);
-  const when = f.date || "近期";
-  const price = f.price != null ? "¥" + f.price + "/" + (f.limitUnit || "人") : "详询";
-  /* P0-D：结尾话术同样受事实约束 —— 不出现「先到先得 / 名额有限 / 群里接龙占位」 */
-  const ctaTarget = xf._a || {};
-  const ctaShort = ctaShortOf(ctaTarget);
-  const ctaUrg = urgencyTextOf(confirmedCTAOf(ctaTarget));
-  const opts = xf.scenario === "recap"
-    ? ["更多活动信息可关注机构后续发布。", "后续活动安排以机构发布为准。", "本次活动记录到此，感谢阅读。"]
-    : [`${when} 出发，${price}。${ctaShort}。${ctaUrg}`,
-      `${ctaShort}。${when} 见。`,
-      `${price}，含已确认服务。${ctaShort}。`];
-  const pick = opts[seed % opts.length];
-  if (xf.scenario === "recap") xf.out.gzh.next = pick; else xf.out.gzh.cta = pick;
-  toast("已换一版结尾");
-  showView(state.view);
-}
-function shufflePhotos() {
-  const xf = publishState();
-  const ki = xf.master && xf.master.keyImages;
-  if (!ki || ki.length < 2) { toast("图片不足，无法调整安排"); return; }
-  ki.push(ki.shift()); // 轮转一位：改变图文配图顺序，不动文案与事实
-  if (xf.photoOverrides) xf.photoOverrides.cover = null;
-  toast("已换一种图片安排");
-  showView(state.view);
-}
-/* 无 Key 时的事实驱动「换一种说法」——只换表达，不新增任何事实 */
-function generateSectionCopy(h, m, a, seed) {
-  const f = (m && m.confirmedFacts) || {};
-  const dna = (typeof activityDNAOf === "function") ? activityDNAOf(a) : null;
-  const place = f.place || "";
-  const season = f.season || (dna && dna.season) || "";
-  const mood = (dna && dna.coreMotivationLabel) || "";
-  // Case 7：专业/高强度活动（雪山、高海拔、技术型）抬高「强度/海拔/装备/安全」信息权重
-  const elev = parseFloat(f.elevation) || 0;
-  const gearTop = (f.gear && f.gear.length) ? f.gear.slice(0, 4).join("、") : "";
-  const pro = !!(dna && (dna.intensity === "challenge" || dna.activityForm === "mountain" || elev >= 2500 || dna.professionalLevel === "technical"));
-  const H = String(h || "");
-  const opts = [];
-  if (/为什么|值得|风景|地点|路线|地貌|景/.test(H)) {
-    opts.push(`${season ? season + "，" : ""}${place || "这一程"}值得走一趟，不是因为多难，而是它刚好把${mood || "这一段心情"}接住了。`);
-    opts.push(`先去走一遍${place || "它"}。看得见的风景，比任何描述都可靠。`);
-    opts.push(`${place || "这里"}的好，不在攻略里，在你走进去的那几步。`);
-  } else if (/体验|玩|挑战|探索|运动|做/.test(H)) {
-    // Case 7：高强度活动优先给「海拔/装备/安全」表达，页面更专业
-    if (pro) {
-      if (elev) opts.push(`这不是轻松的散步：目标海拔约 ${elev} 米，强度${f.difficulty || "不低"}。每上升一段，都得靠装备和节奏兜底——准备越足，山越温柔。`);
-      if (gearTop) opts.push(`装备是这场挑战的底线：自备${gearTop}。出发前逐项确认，不留侥幸。`);
-      opts.push(`把体力推过临界点之前，先诚实地确认自己的经验与状态——专业路线，尊重它才走得远。`);
-    }
-    opts.push(`${season ? season + "的" : ""}节奏里，注意力会从待办清单挪到脚下——走、看、停一停。`);
-    opts.push(`不用急着打卡；${f.days > 1 ? "两天一夜" : "一天"}的工夫，够把节奏慢下来。`);
-    opts.push(`体验很具体：身体动起来，脑子空下来。`);
-  } else if (/强度|海拔|装备|安全|准备|风险|硬指标/.test(H)) {
-    if (pro) {
-      const parts = [];
-      if (f.difficulty) parts.push("强度" + f.difficulty);
-      if (elev) parts.push("海拔约 " + elev + " 米");
-      if (gearTop) parts.push("必备装备：" + gearTop);
-      if (a && a.insurance) parts.push("已含保险：" + a.insurance);
-      if (a && a.safety && a.safety.length) parts.push("安全：" + a.safety.join("、"));
-      opts.push(parts.length ? `这场活动的硬指标：${parts.join("；")}。出发前逐项确认，比任何口号都管用。` : `这是一场需要专业准备的挑战，出发前请逐项确认装备与体能。`);
-    } else {
-      opts.push(`出发前把装备和体能都确认一遍，比任何口号都管用。`);
-    }
-  } else if (/收获|得到|适合|谁|陪伴|成长/.test(H)) {
-    opts.push(`${f.ageRange ? "适合 " + f.ageRange + "。" : ""}${m.targetAudience || "想换口气的人"}会喜欢这种踏实感。`);
-    opts.push(`带走的不是照片，是一个能反复回想的周末。`);
-  } else if (/预告|下一期|集结/.test(H)) {
-    opts.push(`更多活动信息可关注机构后续发布。`);
-  } else {
-    return "";
-  }
-  return opts.length ? opts[(seed || 0) % opts.length] : "";
-}
-async function regenSection(i) {
-  const xf = publishState();
-  const gzh = xf.out && xf.out.gzh;
-  if (!gzh || !gzh.sections || !gzh.sections[i]) { toast("没有可重写的段落"); return; }
-  const sec = gzh.sections[i];
-  if (/信息|报名|费用|详情|须知/.test(String(sec.h || ""))) {
-    // 决策信息段不参与改写，避免把事实改成表达
-    toast("「" + sec.h + "」是决策信息段，保持事实原样不改写");
-    return;
-  }
-  let html = null;
-  if (aiAuthMode() && xf.master) {
-    const f = xf.master.confirmedFacts || {};
-    const dir = (xf.strategy && xf.strategy.editorialDirection) || {};
-    const plain = String(sec.html || "").replace(/<[^>]+>/g, "").slice(0, 220);
-    const sys = `你是户外活动内容编辑。只重写「指定段落」，其余段落不动。
-原则：允许创造表达，禁止创造事件——不得新增任何未确认事实（天气 / 领队行为 / 具体人数 / 用户感受 / 完成情况 / 服务承诺 / 路线成熟度 / 风景判断）。
-输出 JSON：{ "html": "一段 HTML 正文，可用 <p> 分段，80-160 字，口语自然、有画面感但不虚构" }`;
-    const user = `已确认事实：${JSON.stringify(f)}
-编辑角度：${dir.angle || ""}（语气：${dir.tone || ""}）
-段落标题：${sec.h}
-现有内容：${plain}
-请只重写这一段，与标题一致、与事实一致。`;
-    const r = await llmCall(sys, user, true);
-    if (r && r.html) html = String(r.html).replace(/<script[\s\S]*?<\/script>/gi, "");
-  }
-  if (!html) {
-    const seed = bumpSeed(xf);
-    html = generateSectionCopy(sec.h, xf.master || {}, xf._a || {}, seed) || sectionBody(sec.h, xf._a || {}, xf.master || {}) || sec.html;
-  }
-  sec.html = html;
-  toast("已重写「" + sec.h + "」");
-  showView(state.view);
-}
-function sectionRegen(xf) {
-  const gzh = xf.out && xf.out.gzh;
-  if (!gzh || !gzh.sections || gzh.sections.length < 2) return "";
-  return `<div class="xf-secregen">
-    <span class="xf-stylebar-lbl">只重写某一段</span>
-    ${gzh.sections.map((s, i) => `<button class="xf-chip" data-action="regenSection" data-i="${i}">${ICON("refresh")} ${esc(s.h || ("第" + (i + 1) + "段"))}</button>`).join("")}
-  </div>`;
-}
-
 /* §4：宣发中心的正式路径已切到新引擎（/api/content-vnext/channel）。
    有引擎产出就渲染引擎产出；只有老板 localStorage 里的历史产物时才回落到旧渲染。
    平台 tab → 引擎渠道映射：gzh=公众号 / xhs=小红书 / poster=海报 / moments=朋友圈 / wechat=微信群（与朋友圈同源） */
@@ -8992,38 +8164,17 @@ function vnextRecruitResult(xf, vc) {
 
 function recruitResult() {
   const xf = publishState();
-  const o = xf.out;
-  /* v203：渲染前再兜一次 —— 老板 localStorage 里可能存着闸门上线**之前**生成的文案。 */
-  gatePublishOut(o, "recruit");
   if (xf.genState === "loading") return `<div class="xf-loading">${ICON("sparkles")} 正在生成宣传内容…</div>`;
   const _a = xf._a || (state.activities || []).find((x) => x.id === xf.aid);
   const _vc = (_a && _a.vnextChannel) || {};
+  /* v236：旧 AI 生成主链（genStrategy/genRecruit）已物理删除，只认新引擎产出 */
   if (_vc.wechat || _vc.xiaohongshu || _vc.poster || _vc.moments) return vnextRecruitResult(xf, _vc);
   return `
   <div class="xf-back"><button class="btn btn-ghost btn-sm" data-action="publishReset">${ICON("chevron-left")} 重新选择</button></div>
-  <div class="xf-theme"><span class="xf-theme-lbl">本次核心传播主题</span><b>${esc((xf.master || {}).mainTheme || "")}</b></div>
-  ${styleBar(xf)}
-  ${platformTabs(xf.platTab, "recruit")}
-  <div class="xf-plat-body">
-    ${xf.platTab === "gzh" ? wechatArticlePanel(o.gzh, xf) : ""}
-    ${xf.platTab === "xhs" ? xhsPanel(o.xhs) : ""}
-    ${xf.platTab === "moments" ? momentsPanel(o.moments) : ""}
-    ${xf.platTab === "wechat" ? wechatPanel(o.wechat) : ""}
-    ${xf.platTab === "voice" ? voicePanel(o.voice) : ""}
-    ${xf.platTab === "poster" ? posterPanel(o.poster, xf) : ""}
-  </div>`;
+  <div class="xf-empty-hint">还没有宣发产出。点下方按钮，新引擎一次生成公众号 / 小红书 / 海报 / 朋友圈，共享同一份活动理解、各自重新策划。</div>
+  <div style="text-align:center;margin-top:14px"><button class="btn btn-primary btn-lg" data-action="recruitGen">${ICON("sparkles")} 生成四渠道宣发</button></div>`;
 }
 
-function wechatArticlePanel(gzh, xf) {
-  const base = XF_FAMILY_LAYOUT[xf.family] || "diary";
-  return `
-  <div class="xf-gzh-head">
-    <button class="btn btn-primary btn-sm" data-action="copyGzhHtml">${ICON("copy")} 复制公众号（HTML）</button>
-  </div>
-  ${sectionRegen(xf)}
-  ${base === "diary" ? renderDiaryPage(gzh, xf, false) : renderClassicPage(gzh, xf, base, false)}
-  <p class="tiny muted">正文可直接点击修改（contenteditable）；换版式/换家族只改视觉，换风格才重生成文案。</p>`;
-}
 function photoSectionKind(h) {
   if (/为什么|值得去|风景|景|地点|路线|地貌/.test(h || "")) return "scenic";
   if (/体验|玩|挑战|探索|运动|做/.test(h || "")) return "experience";
@@ -9416,57 +8567,6 @@ function renderClassicPage(gzh, xf, layout, isRecap) {
   </div>`;
 }
 
-function xhsPanel(x) {
-  const d = normalizeXhs(x);
-  const orderLabel = { cover: "封面", scenic: "风景", people: "人物", action: "行进步", team: "团队", gear: "装备", meal: "餐食", camp: "营地", route: "路线", water: "亲水", detail: "细节" };
-  const orderChips = (d.imageOrder && d.imageOrder.length)
-    ? d.imageOrder.map((o) => `<span class="xf-tag xf-tag-soft">${esc(orderLabel[o] || o)}</span>`).join("")
-    : "";
-  return `<div class="xf-text-card">
-    <div class="xf-field"><label>标题候选</label>${d.titles.map((t) => `<div class="xf-line">· ${esc(t)} <button class="copy-btn" data-action="copyText" data-text="${esc(t)}">复制</button></div>`).join("")}</div>
-    <div class="xf-field"><label>正文</label><div class="xf-pre">${esc(d.body)}</div><button class="copy-btn" data-action="copyText" data-text="${esc(d.body)}">复制正文</button></div>
-    <div class="xf-field"><label>封面短句</label><div class="xf-line">${esc(d.coverText)}</div></div>
-    <div class="xf-field"><label>话题标签</label><div class="xf-tags">${d.hashtags.map((t) => `<span class="xf-tag">#${esc(t)}</span>`).join("")}</div></div>
-    ${orderChips ? `<div class="xf-field"><label>建议配图顺序</label><div class="xf-tags">${orderChips}</div></div>` : ""}
-  </div>`;
-}
-function momentsPanel(m) {
-  const items = [["预热版", m.warm], ["正式招募版", m.formal], ["最后招募版", m.last]];
-  return `<div class="xf-text-card">${items.map(([l, t]) => `<div class="xf-field"><label>${l}</label><div class="xf-pre">${esc(t)}</div><button class="copy-btn" data-action="copyText" data-text="${esc(t)}">复制</button></div>`).join("")}</div>`;
-}
-function wechatPanel(w) {
-  const items = [["直接招募文案", w.recruit], ["简短报名说明", w.brief]];
-  return `<div class="xf-text-card">${items.map(([l, t]) => `<div class="xf-field"><label>${l}</label><div class="xf-pre">${esc(t)}</div><button class="copy-btn" data-action="copyText" data-text="${esc(t)}">复制</button></div>`).join("")}</div>`;
-}
-function voicePanel(v) {
-  const items = [["30 秒口播", v.s30], ["60 秒口播", v.s60]];
-  return `<div class="xf-text-card">${items.map(([l, t]) => `<div class="xf-field"><label>${l}</label><div class="xf-pre">${esc(t)}</div><button class="copy-btn" data-action="copyText" data-text="${esc(t)}">复制</button></div>`).join("")}</div>`;
-}
-function posterPanel(p, xf) {
-  const cover = (xf && xf.out && xf.out.gzh && xf.out.gzh.cover && xf.out.gzh.cover.src) ? xf.out.gzh.cover.src : (gzhCover(xf).src || "");
-  const pill = (p.place && p.time) ? (p.place + " · " + p.time) : (p.time || p.place || "");
-  const pts = (p.points && p.points.length) ? p.points : [p.sub].filter(Boolean);
-  return `<div class="xf-poster">
-    <div class="xf-poster-art" ${cover ? smartBg(cover) : ""}>
-      <div class="xf-poster-art-mask"></div>
-      <div class="xf-poster-art-txt">
-        <div class="xf-poster-eyebrow">${esc(brandPill({}))}</div>
-        <h2 class="xf-poster-title">${esc(p.title)}</h2>
-        ${p.sub ? `<div class="xf-poster-sub">${esc(p.sub)}</div>` : ""}
-        ${pill ? `<div class="xf-poster-pill">📍 ${esc(pill)}</div>` : ""}
-      </div>
-    </div>
-    <div class="xf-poster-info">
-      <ul class="xf-poster-pts">${pts.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
-      <div class="xf-poster-meta"><span>⏰ ${esc(p.time)}</span><span>💰 ${esc(p.price)}</span></div>
-      <div class="xf-poster-cta">${esc(p.cta)}</div>
-    </div>
-    <button class="copy-btn" data-action="copyText" data-text="${esc(p.title + "｜" + p.sub + " " + pill + " " + p.price + " " + p.cta)}">复制文案</button>
-  </div>`;
-}
-
-/* §4：回顾同样切到新引擎（/api/content-vnext/recap）。
-   新引擎只产出「这一场真正值得记录的东西」+ 一套 blocks，不按平台分六份，因此不再走平台 tab。 */
 function vnextRecapResult(xf, r) {
   const blocked = r.grounding && !r.grounding.passed
     ? (r.grounding.issues || []).filter((i) => i.severity === "block").length : 0;
@@ -9483,35 +8583,15 @@ function vnextRecapResult(xf, r) {
 
 function recapResult() {
   const xf = publishState();
-  const o = xf.recap;
-  gatePublishOut(o, "recap");
   if (xf.genState === "loading") return `<div class="xf-loading">${ICON("sparkles")} 正在生成活动回顾…</div>`;
   const _ra = xf._a || (state.activities || []).find((x) => x.id === xf.aid);
   const _rr = (_ra && _ra.vnextRecap && Array.isArray(_ra.vnextRecap.blocks) && _ra.vnextRecap.blocks.length) ? _ra.vnextRecap : null;
+  /* v236：旧 AI 生成主链（genStrategy/genRecap）已物理删除，只认新引擎产出 */
   if (_rr) return vnextRecapResult(xf, _rr);
   return `
   <div class="xf-back"><button class="btn btn-ghost btn-sm" data-action="publishReset">${ICON("chevron-left")} 重新选择</button></div>
-  <div class="xf-theme"><span class="xf-theme-lbl">本次活动回顾主题</span><b>${esc(xf.recapType)}</b></div>
-  ${styleBar(xf)}
-  ${platformTabs(xf.platTab, "recap")}
-  <div class="xf-plat-body">
-    ${xf.platTab === "gzh" ? recapGzhPanel(o.gzh, xf) : ""}
-    ${xf.platTab === "xhs" ? xhsPanel(o.xhs) : ""}
-    ${xf.platTab === "moments" ? `<div class="xf-text-card"><div class="xf-field"><label>朋友圈回顾</label><div class="xf-pre">${esc(o.moments)}</div><button class="copy-btn" data-action="copyText" data-text="${esc(o.moments)}">复制</button></div></div>` : ""}
-    ${xf.platTab === "wechat" ? `<div class="xf-text-card"><div class="xf-field"><label>微信群感谢</label><div class="xf-pre">${esc(o.wechat)}</div><button class="copy-btn" data-action="copyText" data-text="${esc(o.wechat)}">复制</button></div></div>` : ""}
-    ${xf.platTab === "voice" ? "" : ""}
-    ${xf.platTab === "poster" ? `<div class="xf-text-card"><div class="xf-field"><label>下一期预告</label><div class="xf-pre">${esc(o.next)}</div><button class="copy-btn" data-action="copyText" data-text="${esc(o.next)}">复制</button></div></div>` : ""}
-  </div>`;
-}
-
-function recapGzhPanel(gzh, xf) {
-  const base = XF_FAMILY_LAYOUT[xf.family] || "diary";
-  return `
-  <div class="xf-gzh-head">
-    <button class="btn btn-primary btn-sm" data-action="copyGzhHtml">${ICON("copy")} 复制公众号（HTML）</button>
-  </div>
-  ${base === "diary" ? renderDiaryPage(gzh, xf, true) : renderClassicPage(gzh, xf, base, true)}
-  <p class="tiny muted">回顾正文可直接点击修改；禁止虚构现场细节，所有事实须来自上传资料。改完点「复制公众号（HTML）」。</p>`;
+  <div class="xf-empty-hint">还没有回顾产出。点下方按钮，新引擎会基于真实发生的资料（实际数据 / 现场照片 / 领队备注）生成活动回顾。</div>
+  <div style="text-align:center;margin-top:14px"><button class="btn btn-primary btn-lg" data-action="recapGen">${ICON("sparkles")} 生成活动回顾</button></div>`;
 }
 
 /* 持续运营（保留原有运营任务 + 老客户召回） */
@@ -9547,7 +8627,7 @@ function legacySection() {
 /* ============ v228：6 积木块 IR（中间表示） ============
    把「AI 生成详情页」从一步直出，升级为「先拼 6 块、看拼装效果再改」的积木式预览。
    本段只负责「活动对象 <-> 6 块中间表示」的投影与回写，不碰 DOM
-   （DOM 在 blocks.js 的 renderBlockPreview 里）。
+   （v236：6 积木预览已删除）。
    数据纪律（贯穿全局，见 core.js sanitizePublishCopy）：
      · 6 块 = 标签 / Hook / Timeline / Trust / Price / CTA
      · Trust（领队·含项·保险）与 Price（价格）是硬数据块 -> buildContentBlocks 只

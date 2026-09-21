@@ -69,13 +69,11 @@ function showView(view, params) {
     state.view = view; state.params = params || {};
     const app = $("#app");
     if (view === "login") { app.innerHTML = renderLogin(); return; }
-    const backend = ["dashboard", "create", "advice", "editor", "factConfirm", "list", "activityPage", "prep", "economics", "customers", "operator", "cardset", "mallConsole", "settings", "decorate", "analytics", "signups", "membership", "ai", "brand", "plans", "memberMarketing", "membershipAdmin", "blockPreview"];
+    const backend = ["dashboard", "create", "editor", "list", "activityPage", "prep", "economics", "customers", "operator", "cardset", "mallConsole", "settings", "decorate", "analytics", "signups", "membership", "ai", "brand", "plans", "memberMarketing", "membershipAdmin"]; // v236：删除旧机制视图 advice / factConfirm / blockPreview
     if (backend.includes(view)) {
       let content = "";
       if (view === "dashboard") content = safeRender(renderDashboard, view);
       else if (view === "create") content = safeRender(renderCreate, view);
-      else if (view === "advice") content = safeRender(renderContentAdvice, view);
-      else if (view === "factConfirm") content = safeRender(renderFactConfirm, view);
       else if (view === "editor") content = safeRender(renderEditor, view);
       else if (view === "list") content = safeRender(renderList, view);
       else if (view === "activityPage") content = safeRender(renderActivityPage, view); // §七：创建后的默认落点 = 活动详情
@@ -84,7 +82,6 @@ function showView(view, params) {
       else if (view === "customers") content = safeRender(renderCustomers, view);
       else if (view === "operator") content = safeRender(renderFabu, view);
       else if (view === "cardset") content = safeRender(renderCardset, view);
-      else if (view === "blockPreview") content = safeRender(renderBlockPreview, view); // v228：6 积木块预览编辑
       else if (view === "mallConsole") { state.mallCtx = "console"; content = safeRender(renderClubMallConsole, view); }
       else if (view === "settings") content = safeRender(renderSettings, view);
       else if (view === "decorate") content = safeRender(renderDecorate, view);
@@ -92,7 +89,7 @@ function showView(view, params) {
       else if (view === "signups") content = safeRender(renderSignups, view);
       else if (view === "membership" || view === "membershipAdmin") content = safeRender(renderMembershipAdmin, view);
       else if (view === "ai" || view === "brand" || view === "plans" || view === "memberMarketing") content = safeRender(renderSettings, view);
-      app.innerHTML = renderShell(content, (view === "activityPage" || view === "prep" || view === "blockPreview") ? "list" : view);
+      app.innerHTML = renderShell(content, (view === "activityPage" || view === "prep") ? "list" : view);
       if (view === "editor") bindEditorExtras();
       // 进入编辑器即按地点联网自动搜索风景图（仅一次、且仅当已有地点且无图时），供「为什么值得去」配图
       if (view === "editor" && state.draft && state.draft.place && !state.draft.placePhotos && !state.draft._autoPhoto) {
@@ -112,7 +109,6 @@ function showView(view, params) {
       if (view === "settings" || view === "brand") bindBrandExtras();
       if (view === "decorate") bindDecorateExtras();
       if (view === "operator") bindFabuExtras();
-      if (view === "factConfirm") bindConfirmExtras();
       if (view === "create") bindCreateExtras();
       updateBrandColor();
       initEditorialToc();
@@ -331,34 +327,14 @@ function showView(view, params) {
         break;
       }
       case "regenStyle": {
-        /* §16「换版式」重定义：优先新引擎重新策划（换宣传切口，非 family/variant 换皮）；
-           新引擎不可用（无后端地址）时回退旧 AI 总监，再退旧双轴 regenStyleContent。 */
+        /* §16「换一种排版」：统一走新引擎重新策划（换宣传切口，非 family/variant 换皮）。
+           v236：旧 AI 总监 / 旧双轴 regenStyleContent 已删除，新引擎不可用时直接提示配置。 */
         const target = viewingActivity() || (state.draft ? state.draft : null);
         if (!target) break;
-        const draftSame = !state.draft || state.draft === target;
         if (typeof generateVnextPromo === "function" && typeof getBackendURL === "function" && getBackendURL()) {
           generateVnextPromo(target.id); // 内部自带 loading 态 / 失败 toast / 完成重渲
-          break;
-        }
-        if (typeof runContentDirector === "function" && typeof aiDirectorReady === "function" && aiDirectorReady()) {
-          runContentDirector(target, function (ok) {
-            if (!ok && typeof regenStyleContent === "function") {
-              regenStyleContent(target);
-              if (!draftSame) regenStyleContent(state.draft);
-            }
-            if (!draftSame && state.draft) state.draft.pageBlueprint = target.pageBlueprint;
-            if (typeof saveState === "function") saveState();
-            if (typeof showDetailLikeView === "function" && showDetailLikeView()) showView(state.view, state.params);
-            else if (typeof refreshPreview === "function") refreshPreview();
-            toast(ok ? "已按内容策划重生成（AI 总监）" : "AI 总监未成功，已换一版风格");
-          });
-        } else if (typeof regenStyleContent === "function") {
-          regenStyleContent(target);
-          if (!draftSame) regenStyleContent(state.draft);
-          saveState();
-          if (typeof showDetailLikeView === "function" && showDetailLikeView()) showView(state.view, state.params);
-          else refreshPreview();
-          toast("已重生成风格");
+        } else {
+          toast("换排版需要新引擎：请先在「AI 设置」配置后端地址");
         }
         break;
       }
@@ -668,7 +644,7 @@ function showView(view, params) {
       case "resetLocalData": resetLocalData(); break;
       case "voice": toast("语音输入为视觉占位，Demo 中请直接输入文字"); break;
       case "paste": { const ta = $("#createInput"); if (ta) { ta.value = PASTE_SAMPLE; ta.focus(); } toast("已填入一段示例旧文案"); break; }
-      case "example": { const ta = $("#createInput"); if (ta) { ta.value = d.text; } else { state.draft = blankActivity(); state.draft.raw = d.text; parseActivityWithAI(d.text).then(async (json) => { if (json && !json._error && !json._needKey) { applyAIResult(json, state.draft); await ensureNarrativeFields(state.draft); } else { if (typeof syncDerived === "function") syncDerived(state.draft); applyDnaCopyFallback(state.draft); } await ensureItineraryFields(state.draft); syncItineraryDays(state.draft); showView("factConfirm"); }); } break; }
+      case "example": { const ta = $("#createInput"); if (ta) { ta.value = d.text; } else { state.draft = blankActivity(); state.draft.raw = d.text; parseActivityWithAI(d.text).then(async (json) => { if (json && !json._error && !json._needKey) { applyAIResult(json, state.draft); await ensureNarrativeFields(state.draft); } else { if (typeof syncDerived === "function") syncDerived(state.draft); applyDnaCopyFallback(state.draft); } await ensureItineraryFields(state.draft); syncItineraryDays(state.draft); finalizeDraftToPage(); }); } break; }
       case "back": {
         const prev = backStack.pop();
         if (prev) showView(prev); else showView("dashboard");
@@ -705,24 +681,8 @@ function showView(view, params) {
         const published = state.draft;
         state.draft = null;
         showPublishSuccess(id);
-        /* §0/§13：新引擎产物已存在（Canvas 在生成详情页时已出）→ 不再自动跑旧 AI 总监；
-           仅在未接入新引擎的旧环境回退 autoRunDirector，保证行为不倒退。 */
-        if (!(typeof generateVnextPromo === "function" && published.vnextPromo)) {
-          autoRunDirector(published);
-        }
         break;
       }
-      case "confirmFactsContinue": {
-        const fa = state.draft; if (!fa) break;
-        document.querySelectorAll("[id^='gap_']").forEach((el) => {
-          const key = el.id.replace("gap_", "");
-          if (el.value && el.value.trim()) applyBossFact(fa, key, el.value);
-        });
-        saveState();
-        showView("advice");
-        break;
-      }
-      case "confirmFactsSkip": { showView("advice"); break; }
       case "togglePinned": {
         if (!state.draft) break;
         state.draft.pinned = !state.draft.pinned;
@@ -864,20 +824,6 @@ function showView(view, params) {
           if (btn) { btn.disabled = false; btn.classList.remove("loading"); btn.innerHTML = btn.dataset.ht || t; }
           rerenderEditor(); refreshPreview();
         });
-        break;
-      }
-      case "openAdvice": showView("advice"); break;
-      case "pickContentDirection": {
-        if (!state.draft || !state.draft.contentDirections) break;
-        const i = Math.max(0, Math.min(+d.i || 0, state.draft.contentDirections.length - 1));
-        const dir = state.draft.contentDirections[i];
-        if (!dir) break;
-        state.draft.contentDirection = i;
-        state.draft.contentStrategy = dir;
-        if (dir.headline) { state.draft.headline = dir.headline; state.draft.title = dir.headline; }
-        if (dir.intro) state.draft.intro = dir.intro;
-        if (dir.posterLine) state.draft.posterTagline = dir.posterLine;
-        showView("advice");
         break;
       }
       case "approveDirection": {
@@ -1938,38 +1884,6 @@ function showView(view, params) {
         break;
       }
       case "platformTab": { publishState().platTab = d.k; showView(state.view); break; }
-      case "switchFamily": {
-        const xf = publishState();
-        xf.family = d.f;
-        const vs = (XF_FAMILIES[xf.family] && XF_FAMILIES[xf.family].variants) || [""];
-        if (xf.variant >= vs.length) xf.variant = 0;
-        showView(state.view);
-        break;
-      }
-      case "switchVariant": {
-        const xf = publishState();
-        xf.variant = (+d.v) || 0;
-        showView(state.view);
-        break;
-      }
-      case "nextVariant": {
-        // P1-2「换一种版式」：只切换 Layout Variant，不改文案 / 家族 / 风格
-        const xf = publishState();
-        const vs = (XF_FAMILIES[xf.family] && XF_FAMILIES[xf.family].variants) || [""];
-        xf.variant = ((xf.variant || 0) + 1) % vs.length;
-        if (xf.strategy && xf.strategy.editorialDirection) xf.strategy.editorialDirection.variant = xf.variant;
-        xf._styleHistory = xf._styleHistory || [];
-        xf._styleHistory.push((typeof styleSignature === "function") ? styleSignature(xf) : { family: xf.family, variant: xf.variant });
-        toast("已换一种版式");
-        showView(state.view);
-        break;
-      }
-      case "quickStyle": { quickStyle(d.k); break; }
-      /* P2-1 局部重生成：只动被点的那一处，其余文案与事实保持不变 */
-      case "regenTitle": { regenTitle(); break; }
-      case "regenCta": { regenCta(); break; }
-      case "shufflePhotos": { shufflePhotos(); break; }
-      case "regenSection": { await regenSection(+(d.i || 0)); break; }
       case "switchStyle": {
         const xf = publishState();
         const a = xf._a || (state.activities || []).find((x) => x.id === xf.aid);
@@ -1990,18 +1904,6 @@ function showView(view, params) {
       }
       case "publishReset": { state.xf = null; showView(state.view); break; }
       case "recruitGen": { await runRecruitGen(); break; }
-      case "confirmFactsToPage": { await confirmFactsToPage(); break; }
-      case "useGapChip": {
-        const el = document.getElementById("gap_" + (d.key || ""));
-        if (el) { el.value = d.val || ""; el.focus(); }
-        break;
-      }
-      case "dropConfirmPhoto": {
-        if (!state.draft) break;
-        state.draft.photos = (state.draft.photos || []).filter((_, i) => i !== (+d.i));
-        showView("factConfirm");
-        break;
-      }
       case "confirmPublishPage": { confirmPublishPage(); break; }
       case "dropCreatePhoto": {
         state._pendingPhotos = (state._pendingPhotos || []).filter((_, i) => i !== (+d.i));
@@ -2107,7 +2009,7 @@ function showView(view, params) {
         syncItineraryDays(base);
         const sims = similarList(base);
         if (sims.length) base._similarList = sims.map((s) => ({ id: s.id, title: s.title }));
-        showView("factConfirm");
+        await finalizeDraftToPage(); // v236：不再进「6 项过目」确认卡，直接出成品详情页
         if (json && json._needKey) toast("未配置 AI Key，已用本地基因模板生成（配 Key 可解锁 AI 文案）");
         else if (json && json._error) toast("AI 生成失败，已用本地基因模板兜底");
         return;
@@ -2119,7 +2021,7 @@ function showView(view, params) {
       syncItineraryDays(state.draft);
       const sims = similarList(state.draft);
       if (sims.length) state.draft._similarList = sims.map((s) => ({ id: s.id, title: s.title }));
-      showView("factConfirm");
+      await finalizeDraftToPage(); // v236：不再进「6 项过目」确认卡，直接出成品详情页
     });
   }
   /* v207：旧草稿自愈 —— v205 时期生成的活动没有结构化行程（详情页/编辑器都没有行程可看）。
@@ -2173,8 +2075,7 @@ function showView(view, params) {
       }
       await sleep(300);
       ov.remove();
-      // 生成完成后进入「老板确认卡」（若 AI 解析已先完成并导航，这里保持一致）
-      if (state.view === "create" || state.view === "factConfirm") showView("factConfirm");
+      // v236：动画结束即可，导航由 finalizeDraftToPage 负责（直接进详情页看成品）
     })();
   }
   /* ===== §七 一键闭环：一句话 + 传图 → AI 理解 → 只问必要问题 → 自动生成完整活动
@@ -2246,18 +2147,14 @@ function showView(view, params) {
     showView(state.view);
   }
 
-  /* §七 关键一跳：确认卡 → 生成【完整活动 + 图文详情页】并落到后台「活动详情」工作区。
-     这里不再把老板丢进 AI 宣发中心，也不需要「进编辑器逐字段改」；
-     宣发文案（公众号/小红书）改为详情页上的可选按钮。 */
-  async function confirmFactsToPage() {
+  /* §七 关键一跳（v236 终版）：一句话 → 生成【完整活动 + 图文详情页】并落到后台「活动详情」工作区。
+     旧「6 项请你过目」确认卡已删除（文档 §0 问题5「确认太多」、§30「AI 正在理解活动 → 直接看成品」）：
+     老板给到的事实直接落库，缺失的关键事实由 AI 建议兜底（只采用历史真实值，绝不编造），
+     成品出来后在详情页 / 编辑器里随手可改 —— 先出成品，再让用户改。 */
+  async function finalizeDraftToPage() {
     const fa = state.draft;
     if (!fa) return;
-    // 1) 应用确认卡上补的关键事实
-    document.querySelectorAll("[id^='gap_']").forEach((el) => {
-      const key = el.id.replace("gap_", "");
-      if (el.value && el.value.trim()) applyBossFact(fa, key, el.value);
-    });
-    // v190：老板什么都没改也要能生成 —— 仍为空的关键事实用 AI 建议兜底补上
+    // 1) 仍为空的关键事实用 AI 建议兜底补上（历史活动真实值，只给确定项）
     try { if (typeof applyAllSuggestions === "function") applyAllSuggestions(fa, true); } catch (e) { /* 兜底不阻断生成 */ }
     // 2) AI 补齐派生内容（章节 / 行程 / 文案）。全部幂等，失败不阻断落库。
     try {
@@ -2296,36 +2193,10 @@ function showView(view, params) {
     if (typeof generateVnextPromo === "function") {
       generateVnextPromo(fa.id); // 新引擎自动策划（异步，完成后自动重渲）；失败时页面仍完整可看
     } else {
-      autoRunDirector(fa); // 未接入新引擎的旧环境：退回旧导演，保证行为不倒退
+      toast("详情页骨架已生成；配置后端地址后可让 AI 制作宣传画面");
     }
   }
 
-  /* v214：活动落库后自动跑一次 AI Content Director —— 但只在「配了 AI」时才跑。
-     为什么必须补这一步：此前 runContentDirector 的**唯一**调用点是手动「换一种排版」，
-     老板不点那一下，a.pageBlueprint 就永远不存在，详情页永远走本地双轴模板
-     （于是出现「DAY 1 · 第1天」把整张时间表又抄一遍的老问题，M1–M4 的代码等于没上过线）。
-     设计取舍：
-       · 不阻塞 —— 先把模板版详情页给老板看，Blueprint 拿到后再刷一次；
-       · 失败静默 —— 网络/Key/接口任何问题都回退本地模板，绝不阻断「生成活动」这条主链路；
-       · 不重跑 —— 已有 pageBlueprint 直接返回，避免每次生成都白烧一次 AI；
-       · 未配 AI 直接返回（aiDirectorReady 为假），离线/演示环境行为与旧版完全一致。 */
-  async function autoRunDirector(a) {
-    if (!a || a.pageBlueprint) return;
-    if (typeof runContentDirector !== "function" || typeof aiDirectorReady !== "function" || !aiDirectorReady()) return;
-    let ok = false;
-    try {
-      ok = await new Promise(function (res) { runContentDirector(a, function (r) { res(!!r); }); });
-    } catch (e) { ok = false; }
-    if (!ok || !a.pageBlueprint) {
-      /* 静默会让人以为「AI 已经编排过」→ 复用统一的 AI 失败提示（6 秒节流，不刷屏） */
-      if (typeof noteAiFailure === "function") noteAiFailure("net");
-      return;
-    }
-    a._directorAutoAt = Date.now();
-    try { upsert(a); saveState(); } catch (e) { /* 落库失败不影响当前页面 */ }
-    if (state.view === "activityPage" && state.params && state.params.id === a.id) showView("activityPage", { id: a.id });
-    toast("已按 AI 内容总监编排刷新详情页");
-  }
 
   /* §七 最后一环：详情页 → 确认发布。事实不全时不硬发，回到确认卡补全后重生成。
      三种语境都支持：后台「活动详情」工作区（activityPage）/ 前台详情页（detail）/ 宣发中心结果页。 */
@@ -2344,7 +2215,7 @@ function showView(view, params) {
         const keepPhotos = (xf && typeof activePhotos === "function") ? activePhotos(xf) : (a.photos || []);
         state.draft = JSON.parse(JSON.stringify(a));
         state.draft.photos = (keepPhotos && keepPhotos.length) ? keepPhotos.slice() : (a.photos || []).slice();
-        showView("factConfirm");
+        showView("editor"); // v236：事实不全时进编辑器补全（旧确认卡已删）
         return;
       }
       if (chk.warnings && chk.warnings.length) toast("有 " + chk.warnings.length + " 项待确认，已按现有事实发布");
@@ -2408,117 +2279,7 @@ function showView(view, params) {
     };
   }
 
-  /* 确认卡的照片上传：直接写进 draft.photos，生成时由 AI 自动筛选/配图/排版 */
-  function bindConfirmExtras() {
-    const inp = $("#confirmPhotoInput");
-    if (!inp) return;
-    // v192：同 bindCreateExtras —— 统一走 readPhotoFile，读图失败/超时不会卡死确认卡。
-    inp.onchange = (e) => {
-      const files = Array.from(e.target.files || []);
-      if (!files.length) return;
-      let pending = files.length;
-      const done = () => {
-        if (--pending === 0) {
-          e.target.value = "";
-          if (typeof saveState === "function") saveState();
-          showView("factConfirm");
-        }
-      };
-      files.forEach((f) => readPhotoFile(f, (src) => {
-        if (state.draft) { state.draft.photos = state.draft.photos || []; state.draft.photos.push(src); }
-      }, done));
-    };
-  }
 
-  // P0-1 / v190「老板过目卡」：AI 已把能推断的事实全部预填，老板扫一眼即可生成，不必逐字段打字
-  function renderFactConfirm() {
-    const a = state.draft;
-    if (!a) { showView("dashboard"); return ""; }
-    const gaps = detectKeyGaps(a);
-    const suggested = gaps.filter((g) => g.suggest && g.suggest.value);
-    const needOwner = gaps.filter((g) => !(g.suggest && g.suggest.value));
-    const confirmed = confirmedFacts(a);
-    const doneList = confirmed.slice(0, 12).map((f) => `<li><span class="gc-done-k">${esc(f.label)}</span><b>${esc(f.value)}</b></li>`).join("");
-    const ph = a.photos || []; // §七：照片在「一句话创建」这一步就能传，不需要另开模块
-    const gapRow = (g, i) => {
-      const sg = g.suggest || {};
-      const pre = sg.value || "";
-      const tag = pre
-        ? `<span class="gc-tag gc-tag-ai">${sg.src === "plan" ? esc(sg.label || "按你上传的方案") : "AI 建议 · " + esc(sg.label || "已预填")}</span>`
-        : `<span class="gc-tag gc-tag-need">${esc(sg.label || "需你补一句")}</span>`;
-      const chips = (sg.chips || []).length
-        ? `<div class="gc-chips">${(sg.chips || []).map((c) => `<button type="button" class="gc-chip" data-action="useGapChip" data-key="${esc(g.key)}" data-val="${esc(c)}">${esc(c)}</button>`).join("")}</div>`
-        : "";
-      const input = g.kind === "textarea"
-        ? `<textarea class="input" id="gap_${g.key}" rows="2" placeholder="${esc(g.placeholder || "")}">${esc(pre)}</textarea>`
-        : `<input class="input" id="gap_${g.key}" placeholder="${esc(g.placeholder || "")}" ${g.inputmode ? `inputmode="${g.inputmode}"` : ""} value="${esc(pre)}">`;
-      return `<div class="gc-row">
-        <div class="gc-row-head"><span class="gc-idx">${i + 1}</span><span class="gc-label">${esc(g.label)}</span>${tag}</div>
-        <div class="gc-prompt">${esc(g.prompt)}</div>
-        ${input}${chips}
-      </div>`;
-    };
-    const head = needOwner.length
-      ? `AI 已替你填好 <b>${suggested.length}</b> 项，还剩 <b>${needOwner.length}</b> 项点一下候选就行`
-      : `AI 已把关键事实全部替你填好了`;
-    const body = gaps.length
-      ? `<div class="gc-block">
-        <div class="gc-block-head">${gaps.length} 项请你过目<b class="gc-hint">你这句话里提到的已直接填入；历史活动值只给候选，点一下采用</b></div>
-        ${gaps.map(gapRow).join("")}
-      </div>`
-      : `<div class="gc-block"><div class="gc-block-head">关键事实已齐全</div><div class="gc-empty">✅ 可以直接生成</div></div>`;
-    return `<div class="card card-pad gc-card">
-      <style>
-        .gc-card{max-width:720px;margin:18px auto}
-        .gc-head{font-size:20px;font-weight:800;margin:6px 0 4px;line-height:1.4}
-        .gc-head b{color:var(--primary,#c0392b)}
-        .gc-sub{color:#888;font-size:13px;margin:0 0 14px}
-        .gc-done{background:#f7faf7;border:1px solid #e3efe3;border-radius:12px;padding:12px 14px;margin-bottom:16px}
-        .gc-done-title{font-size:12px;font-weight:700;color:#2e7d4f;margin-bottom:6px;letter-spacing:.5px}
-        .gc-done-list{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px 14px}
-        .gc-done-list li{font-size:13px;color:#444}
-        .gc-done-list b{color:#222}
-        .gc-done-k{color:#2e7d4f;margin-right:4px}
-        .gc-block{background:#fffaf7;border:1px solid #f3e0d2;border-radius:14px;padding:16px;margin-bottom:14px}
-        .gc-block-head{font-size:15px;font-weight:800;margin-bottom:12px;color:#b5532b}
-        .gc-hint{font-weight:400;font-size:12px;color:#a08b7d;margin-left:6px}
-        .gc-row{margin-bottom:14px}
-        .gc-row-head{display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap}
-        .gc-idx{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:var(--primary,#c0392b);color:#fff;font-size:12px;font-weight:700}
-        .gc-label{font-weight:700;font-size:15px}
-        .gc-tag{font-size:11px;padding:1px 8px;border-radius:20px;font-weight:700}
-        .gc-tag-miss{background:#fdecea;color:#c0392b}
-        .gc-tag-inf{background:#fff4e0;color:#b9770a}
-        .gc-tag-ai{background:#eef4ff;color:#3f6aa8}
-        .gc-tag-need{background:#fdecea;color:#c0392b}
-        .gc-prompt{font-size:12.5px;color:#777;margin:0 0 6px}
-        .gc-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-        .gc-chip{border:1px solid #e6dcd2;background:#fff;border-radius:20px;padding:4px 12px;font-size:12.5px;color:#555;cursor:pointer}
-        .gc-chip:hover{border-color:var(--primary,#c0392b);color:var(--primary,#c0392b)}
-        .gc-empty{color:#2e7d4f;font-weight:700;padding:6px 0}
-        .gc-actions{display:flex;gap:10px;margin-top:6px}
-      </style>
-      <div class="eyebrow">AI 已生成内容</div>
-      <div class="gc-head">${head}</div>
-      <p class="gc-sub">标题、正文、行程、装备建议、费用说明已由 AI 依据你的那句话生成。你这句话里提到的事实已直接填入；标「历史活动常用」的只给候选<b>不直填</b>，点一下采用或自己写，不会带旧活动数据。</p>
-      ${doneList ? `<div class="gc-done"><div class="gc-done-title">AI 已自动完成（${confirmed.length} 项）</div><ul class="gc-done-list">${doneList}</ul></div>` : ""}
-      ${body}
-      <div class="gc-block" style="background:#f3f8f4;border-color:#d5e8da">
-        <div class="gc-block-head" style="color:#2e7d4f">活动照片 / 旧资料（可选）</div>
-        <p class="gc-sub" style="margin:0 0 10px">照片直接放这里就行：AI 会自动挑图、自动配到对应段落、自动排版，并自动规避人物被裁坏——<b>不需要你手动选图/配图</b>。</p>
-        <div class="xf-photos">
-          ${ph.map((p, i) => `<div class="xf-ph" style="background-image:url('${esc(p)}')"><button class="x" type="button" data-action="dropConfirmPhoto" data-i="${i}" aria-label="移除">${ICON("x")}</button></div>`).join("")}
-          <label class="xf-ph-add">${ICON("upload")}<input type="file" id="confirmPhotoInput" accept="image/*" multiple hidden></label>
-        </div>
-        <p class="tiny muted" style="margin:8px 0 0">${ph.length ? `已上传 ${ph.length} 张，生成时自动筛选与分配角色。` : "不传照片也能生成，页面会自动使用克制的纯文字版式。"}旧文案可直接粘贴在最上面的输入框。</p>
-      </div>
-      <div class="gc-actions">
-        <button class="btn btn-primary btn-lg" data-action="confirmFactsToPage">${ICON("sparkles")} 一键生成图文详情页</button>
-        <button class="btn btn-ghost" data-action="confirmFactsContinue">先看内容策略</button>
-      </div>
-      <p class="tiny muted" style="margin-top:10px">生成后可直接「换版式 / 换风格」，满意再确认发布；确实想逐字段微调时再进编辑器。</p>
-    </div>`;
-  }
   function rerenderEditor() {
     const ed = $("#content");
     if (ed) { ed.innerHTML = renderEditor(); bindEditorExtras(); }
