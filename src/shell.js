@@ -361,6 +361,20 @@ function showView(view, params) {
 
       /* Content Engine V3：调后端受控管线（truth→direction→compose→quality）生成 PromoDocument。
          失败（未配后端 / 未鉴权 / 出参不合法）一律保持原 legacy 排版并如实提示 —— 不静默降级。 */
+      /* Clean Rewrite：活动详情 AI Promo Canvas（新引擎 /api/content-vnext） */
+      case "vnextGenerate": {
+        const va = viewingActivity() || (state.draft ? state.draft : null);
+        if (!va) break;
+        if (typeof generateVnextPromo === "function") generateVnextPromo(va.id);
+        break;
+      }
+      case "vnextRevise": {
+        const ra = viewingActivity() || (state.draft ? state.draft : null);
+        if (!ra) break;
+        if (typeof reviseVnextPromo === "function") reviseVnextPromo(ra.id);
+        break;
+      }
+
       case "edV3Generate": {
         const v3a = viewingActivity() || (state.draft ? state.draft : null);
         if (!v3a) break;

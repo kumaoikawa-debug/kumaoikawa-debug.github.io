@@ -1015,6 +1015,8 @@
       <span class="dms-cur">${esc(editorialVariantSummary(a))}</span>
     </div>
 
+    ${(typeof renderVnextSection === 'function') ? renderVnextSection(a) : ''}
+
     <div class="ap-phone">${wrapPhone(renderActivityPhone(a), false)}</div>
 
     <div class="section-head" style="margin-top:26px">
