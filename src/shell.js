@@ -331,11 +331,15 @@ function showView(view, params) {
         break;
       }
       case "regenStyle": {
-        /* M1：优先走 AI Content Director（动态 Blueprint 重生成）；
-           AI 不可用（无 Key / 无后端 / 接口异常）时回退旧双轴 regenStyleContent。 */
+        /* §16「换版式」重定义：优先新引擎重新策划（换宣传切口，非 family/variant 换皮）；
+           新引擎不可用（无后端地址）时回退旧 AI 总监，再退旧双轴 regenStyleContent。 */
         const target = viewingActivity() || (state.draft ? state.draft : null);
         if (!target) break;
         const draftSame = !state.draft || state.draft === target;
+        if (typeof generateVnextPromo === "function" && typeof getBackendURL === "function" && getBackendURL()) {
+          generateVnextPromo(target.id); // 内部自带 loading 态 / 失败 toast / 完成重渲
+          break;
+        }
         if (typeof runContentDirector === "function" && typeof aiDirectorReady === "function" && aiDirectorReady()) {
           runContentDirector(target, function (ok) {
             if (!ok && typeof regenStyleContent === "function") {
@@ -701,9 +705,11 @@ function showView(view, params) {
         const published = state.draft;
         state.draft = null;
         showPublishSuccess(id);
-        /* v214：发布路径同样补一次「AI 内容总监编排」——
-           pageBlueprint 只在手动「换一种排版」时才产生的话，从这里发布的活动也会永远停在模板版。 */
-        autoRunDirector(published);
+        /* §0/§13：新引擎产物已存在（Canvas 在生成详情页时已出）→ 不再自动跑旧 AI 总监；
+           仅在未接入新引擎的旧环境回退 autoRunDirector，保证行为不倒退。 */
+        if (!(typeof generateVnextPromo === "function" && published.vnextPromo)) {
+          autoRunDirector(published);
+        }
         break;
       }
       case "confirmFactsContinue": {
@@ -2280,11 +2286,18 @@ function showView(view, params) {
     upsert(fa); // 详情页与宣发中心都按 id 从活动库取活动，必须先落库
     saveState();
     state._pendingPhotos = []; // 照片已并入这场活动，避免下一场活动误带旧图
-    state.detailMode = "editorial"; // §七：默认给「有感染力的图文详情页」
+    state.detailMode = "editorial"; // §七：默认给「有感染力的图文详情页」（无 Canvas 时回退用）
     state.draft = null;             // 不挂在编辑器里，老板不需要逐字段改
-    showView("blockPreview", { id: fa.id }); // v228：生成后先进「6 积木块预览」，详情页仍可从预览进
-    toast("活动详情页已生成");
-    autoRunDirector(fa);
+    /* §13/§14/§30：生成后直接看成品 —— 落「活动详情」工作区并自动跑新引擎 Promo Canvas
+       （页面顶部出现「正在理解活动并制作详情…」，完成后 Canvas 替换旧包装层，B区 Info Stack 保留）。
+       v228 的 6 积木块预览不再是默认落点，仅保留为历史活动兼容入口。 */
+    showView("activityPage", { id: fa.id });
+    toast("活动详情页已生成，AI 正在制作宣传画面…");
+    if (typeof generateVnextPromo === "function") {
+      generateVnextPromo(fa.id); // 新引擎自动策划（异步，完成后自动重渲）；失败时页面仍完整可看
+    } else {
+      autoRunDirector(fa); // 未接入新引擎的旧环境：退回旧导演，保证行为不倒退
+    }
   }
 
   /* v214：活动落库后自动跑一次 AI Content Director —— 但只在「配了 AI」时才跑。

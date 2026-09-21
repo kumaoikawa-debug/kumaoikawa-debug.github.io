@@ -703,8 +703,9 @@
 
   function renderActivityPhone(a) {
     if (!a) return "";
-    // P0-4：详情页支持两种输出——简洁报名详情（默认）/ AI 图文长页
-    if (detailModeOf() === "editorial" && typeof renderActivityEditorial === "function") return renderActivityEditorial(a);
+    // §13 活动详情页最终结构：A区 AI Promo Canvas（动态）+ B区 Info Stack（行程/费用/清单/报名，固定）。
+    // 新引擎产物存在 → 永远走下方 Canvas 分支；旧 editorial 版面只服务没有 Canvas 的历史活动。
+    if (detailModeOf() === "editorial" && !a.vnextPromo && typeof renderActivityEditorial === "function") return renderActivityEditorial(a);
     /* ===== v201 文学层「事实闸门」（简洁页同款两档）=====
        老板反馈：「为什么文案里面老是出现时间、日期，我们要的文案是有语言美感的。」
        ① 系统生成的文案（风格包 pack）→ 完整闸门 sanitizeLiteraryText；
@@ -882,10 +883,14 @@
       else groups.story.push(b.html);
     });
 
+    // §13：A区 = AI Promo Canvas。已生成 → 替换旧「内容包装层」与旧封面（Canvas 自带 hero）；
+    // 未生成 → null，走原有渲染（保证无 AI / 生成失败时一定有页可看）。
+    const vnextA = (a.vnextPromo && typeof renderPromoCanvas === "function") ? renderPromoCanvas(a.vnextPromo, {}) : null;
+
     return `
       <div class="activity-page composition-${composition}">
       <div class="ps-topbar">${psLogo()}</div>
-      <div class="cover type-${a.pageStyle} composition-${composition}" style="${hasPhoto ? "" : `background:${ac.grad}`}">
+      ${vnextA ? "" : `<div class="cover type-${a.pageStyle} composition-${composition}" style="${hasPhoto ? "" : `background:${ac.grad}`}">
         ${hasPhoto ? `<img class="cover-img" data-smart-img src="${coverSrc}" alt="${esc(a.place || a.type)}活动主视觉" style="object-position:${smartPos(coverSrc)}">` : `<div class="cover-pattern"></div><div class="cover-missing">${isAdminMode() ? "待上传主视觉" : "活动图片待机构补充"}</div>`}
         <div class="scrim"></div>
         <button class="fav" data-action="toast" data-msg="已收藏" aria-label="收藏活动">${ICON("heart")}</button>
@@ -894,13 +899,13 @@
           <h2 class="cover-title">${esc(a.title)}</h2>
           <div class="cover-meta-pill"><span>${ICON("calendar")} ${esc(a.date || a.dateMD || "日期待定")}</span><span class="meta-div"></span><span>${ICON("map-pin")} ${esc(a.meeting || "集合点待定")}</span></div>
         </div>
-      </div>
+      </div>`}
 
       <div class="detail-body composition-${composition}">
 
-        <!-- A. 内容包装层：先打动人，再讲事实 -->
+        <!-- A. 内容包装层：新引擎 Canvas 已生成时由它主讲（§13 A区）；否则回退旧包装层 -->
         <section class="layer layer-packaging" aria-label="内容包装层">
-          <div class="lead-sheet">
+          ${vnextA ? vnextA : `<div class="lead-sheet">
             <div class="layer-content">
               <div class="lead-tags">
                 <span class="lead-tag-primary">${ICON("map-pin")}${esc(a.type)}</span>
@@ -912,7 +917,7 @@
             </div>
           </div>
           ${groups.story.join("\n")}
-          ${groups.highlights.length ? groups.highlights.join("\n") : ""}
+          ${groups.highlights.length ? groups.highlights.join("\n") : ""}`}
         </section>
 
         <!-- B. 报名决策层：事实与决策，集中、好扫 -->

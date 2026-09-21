@@ -41,7 +41,8 @@ function countCalls(src, fn) {
 
 function run() {
   const fails = [];
-  const ok = (cond, msg) => { if (!cond) fails.push(msg); else console.log('  ✓', msg); };
+  let total = 0;
+  const ok = (cond, msg) => { total += 1; if (!cond) fails.push(msg); else console.log('  ✓', msg); };
   const src = {};
   FILES.forEach((f) => { try { src[f] = read(f); } catch (e) { src[f] = ''; } });
   const all = FILES.map((f) => src[f]).join('\n');
@@ -74,6 +75,19 @@ function run() {
     'recapResult 有「新引擎产出优先」分支');
   ok(/renderChannelResult\(/.test(publish), '宣发结果复用渠道 Renderer（不另起模板）');
 
+  console.log('— 详情页主链走新引擎（§13/§14/§16/§30，v235 补）—');
+  const activities = src['src/activities.js'];
+  ok(/!a\.vnextPromo && typeof renderActivityEditorial/.test(activities),
+    '旧 editorial 版面只服务没有 Canvas 的历史活动（renderActivityPhone 守卫）');
+  ok(/const vnextA = \(a\.vnextPromo && typeof renderPromoCanvas/.test(activities),
+    '详情页 A 区由 AI Promo Canvas 主讲（§13：Canvas + Info Stack）');
+  const confirmBody = (shell.match(/async function confirmFactsToPage\(\)[\s\S]*?\n  \}/) || [''])[0];
+  ok(/showView\("activityPage"/.test(confirmBody), '生成详情页后落「活动详情」工作区（§30 直接看成品）');
+  ok(!/showView\("blockPreview"/.test(confirmBody), 'confirmFactsToPage 不再默认落 6 积木旧预览');
+  ok(/generateVnextPromo\(fa\.id\)/.test(confirmBody), '生成详情页后自动跑新引擎 Promo Canvas（§14 不问风格）');
+  const regenBody = (shell.match(/case "regenStyle":[\s\S]*?(?=\n      case ")/) || [''])[0];
+  ok(/generateVnextPromo\(target\.id\)/.test(regenBody), '「换一种排版」优先新引擎重新策划（§16 换切口非换皮）');
+
   console.log('— 回滚点 —');
   let hasTag = false;
   try {
@@ -81,7 +95,7 @@ function run() {
   } catch (e) { hasTag = false; }
   ok(hasTag, '回滚 tag clubos-ai-content-legacy 存在');
 
-  console.log('通过 ' + (14 - fails.length) + '，失败 ' + fails.length);
+  console.log('通过 ' + (total - fails.length) + '，失败 ' + fails.length);
   if (fails.length) { console.error('失败项：', fails); process.exit(1); }
   console.log('%c[legacy chain] 旧链已断开，宣发走新引擎', 'color:#1a7f37;font-weight:bold');
 }
@@ -99,6 +113,10 @@ function selfTest() {
     ['旧链调用被检出(genRecruit)', countCalls(badShell, 'genRecruit') > 0],
     ['定义行不算调用', countCalls('async function genStrategy(a, photos) {', 'genStrategy') === 0],
     ['新引擎调用被识别', /generateVnextChannels\(/.test('const out = await generateVnextChannels(a.id);')],
+    ['详情页守卫被识别', /!a\.vnextPromo && typeof renderActivityEditorial/.test(
+      'if (detailModeOf() === "editorial" && !a.vnextPromo && typeof renderActivityEditorial === "function") return renderActivityEditorial(a);')],
+    ['Canvas 主讲被识别', /const vnextA = \(a\.vnextPromo && typeof renderPromoCanvas/.test(
+      'const vnextA = (a.vnextPromo && typeof renderPromoCanvas === "function") ? renderPromoCanvas(a.vnextPromo, {}) : null;')],
   ];
   let bad = 0;
   cases.forEach(([m, c]) => { if (!c) { bad += 1; console.error('  ✗', m); } else console.log('  ✓', m); });

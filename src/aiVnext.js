@@ -77,8 +77,16 @@
   async function generateVnextPromo(activityId) {
     var a = (typeof getActivity === 'function') ? getActivity(activityId) : null;
     if (!a) return;
+    a._vnextLoading = true; // §14：上传资料后直接出现「正在理解活动并制作详情…」，不问风格
+    if (typeof showView === 'function') showView(state.view, state.params);
     toast('AI 正在理解活动资料并策划 Promo Canvas…');
-    var result = await callVnext('/api/content-vnext/generate', gatherSources(a));
+    var result;
+    try {
+      result = await callVnext('/api/content-vnext/generate', gatherSources(a));
+    } finally {
+      a._vnextLoading = false;
+      if (typeof showView === 'function') showView(state.view, state.params);
+    }
     if (!result) return;
     a.vnextPromo = result;
     if (typeof saveState === 'function') saveState();
@@ -131,10 +139,15 @@
     var has = a.vnextPromo && Array.isArray(a.vnextPromo.blocks) && a.vnextPromo.blocks.length;
     var canvasHtml;
     if (!has) {
-      canvasHtml = '<div class="apc-region apc-empty">' +
-        '<div class="apc-empty-txt">新版 AI Promo Canvas：让 ClubOS 自己当内容主编，按这场活动策划完全不同的宣传结构（不再套固定模板）。</div>' +
-        '<button class="btn btn-primary" data-action="vnextGenerate">' + ICON('sparkles') + ' 生成 AI Promo Canvas</button>' +
-        '</div>';
+      if (a._vnextLoading) {
+        // §14：生成中不问风格，直接给可见的「正在理解活动并制作详情…」
+        canvasHtml = '<div class="apc-region apc-empty apc-loading"><div class="apc-empty-txt"><b>正在理解活动并制作详情…</b><span class="tiny muted">AI 正在通读资料 → 策划切口 → 逐块生成，大约需要一至两分钟</span></div></div>';
+      } else {
+        canvasHtml = '<div class="apc-region apc-empty">' +
+          '<div class="apc-empty-txt">新版 AI Promo Canvas：让 ClubOS 自己当内容主编，按这场活动策划完全不同的宣传结构（不再套固定模板）。</div>' +
+          '<button class="btn btn-primary" data-action="vnextGenerate">' + ICON('sparkles') + ' 生成 AI Promo Canvas</button>' +
+          '</div>';
+      }
     } else {
       var canvas = (typeof renderPromoCanvas === 'function') ? renderPromoCanvas(a.vnextPromo, {}) : '';
       canvasHtml = '<div class="apc-region">' +

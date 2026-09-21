@@ -5296,6 +5296,8 @@ body{
 .apc-region { margin: 14px 0 4px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
 .apc-empty { padding: 22px 18px; display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
 .apc-empty-txt { font-size: 13px; color: var(--muted); line-height: 1.6; }
+.apc-loading .apc-empty-txt { display: flex; flex-direction: column; gap: 4px; animation: apcPulse 1.4s ease-in-out infinite; }
+@keyframes apcPulse { 0%,100% { opacity: .55 } 50% { opacity: 1 } }
 .apc-bar { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--bg); }
 .apc-bar-t { font-size: 12px; font-weight: 700; color: var(--brand-700, #2F5D50); letter-spacing: .04em; }
 .apc { }
