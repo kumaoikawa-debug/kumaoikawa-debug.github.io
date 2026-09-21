@@ -1418,6 +1418,7 @@ function channelMeta(ch) {
         <div class="slogan-en">ClubOS 运营助手</div>
         <h1>${esc(state.brand.name)}，今天该做什么？</h1>
         <p>ClubOS 已经帮你把待办列好了，点开任意一项就能生成宣传 / 提醒 / 回顾内容。</p>
+        ${!aiAuthMode() ? `<div class="ai-off-banner" data-action="nav" data-view="ai">${ICON("alert-triangle")}<div class="aob-t"><b>AI 还没连接（这台浏览器）</b><span>AI 生成 / 方案整理都不可用。点这里去「AI 设置」，填「后端地址 + 管理员口令 + 商家ID」，30 秒搞定。</span></div>${ICON("chevron-right")}</div>` : ""}
         <div class="create-box compact">
           <textarea id="createInput" placeholder="一句话创建新活动，例如：本周六赵公山轻装徒步，168 元/人，限 25 人……"></textarea>
           <div class="create-actions">
@@ -1841,7 +1842,7 @@ function channelMeta(ch) {
         </div>
       </div>
 
-      <details class="fr-section" open>
+      <details class="fr-section" open id="aiSettingsBox">
         <summary class="fr-section-h" style="cursor:pointer"><h3>AI 设置</h3><span class="more">收起</span></summary>
         <div class="mem-ai">
           <p class="muted small" style="margin:0 0 10px">生产环境由<b>总平台统一持有 AI Key</b>并按 AI 积分计量，俱乐部只需填下方「后端地址 + 管理员口令 + 商家ID」，无需任何 Key。未接后端时，可填「本地演示 Key」临时直连（仅存本机浏览器）。</p>

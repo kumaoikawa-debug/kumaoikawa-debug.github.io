@@ -2026,8 +2026,26 @@ function showView(view, params) {
   function generateFromInput() {
     const ta = $("#createInput");
     const text = ta ? ta.value.trim() : "";
-    if (!text) return toast("请先描述你的活动");
-    if (!aiAuthMode()) { toast("请先在「AI 设置」配置后端地址或本地演示 Key 以启用 AI 生成"); openAISettings(); return; }
+    /* v229：空输入不能只 toast 一声就没了——把输入框滚到眼前并聚焦，老板立刻知道该先写字 */
+    if (!text) {
+      if (ta) { try { ta.scrollIntoView({ behavior: "smooth", block: "center" }); ta.focus({ preventScroll: true }); } catch (e) { try { ta.focus(); } catch (e2) {} } }
+      return toast("先在框里写一句话描述活动，再点「AI 生成活动」");
+    }
+    /* v229：未配置 AI 不能只是跳到设置页顶部就完事——直接滚到「AI 设置」面板并高亮，
+       一眼看到要填什么（实测反馈②：老板点了按钮落在设置页，不知道下一步做什么 = 「进不去」） */
+    if (!aiAuthMode()) {
+      toast("这个浏览器还没配置 AI：填一次「后端地址 + 管理员口令 + 商家ID」即可");
+      openAISettings();
+      setTimeout(function () {
+        const box = document.getElementById("aiSettingsBox");
+        if (box) {
+          try { box.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {}
+          box.classList.add("flash-hint");
+          setTimeout(function () { box.classList.remove("flash-hint"); }, 2600);
+        }
+      }, 80);
+      return;
+    }
     state.draft = blankActivity();
     state.draft.photos = (state._pendingPhotos || []).slice(); // §七：第 1 步就已上传的照片带进活动
     state.draft.raw = text;
@@ -2605,6 +2623,13 @@ function showView(view, params) {
     const bu = $("#backendUrl"); if (bu) setBackendURL(bu.value.trim());
     const bac = $("#backendAdminCode"); if (bac) setBackendAdminCode(bac.value.trim());
     const bmid = $("#backendMerchantId"); if (bmid) setBackendMerchantId(bmid.value.trim());
+    /* v229：回读校验。隐私模式 / 全禁站点数据的浏览器里 setBackendURL 会**静默失败**——
+       界面照样提示「已保存」，重开页面配置全丢，老板只会觉得「配置了还是没生效」。
+       回读对不上就如实报错，别假装成功。 */
+    if (bu && bu.value.trim() && (getBackendURL() || "") !== bu.value.trim().replace(/\/+$/, "")) {
+      toast("⚠️ 配置没能保存：浏览器阻止了本地存储（隐私模式 / 禁用 Cookie），请换常规窗口或放开网站数据权限后再保存");
+      return;
+    }
     // 保存后端配置后清掉旧 JWT，下次调用会按新地址/口令重新登录
     clearBackendToken();
     toast("AI 设置已保存");

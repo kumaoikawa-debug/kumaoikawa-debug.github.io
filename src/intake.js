@@ -576,7 +576,10 @@ function intakeMergeTexts(items) {
 function intakeFallbackDescription(text) {
   /* ★v206：1500 字会把方案后半段的逐日行程整段截掉（实测 2820 字的方案卡在第 8 页 Day 2 中间）。
      行程是行程页的唯一原材料，宁可描述长一点，也不能丢。 */
-  return intakeCleanText(String(text || "").slice(0, 4000));
+  const s = intakeCleanText(String(text || "").slice(0, 4000));
+  /* v229：「【第 N 页】」是抽取时自己加的页码坐标（给 AI 定位结构用的），无 AI 原样回填时
+     不该出现在描述里（实测反馈①：老板看到描述里有「【第 1 页】」觉得是脏数据） */
+  return s.split("\n").filter(function (l) { return !/^【第\s*\d+\s*页】\s*$/.test(l.trim()); }).join("\n");
 }
 /* 送进 AI 的整理指令：只许搬运与重组，不许新增事实（承 v193 / v201 / v203） */
 const INTAKE_SYSTEM = [
@@ -746,8 +749,8 @@ async function intakeRunFiles(files) {
     it.warn = aiAuthMode()
       ? "AI 整理没成功，已把原文直接填进描述（未做任何改写）"
       : (unreachable
-        ? "未配置 AI：图片海报只能读出需要视觉 AI，已把能读到的文字原样填进描述"
-        : "未配置 AI：已把原文原样填进描述，没有做任何整理");
+        ? "未配置 AI：图片海报要读出文字需要视觉 AI，已把能读到的原样填进描述（到「设置 → AI 设置」连接后端可自动整理）"
+        : "未配置 AI（这台浏览器没填后端地址）：已把原文原样填进描述——到「设置 → AI 设置」填「后端地址+管理员口令+商家ID」，之后上传即可自动整理并一键生成");
   } else if (!texts.length) {
     /* 每份文件的具体原因已经写在各自那一行（红字），这里只给一句中性结论；
        不再给「换一种格式试试」这种可能不对症的笼统建议（比如其实是没配视觉 AI）。 */

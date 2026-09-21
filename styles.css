@@ -6050,3 +6050,12 @@ s.pp-base, .dm-v s.pp-base { text-decoration: line-through; }
 .block-price-main { font-size: 22px; font-weight: 800; color: #e0532b; }
 .block-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
 .block-note { margin-top: 10px; }
+
+/* ===== v229：AI 未连接横条（dashboard hero）+ AI 设置面板高亮 ===== */
+.ai-off-banner{display:flex;align-items:center;gap:10px;margin:0 0 12px;padding:10px 14px;border-radius:12px;background:#FDF3E7;border:1px solid #F0D9B8;color:#7A5A2E;font-size:13px;cursor:pointer;text-align:left}
+.ai-off-banner .aob-t{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.ai-off-banner .aob-t b{font-size:13px}
+.ai-off-banner .aob-t span{color:#96774B;font-size:12px;line-height:1.5}
+.ai-off-banner svg:last-child{margin-left:auto;opacity:.6;flex:none}
+.flash-hint{animation:aiFlash 1.3s ease-in-out 2}
+@keyframes aiFlash{0%,100%{box-shadow:0 0 0 0 rgba(196,138,63,0)}50%{box-shadow:0 0 0 6px rgba(196,138,63,.28)}}
