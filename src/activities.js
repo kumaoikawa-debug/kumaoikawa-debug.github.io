@@ -419,7 +419,7 @@
     const kvs = [];
     if (a.distance) kvs.push([a.distance, "公里"]);
     if (a.elevation) kvs.push([a.elevation, "海拔 m"]);
-    if (a.days) kvs.push([a.days, a.days > 1 ? "天行程" : "单日"]);
+    if (a.days) kvs.push([a.days, a.days > 1 ? "天行程" : "日"]);
     if (a.limit) kvs.push([a.limit, a.limitUnit || "人"]);
     const kvHtml = kvs.length ? `<div class="xh-ed-kvs">${kvs.map(([v, k]) => `<div class="xh-ed-kv"><b>${esc(String(v))}</b><span>${esc(k)}</span></div>`).join("")}</div>` : "";
 
@@ -653,8 +653,9 @@
     const v3HasCta = (v3doc && typeof contentV3HasBlock === "function") ? contentV3HasBlock(v3doc, "cta") : false;
     const v3Hero = (v3doc && typeof contentV3HeroCopy === "function") ? contentV3HeroCopy(v3doc) : null;
     /* 大标题绝不交给 AI 覆盖（非虚构硬约定：活动名是老板给的事实，不是 AI 的创作空间）；
-       V3 hero 只在页面本身没有副标题时补一句，且补的是 block 原文而非渲染器自撰。 */
-    const subV3 = (!sub && v3Hero && v3Hero.sub) ? gateOwn(v3Hero.sub) : sub;
+       V3 hero 只在页面本身没有副标题时补一句，且补的是 block 原文而非渲染器自撰。
+       v224：V3 sub 的 strict 闸门已内置于 contentV3HeroCopy（渲染器出口），此处不再重复过轻量闸门。 */
+    const subV3 = (!sub && v3Hero && v3Hero.sub) ? v3Hero.sub : sub;
     const v3BodyCls = v3doc ? " v3-root" : "";
     const v3StyleAttr = (v3doc && typeof contentV3StyleVars === "function") ? ` style="${contentV3StyleVars(v3doc)}"` : "";
     const v3BodyMain = v3doc ? v3Canvas : (leadHtml + secHtml + quoteHtml + galleryHtml);

@@ -46,14 +46,27 @@ function contentV3StyleVars(doc) {
   return out;
 }
 
-/* ------------------------------------------------------------ 文案工具 */
-/* 正文按空行拆段（AI 可能在 body 里塞软换行）；逐段转义。
-   注意：这里**只做结构化**，不补任何文字。 */
+/* ------------------------------------------------------------ 文案闸门 */
+/* v224：V3 文档的文学块（lead/statement/quote/cta/chapter_break/text_image 及一切
+   headline/caption）必须过 v201 文学层闸门的 **strict 档** —— 此前 V3 双轨直接
+   contentV3Paras 上屏，完全绕过了闸门，导致「10月1日，双楠大道94号集合——这是我们的
+   句首」「单日，15人，¥128——这是我们的分行与字距」「类型：户外探索，地点：…，季节：…」
+   这类数据句 / 元数据行原样出现在图文情感宣传里（老板第三次反馈）。
+   strict 档额外丢「元数据行」与「元叙事句」（见 core.js LITERARY_META_WORDS）。
+   metric 块是事实层（数字行是刻意呈现），**不**过闸门。
+   兜底形态：闸门清成空 → 该段/该标题直接不渲染（渲染器绝不补写文案，铁律②）。 */
+function contentV3Lit(txt) {
+  if (typeof sanitizeLiteraryText !== "function") return String(txt == null ? "" : txt);
+  return sanitizeLiteraryText(txt, true);
+}
+
+/* 正文按空行拆段（AI 可能在 body 里塞软换行）；逐段过闸门再转义。
+   注意：这里**只做结构化 + 净化**，不补任何文字。 */
 function contentV3Paras(txt) {
   var s = String(txt == null ? "" : txt).replace(/\r/g, "").trim();
   if (!s) return "";
   return s.split(/\n{1,}/).map(function (p) {
-    p = String(p).trim();
+    p = contentV3Lit(String(p).trim());
     return p ? "<p>" + esc(p) + "</p>" : "";
   }).filter(Boolean).join("");
 }
@@ -150,8 +163,8 @@ function contentV3HeroCopy(doc) {
   var b = contentV3FirstBlock(doc, "hero");
   if (!b) return null;
   var c = b.copy || {};
-  var headline = contentV3Trim(c.headline, 40);
-  var sub = contentV3Trim(c.body || c.caption, 60);
+  var headline = contentV3Lit(contentV3Trim(c.headline, 40));
+  var sub = contentV3Lit(contentV3Trim(c.body || c.caption, 60));
   if (!headline && !sub) return null;
   return { headline: headline, sub: sub };
 }
@@ -172,9 +185,10 @@ function contentV3BlockHtml(a, b, ctx) {
   var cols = (isFinite(colsNum) && colsNum >= 1 && colsNum <= 4) ? Math.floor(colsNum) : 0;
 
   var c = b.copy || {};
-  var headline = contentV3Trim(c.headline, 60);
+  /* v224：headline/caption 也是文学层 —— 过 strict 闸门，清成空就不渲染（绝不保留脏标题）。 */
+  var headline = contentV3Lit(contentV3Trim(c.headline, 60));
   var body = c.body;
-  var caption = contentV3Trim(c.caption, 80);
+  var caption = contentV3Lit(contentV3Trim(c.caption, 80));
 
   var media = contentV3MediaList(a, b, ctx);
   var ev = Array.isArray(b.evidenceRefs) ? b.evidenceRefs.slice(0, 8).filter(function (x) { return typeof x === "string" && x; }) : [];

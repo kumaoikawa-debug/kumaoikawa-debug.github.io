@@ -809,11 +809,11 @@
     if (cached) return cached;
     let r;
     try {
-      r = await fetch(url + "/api/pay/admin/login", {
+      r = await fetch(url + "/api/pay/admin/login", Object.assign({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: code, merchant_id: mid }),
-      });
+      }, aiFetchSignal(20000)));
     } catch (e) {
       // fetch 抛错 = 网络不可达 / 地址写错 / 后端未开 CORS（预检被浏览器拦）
       _backendLastError = "网络请求被阻断（Failed to fetch）—— 检查地址是否正确，或后端是否允许跨域(CORS)";
@@ -849,6 +849,16 @@
     try { return JSON.parse(s); } catch (e) { return null; }
   }
 
+  /* v224：AI 请求统一带超时。此前 clubLLM 两路 fetch 都没有 signal ——
+     Render 免费实例冷启动（50–100s）或网关挂住时，请求永不返回，
+     「AI 生成活动」点了之后遮罩播完动画就停在原地、没有任何跳转（老板实测反馈①）。
+     加超时后：超时 → 走既有的兜底链（后端→直连→本地基因模板）→ 必然进入确认卡。
+     AbortSignal.timeout 旧 Safari 不支持 → 探测后再用，不支持就维持原行为。 */
+  function aiFetchSignal(ms) {
+    try { return (typeof AbortSignal !== "undefined" && AbortSignal.timeout) ? { signal: AbortSignal.timeout(ms) } : {}; }
+    catch (e) { return {}; }
+  }
+
   // 演示模式：浏览器直连（仅在没有后端或后端不可达时用作兜底）
   async function clubLLMdirect(opts) {
     const key = getAIKey(); if (!key) return null;
@@ -858,11 +868,11 @@
     body.messages.push({ role: "user", content: opts.user });
     if (opts.json) body.response_format = { type: "json_object" };
     try {
-      const res = await fetch(aiEndpoint(p), {
+      const res = await fetch(aiEndpoint(p), Object.assign({
         method: "POST",
         headers: Object.assign({ "Content-Type": "application/json" }, aiAuthHeader(p, key)),
         body: JSON.stringify(body),
-      });
+      }, aiFetchSignal(30000)));
       if (!res.ok) return null;
       const d = await res.json();
       const c = d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content;
@@ -882,13 +892,13 @@
     if (opts.json) body.response_format = { type: "json_object" };
     const headers = { "Content-Type": "application/json", Authorization: "Bearer " + token };
     try {
-      let res = await fetch(url + "/api/pay/membership/ai-proxy", { method: "POST", headers: headers, body: JSON.stringify(body) });
+      let res = await fetch(url + "/api/pay/membership/ai-proxy", Object.assign({ method: "POST", headers: headers, body: JSON.stringify(body) }, aiFetchSignal(60000)));
       if (res.status === 401) {
         // JWT 过期 → 清缓存刷新一次
         clearBackendToken();
         token = await ensureBackendToken();
         if (!token) return "__fallback__";
-        res = await fetch(url + "/api/pay/membership/ai-proxy", { method: "POST", headers: Object.assign({}, headers, { Authorization: "Bearer " + token }), body: JSON.stringify(body) });
+        res = await fetch(url + "/api/pay/membership/ai-proxy", Object.assign({}, { method: "POST", headers: Object.assign({}, headers, { Authorization: "Bearer " + token }), body: JSON.stringify(body) }, aiFetchSignal(60000)));
       }
       if (!res.ok) return null;
       const d = await res.json().catch(() => ({}));
@@ -1322,6 +1332,12 @@ const FACT_LITERAL_RULES = [
   /* 时长 / 车程：「4小时车程」也是参数（老板截图里那行参数串就含它）。
      只认「数字 + 时间单位」，不碰「一小时后」这种文学说法（那是中文数词）。 */
   { key: "dur", re: /(?:车程|路程|耗时|用时|时长|需要|大约|约|共)?\s*\d+(?:\.\d+)?\s*(?:小时|分钟|分钟车程|h)(?![时时])/g },
+  /* v224 补漏（老板第三次反馈数据进文学层）：「双楠大道94号集合」的「94号」、
+     「正等待15种不同的生成方式」的「15种」此前都漏网 ——
+     date 规则只覆盖「X月X日」形态，门牌号/编号（号）与计数（种）是独立形态。
+     只影响文学层（事实层不经闸门，数字原样），且沿用「嵌在短语中间→整句丢弃」的保护。 */
+  { key: "door", re: /\d{1,4}\s*号/g },
+  { key: "kind", re: /\d+\s*种/g },
 ];
 
 /* 逐条收集「硬参数」命中项。用 String.match(/g) 而非 exec —— 后者会污染
@@ -1394,7 +1410,25 @@ function factStripSafe(seg) {
 }
 
 /* 单行净化（完整闸门）：剥离参数、丢弃参数播报行、丢弃剥离后不成句的残句。 */
-function sanitizeLiteraryPass(line) {
+/* v224 strict 档（Content Engine V3 图文专用）：
+   ① 元数据行：一句里「短标签：值」段 ≥2（「类型：户外探索，地点：成都金龙长城，季节：秋季」）
+      → 整句丢弃。这是 AI 把活动字段当文案播报的形态 —— 在宣发出口（v203）标签行是事实层
+      要保留，但详情图文的文学段落里它就是元数据泄漏，两档分开。
+      单标签（「时间：9月20日」）仍不丢 —— 与 v203 判据兼容。
+   ② 元叙事禁词：AI 偶尔会把「写作过程」写进文案（「这是我们的句首」「参与它的生成」
+      「等待15种不同的生成方式」）—— 文学层出现这类词整句丢弃。老板手写字段只走
+      stripBroadcastLines 轻量闸门，不受影响。 */
+var LITERARY_META_WORDS = /生成|句首|分行|字距|模板|提示词|prompt|变体|渲染|算法|素材库|版本号/i;
+function literaryMetaSegCount(sent) {
+  var segs = String(sent == null ? "" : sent).split(/[，、；;]+/);
+  var n = 0;
+  for (var i = 0; i < segs.length; i++) {
+    var s = segs[i].replace(/^[^\u4e00-\u9fa5A-Za-z0-9]+/, "");
+    if (/^[^\s：:，。；、]{1,8}\s*[：:]/.test(s)) n++;
+  }
+  return n;
+}
+function sanitizeLiteraryPass(line, strict) {
   const src = String(line == null ? "" : line);
   if (!src.trim()) return "";
   const parts = splitLiterarySentences(src);
@@ -1402,6 +1436,10 @@ function sanitizeLiteraryPass(line) {
   for (let i = 0; i < parts.length; i++) {
     const sent = parts[i].trim();
     if (!sent) continue;
+    if (strict) {
+      if (literaryMetaSegCount(sent) >= 2) continue;
+      if (LITERARY_META_WORDS.test(sent)) continue;
+    }
     const hits = factBroadcastHits(sent);
     /* 干净句原样放行 —— 这是「文学层不误伤」的保险：
        没有参数就不做任何标点重排与断句取舍（否则「这一天…脚下。」这类
@@ -1448,10 +1486,10 @@ function sanitizeLiteraryPass(line) {
 /* 文学层净化（完整闸门）：**先把换行当段落边界切开**，再逐行逐句处理。
    ★ 必须先切行：早先把「\n」也算作句末符，导致多段导语被合并成一段
    （段与段之间的换行被 join("") 吃掉了）—— 段落结构属于排版，不能被净化改掉。 */
-function sanitizeLiteraryText(text) {
+function sanitizeLiteraryText(text, strict) {
   const src = String(text == null ? "" : text);
   if (!src.trim()) return "";
-  return src.split(/\n+/).map(function (line) { return sanitizeLiteraryPass(line); })
+  return src.split(/\n+/).map(function (line) { return sanitizeLiteraryPass(line, strict); })
     .filter(function (l) { return l && l.trim(); }).join("\n");
 }
 

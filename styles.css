@@ -5991,3 +5991,19 @@ s.pp-base, .dm-v s.pp-base { text-decoration: line-through; }
 .v3ed-media-ids { width: 100%; border: 1px solid #ddd; border-radius: 7px; padding: 6px 8px; font: inherit; resize: vertical; }
 .v3ed-pick { margin-top: 6px; border: 1px solid #ddd; background: #fff; border-radius: 7px; padding: 4px 12px; font: inherit; cursor: pointer; }
 .v3ed-pick:hover { border-color: var(--brand); color: var(--brand); }
+
+/* =========================================================================
+   v224：报名信息卡（DECISION .decision-meta）窄屏排版修复
+   老板截图：3 列网格在手机宽下每列文字区只剩 ~50px，
+   「医院门口：双楠大道94号」一字一行竖排、「10月1日」断成「10月/1日」、
+   「待确认」断成「待确/认」。窄屏降为 2 列 + 收紧图标，值一行放得下；
+   长值（地址）最多两行折行，不再逐字竖排。
+   ⚠️ 按纪律这块窄屏覆盖独立成块，桌面主样式（styles.css L3533 起）不动。
+   ========================================================================= */
+@media (max-width: 620px) {
+  .activity-page .decision-meta { grid-template-columns: repeat(2, 1fr); gap: 12px 10px; padding: 14px 12px; }
+  .activity-page .dm-item { gap: 8px; }
+  .activity-page .dm-ic { width: 26px; height: 26px; border-radius: 7px; }
+  .activity-page .dm-ic svg { width: 13px; height: 13px; }
+  .activity-page .dm-v { font-size: 13.5px; overflow-wrap: anywhere; }
+}
