@@ -374,6 +374,24 @@ function showView(view, params) {
         if (typeof reviseVnextPromo === "function") reviseVnextPromo(ra.id);
         break;
       }
+      case "vnextChannelGenerate": {
+        const ca = viewingActivity() || (state.draft ? state.draft : null);
+        if (!ca) break;
+        const channel = el && el.getAttribute && el.getAttribute("data-channel");
+        if (channel && typeof generateVnextChannel === "function") generateVnextChannel(ca.id, channel);
+        break;
+      }
+      case "vnextCopyChannel": {
+        const channel = el && el.getAttribute && el.getAttribute("data-channel");
+        if (channel && typeof copyVnextChannel === "function") copyVnextChannel(channel);
+        break;
+      }
+      case "vnextRecapGenerate": {
+        const ra = viewingActivity() || (state.draft ? state.draft : null);
+        if (!ra) break;
+        if (typeof generateVnextRecap === "function") generateVnextRecap(ra.id);
+        break;
+      }
 
       case "edV3Generate": {
         const v3a = viewingActivity() || (state.draft ? state.draft : null);

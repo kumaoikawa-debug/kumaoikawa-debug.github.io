@@ -12,6 +12,15 @@
 (function () {
   'use strict';
 
+  // esc 兜底：真实环境由 core.js 提供（全局 const），此处保证单测/契约环境也能独立跑
+  var esc = (typeof window !== 'undefined' && typeof window.esc === 'function')
+    ? window.esc
+    : function (s) {
+        return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+          return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+        });
+      };
+
   function backendBase() {
     return (typeof getBackendURL === 'function') ? getBackendURL() : '';
   }
@@ -99,26 +108,170 @@
   function renderVnextSection(a) {
     if (!a) return '';
     var has = a.vnextPromo && Array.isArray(a.vnextPromo.blocks) && a.vnextPromo.blocks.length;
+    var canvasHtml;
     if (!has) {
-      return '<div class="apc-region apc-empty">' +
+      canvasHtml = '<div class="apc-region apc-empty">' +
         '<div class="apc-empty-txt">新版 AI Promo Canvas：让 ClubOS 自己当内容主编，按这场活动策划完全不同的宣传结构（不再套固定模板）。</div>' +
         '<button class="btn btn-primary" data-action="vnextGenerate">' + ICON('sparkles') + ' 生成 AI Promo Canvas</button>' +
         '</div>';
+    } else {
+      var canvas = (typeof renderPromoCanvas === 'function') ? renderPromoCanvas(a.vnextPromo, {}) : '';
+      canvasHtml = '<div class="apc-region">' +
+        '<div class="apc-bar">' +
+        '<span class="apc-bar-t">AI Promo Canvas（动态策划 · 非模板）</span>' +
+        '<button class="btn btn-ghost btn-sm" data-action="vnextGenerate">' + ICON('refresh') + ' 重新策划</button>' +
+        '</div>' +
+        canvas +
+        '<div class="apc-revise">' +
+        '<input id="apc-revise-input" class="apc-revise-input" placeholder="用自然语言改稿：字少一点 / 图片多一点 / 更专业 / 突出徒步 / 重新策划" />' +
+        '<button class="btn btn-soft btn-sm" data-action="vnextRevise">' + ICON('edit') + ' 应用改稿</button>' +
+        '</div></div>';
     }
-    var canvas = (typeof renderPromoCanvas === 'function') ? renderPromoCanvas(a.vnextPromo, {}) : '';
-    return '<div class="apc-region">' +
-      '<div class="apc-bar">' +
-      '<span class="apc-bar-t">AI Promo Canvas（动态策划 · 非模板）</span>' +
-      '<button class="btn btn-ghost btn-sm" data-action="vnextGenerate">' + ICON('refresh') + ' 重新策划</button>' +
-      '</div>' +
+    // 宣发渠道（第二阶段）：共享 Activity Master，各自独立策划
+    var channelHtml = renderVnextChannelSection(a);
+    // 活动回顾（第三阶段）：围绕真实现场重新策划
+    var recapHtml = renderVnextRecapSection(a);
+    return canvasHtml + channelHtml + recapHtml;
+  }
+
+  var CHANNEL_NAMES = { wechat: '微信公众号长文', xiaohongshu: '小红书笔记', poster: '海报', moments: '朋友圈/群' };
+  function channelName(c) { return CHANNEL_NAMES[c] || c; }
+
+  async function generateVnextChannel(activityId, channel) {
+    var a = (typeof getActivity === 'function') ? getActivity(activityId) : null;
+    if (!a) return;
+    if (!channel) { toast('请选择宣发渠道'); return; }
+    toast('AI 正在生成' + channelName(channel) + '…');
+    var body = gatherSources(a);
+    body.channel = channel;
+    var result = await callVnext('/api/content-vnext/channel', body);
+    if (!result) return;
+    a.vnextChannel = a.vnextChannel || {};
+    a.vnextChannel[channel] = result;
+    if (typeof saveState === 'function') saveState();
+    if (typeof showView === 'function') showView(state.view, state.params);
+    toast(channelName(channel) + '已生成');
+  }
+
+  /** 复制某渠道产出到剪贴板（公众号=HTML，其余=纯文本） */
+  function copyVnextChannel(channel) {
+    var a = (typeof viewingActivity === 'function') ? viewingActivity() : null;
+    if (!a || !a.vnextChannel || !a.vnextChannel[channel]) { toast('尚未生成该渠道'); return; }
+    var c = a.vnextChannel[channel].content || {};
+    var text = '';
+    if (channel === 'wechat') text = c.html || '';
+    else if (channel === 'xiaohongshu') text = [c.title, c.hook, c.body, (c.tags || []).join(' '), c.ctaText].filter(Boolean).join('\n\n');
+    else if (channel === 'poster') text = [c.name, c.date + ' ' + c.location, c.priceText + ' ' + c.participation, c.sellingPoint, (c.highlights || []).join('\n')].filter(Boolean).join('\n');
+    else if (channel === 'moments') text = c.text || '';
+    if (navigator && navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(function () { toast(channelName(channel) + '内容已复制'); }, function () { toast('复制失败，请手动选择'); });
+    } else {
+      toast('当前环境不支持自动复制');
+    }
+  }
+
+  function renderVnextChannelToolbar() {
+    var btns = ['wechat', 'xiaohongshu', 'poster', 'moments'].map(function (c) {
+      return '<button class="btn btn-soft btn-sm" data-action="vnextChannelGenerate" data-channel="' + c + '">' + ICON('sparkles') + ' ' + channelName(c) + '</button>';
+    }).join('');
+    return '<div class="ch-toolbar">' + btns + '</div>';
+  }
+
+  function renderVnextChannelPreviews(a) {
+    var ch = a.vnextChannel || {};
+    var keys = ['wechat', 'xiaohongshu', 'poster', 'moments'].filter(function (k) { return ch[k]; });
+    if (!keys.length) return '';
+    return keys.map(function (k) {
+      var r = ch[k];
+      var g = r.grounding;
+      var warn = '';
+      if (g && !g.passed) {
+        var n = (g.issues || []).filter(function (i) { return i.severity === 'block'; }).length;
+        warn = '<div class="apc-grounding apc-grounding-bad">⚠ 事实校验发现 ' + n + ' 处疑似编造，请复核后再发布。</div>';
+      }
+      var preview = (typeof renderChannelResult === 'function') ? renderChannelResult(r) : '';
+      return warn + preview;
+    }).join('');
+  }
+
+  function renderVnextChannelSection(a) {
+    if (!a) return '';
+    return '<div class="ch-region">' +
+      '<div class="ch-head">宣发渠道（共享同一 Activity Master，各自重新策划）</div>' +
+      renderVnextChannelToolbar() +
+      renderVnextChannelPreviews(a) +
+      '</div>';
+  }
+
+  /* ---------- 活动回顾（§18 / §28 第三阶段） ----------
+     输入 = Activity Master + actualActivityData + 现场照片 + 领队备注 + 真实用户反馈。
+     实际发生的数据沿用现有活动对象字段（与 V3 的 v3ActualPayload 同一真源）。 */
+
+  function pushArr(out, x) {
+    if (x == null) return;
+    if (Array.isArray(x)) {
+      x.forEach(function (v) { if (v) out.push(String(v).slice(0, 200)); });
+    } else {
+      out.push(String(x).slice(0, 200));
+    }
+  }
+
+  function gatherRecapInput(a) {
+    var actual = (typeof v3ActualPayload === 'function') ? (v3ActualPayload(a) || {}) : {};
+    var leaderNotes = [];
+    pushArr(leaderNotes, a.memorableMoments);
+    pushArr(leaderNotes, a.completionSummary);
+    pushArr(leaderNotes, a.providedNotes);
+    pushArr(leaderNotes, a.leaderNotes);
+    var feedback = [];
+    pushArr(feedback, a.actualFeedback);
+    pushArr(feedback, a.feedback);
+    return {
+      actualActivityData: actual,
+      photos: mapPhotos(a),
+      leaderNotes: leaderNotes,
+      feedback: feedback,
+    };
+  }
+
+  async function generateVnextRecap(activityId) {
+    var a = (typeof getActivity === 'function') ? getActivity(activityId) : null;
+    if (!a) return;
+    toast('AI 正在回顾这场活动，判断真正值得记录的是什么…');
+    var body = gatherSources(a);
+    body.recap = gatherRecapInput(a);
+    var result = await callVnext('/api/content-vnext/recap', body);
+    if (!result) return;
+    a.vnextRecap = result;
+    if (typeof saveState === 'function') saveState();
+    if (typeof showView === 'function') showView(state.view, state.params);
+    toast('活动回顾已生成');
+  }
+
+  function renderVnextRecapSection(a) {
+    if (!a) return '';
+    var r = a.vnextRecap;
+    if (!r || !Array.isArray(r.blocks) || !r.blocks.length) {
+      return '<div class="rc-region rc-empty">' +
+        '<div class="rc-empty-txt">活动回顾：输入真实发生的数据 + 现场照片 + 领队备注，让 AI 重新判断「这一次真正值得记录的是什么」，不套固定流程。</div>' +
+        '<button class="btn btn-primary btn-sm" data-action="vnextRecapGenerate">' + ICON('sparkles') + ' 生成活动回顾</button>' +
+        '</div>';
+    }
+    var canvas = (typeof renderPromoCanvas === 'function') ? renderPromoCanvas(r, {}) : '';
+    return '<div class="rc-region">' +
+      '<div class="rc-bar"><span class="rc-bar-t">活动回顾（围绕真实现场重新策划 · 无固定流程）</span>' +
+      '<button class="btn btn-ghost btn-sm" data-action="vnextRecapGenerate">' + ICON('refresh') + ' 重新回顾</button></div>' +
+      (r.worthRecording ? '<div class="rc-worth"><b>这一次真正值得记录的是：</b>' + esc(r.worthRecording) + '</div>' : '') +
       canvas +
-      '<div class="apc-revise">' +
-      '<input id="apc-revise-input" class="apc-revise-input" placeholder="用自然语言改稿：字少一点 / 图片多一点 / 更专业 / 突出徒步 / 重新策划" />' +
-      '<button class="btn btn-soft btn-sm" data-action="vnextRevise">' + ICON('edit') + ' 应用改稿</button>' +
-      '</div></div>';
+      '</div>';
   }
 
   window.generateVnextPromo = generateVnextPromo;
   window.reviseVnextPromo = reviseVnextPromo;
   window.renderVnextSection = renderVnextSection;
+  window.generateVnextChannel = generateVnextChannel;
+  window.copyVnextChannel = copyVnextChannel;
+  window.renderVnextChannelSection = renderVnextChannelSection;
+  window.generateVnextRecap = generateVnextRecap;
+  window.renderVnextRecapSection = renderVnextRecapSection;
 })();

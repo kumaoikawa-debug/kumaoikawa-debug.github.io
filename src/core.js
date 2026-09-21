@@ -1738,6 +1738,19 @@ const REQUIRED_MODULE_FILES = {
   buildContentBlocks: "publish.js",
   applyContentBlocks: "publish.js",
   parseItinText: "publish.js",
+  /* Clean Rewrite 新引擎（ai-content-vnext）：缺 renderPromoCanvas → 详情页 Canvas 空白但无报错；
+     缺渠道三件套 → 宣发渠道按钮点了没反应 */
+  renderPromoCanvas: "aiPromoRenderer.js",
+  generateVnextPromo: "aiVnext.js",
+  reviseVnextPromo: "aiVnext.js",
+  renderVnextSection: "aiVnext.js",
+  renderChannelResult: "aiChannelRenderer.js",
+  generateVnextChannel: "aiVnext.js",
+  copyVnextChannel: "aiVnext.js",
+  renderVnextChannelSection: "aiVnext.js",
+  /* 第三阶段活动回顾：缺这两个 → 「生成活动回顾」按钮点了没反应 */
+  generateVnextRecap: "aiVnext.js",
+  renderVnextRecapSection: "aiVnext.js",
 };
 const REQUIRED_MODULES = Object.keys(REQUIRED_MODULE_FILES);
 /* 返回「缺失的模块名 → 应在文件」清单；全部就绪返回空数组 */
