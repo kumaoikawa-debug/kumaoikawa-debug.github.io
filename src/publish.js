@@ -6958,6 +6958,26 @@ function photoProfileBase(a, photos) {
     note: list.length === 0 ? "未上传照片，建议补充 3-6 张活动照以增强排版" : "",
   };
 }
+/* Case 4（昼夜素材判定）：photoDayNight(photos)
+   ★v236 删旧机制时误删了本函数、但 3 处调用点还在（publish.js 5784/5908/6441），
+   导致 publish.js 顶层在导出表处 ReferenceError 中断、后续 let 声明全部进入
+   永久 TDZ → 「AI 生成活动」走到 photoContentProfile 时静默死掉（AI 调用全成功、
+   页面却永远不跳转）。v239 原样恢复（v185 引入，依赖 analyzeOnePhoto）。 */
+function photoDayNight(photos) {
+  const list = (photos || []).filter(Boolean);
+  const night = [], day = [];
+  list.forEach((p, i) => {
+    let isNight = !!(p && p.isNight) || !!(p && p.analysis && p.analysis.isNight);
+    if (!isNight) {
+      try {
+        const sig = analyzeOnePhoto(typeof p === "string" ? p : (p.src || ""), i, null);
+        isNight = sig.scene === "night" || (sig.tags || []).indexOf("夜景") >= 0;
+      } catch (e) { isNight = false; }
+    }
+    (isNight ? night : day).push(i);
+  });
+  return { night: night, day: day, nightCount: night.length, dayCount: day.length, total: list.length, hasRhythm: night.length > 0 && day.length > 0 };
+}
 /* Case 1/2（照片信号 → 内容方向）：photoContentProfile(photos)
    从「内容识别信号」汇总色调与主体构成（同步 / 纯函数 / 只读内容，不读上传顺序）。
    与 photoProfileBase 的区别：base 只按分类计数，这里带真实色调（warm/blue）与人物、竖图占比，
