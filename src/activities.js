@@ -214,100 +214,6 @@
   const VT_SVG_PHOTO = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>';
   const VT_SVG_COVER = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M3 10h18"/></svg>';
 
-  function photoAnalysisCard(src, i, cover) {
-    const idx = i + 1;
-    const m = (typeof photoMeta === "function") ? photoMeta(src) : null;
-    if (!m) {
-      return `<div class="photo-card"><div class="pc-thumb" ${smartBg(src)}><span class="pc-idx">${idx}</span></div><div class="pc-body"><div class="pc-top"><b>图 ${idx}</b><span class="pc-cat">分析中…</span></div><div class="pc-chips"><span class="pc-chip">正在读取画面信息（模拟推断）</span></div></div></div>`;
-    }
-    const subj = (m.subjects || []).filter(Boolean);
-    const uses = (m.recommended_use || []).map((u) => PHOTO_USE_CN[u] || u);
-    const area = PHOTO_AREA_CN[m.safe_text_area] || m.safe_text_area || "";
-    return `<div class="photo-card">
-      <div class="pc-thumb" ${smartBg(src)}><span class="pc-idx">${idx}</span>${i === cover ? `<span class="pc-cover">封面</span>` : ""}</div>
-      <div class="pc-body">
-        <div class="pc-top"><b>图 ${idx}</b><span class="pc-cat">${esc(m.category || "未分类")}</span>${qualityChip(m.quality_score)}</div>
-        <div class="pc-chips">
-          <span class="pc-chip">${esc(PHOTO_ORIENT_CN[m.orientation] || "构图未知")}</span>
-          ${subj.length ? `<span class="pc-chip">主体：${esc(subj.join("、"))}</span>` : ""}
-          ${m.emotion ? `<span class="pc-chip">情绪：${esc(m.emotion)}</span>` : ""}
-        </div>
-        <div class="pc-uses"><span class="pc-uses-l">适合</span>${uses.length ? uses.map((u) => `<span class="pc-use">${esc(u)}</span>`).join("") : `<span class="pc-use muted">暂无推荐</span>`}${area ? `<span class="pc-area">文字放${esc(area)}</span>` : ""}</div>
-      </div>
-    </div>`;
-  }
-  function visualThemePickerHtml(a) {
-    const cur = edThemeOf(a);
-    const forced = String((a && a.edTheme) || "");
-    const auto = !forced;
-    return `<div class="vis-sec">
-      <h4>整体视觉<span class="vis-hint">详情页与阅读栏的配色氛围，点一下立刻换</span></h4>
-      <div class="vt-themes">
-        ${ED_THEMES.map((t) => {
-          const on = auto ? t.id === "" : t.id === forced;
-          const note = t.id === "" ? `当前：${esc(edThemeLabel(cur))}` : esc(t.desc);
-          return `<button type="button" class="vt-theme${on ? " on" : ""}" data-action="setEdTheme" data-theme="${t.id}" title="${esc(t.label)} · ${esc(t.desc)}">
-            <span class="vt-th${t.id ? " th-" + t.id : " th-auto"}"></span>
-            <b>${esc(t.label)}</b><i>${note}</i>
-          </button>`;
-        }).join("")}
-      </div>
-      <div class="tiny muted" style="margin-top:8px">只改配色，不动你的文案与照片；选「按活动自动」则跟随活动类型。</div>
-    </div>`;
-  }
-  function visualCoverHtml(a) {
-    const photos = a.photos || [];
-    if (!photos.length) {
-      return `<div class="vis-sec"><h4>封面图</h4><div class="empty-state">${VT_SVG_COVER}<div><b>上传图片后可选封面</b><span>先上传照片，再从中挑最具吸引力的一张作为活动封面</span></div></div></div>`;
-    }
-    const cover = Math.max(0, Math.min(+(a.coverIndex || 0), photos.length - 1));
-    return `<div class="vis-sec">
-      <h4>封面图<span class="vis-hint">仅用于页面主视觉，不会在正文里重复出现</span></h4>
-      <div class="vt-cover">
-        <div class="vt-cover-main" ${smartBg(photos[cover])}>
-          <span class="vt-cover-tag">${ICON("star")} 当前封面 · 图 ${cover + 1}</span>
-        </div>
-        <div class="vt-cover-side">
-          <div class="vt-cover-tip">点下面任意一张即可换封面</div>
-          <div class="vt-cover-strip">
-            ${photos.map((p, i) => `<button type="button" class="cover-thumb${i === cover ? " sel" : ""}" data-action="setCover" data-i="${i}" title="设为封面 · 图 ${i + 1}" ${smartBg(p)}><span class="ct-idx">${i + 1}</span></button>`).join("")}
-          </div>
-        </div>
-      </div>
-    </div>`;
-  }
-  function visualOutlineHtml(a) {
-    const outline = buildPageStoryOutline(a);
-    return `<div class="vis-sec">
-      <h4>页面结构<span class="vis-hint">随内容与素材动态编排</span></h4>
-      <div class="outline-list">
-        ${outline.map((b, i) => { const meta = blockMeta(b.type); return `<div class="ol-item tone-${meta.tone}">
-          <span class="ol-no">${i + 1}</span>
-          <span class="ol-ic">${ICON(meta.ic)}</span>
-          <span class="ol-t">${esc(meta.label)}</span>
-          <span class="ol-p">${esc(b.purpose || "")}</span>
-        </div>`; }).join("")}
-      </div>
-      <div class="tiny muted">共 ${outline.length} 个区块。顺序由内容需要决定：先讲清为什么去，再给行程与费用；少图不重复填充，多图形成节奏。</div>
-    </div>`;
-  }
-  function visualTabHtml(a) {
-    const photos = a.photos || [];
-    const cover = Math.max(0, Math.min(+(a.coverIndex || 0), Math.max(0, photos.length - 1)));
-    return `<div class="vis-tab">
-      ${visualThemePickerHtml(a)}
-      <div class="vis-sec">
-        <h4>图片分析结果<span class="sim-tag">模拟分析（演示）</span>${photos.length ? `<span class="vis-count">${photos.length} 张</span>` : ""}</h4>
-        ${photos.length
-        ? `<div class="photo-analysis">${photos.map((src, i) => photoAnalysisCard(src, i, cover)).join("")}</div>`
-        : `<div class="empty-state">${VT_SVG_PHOTO}<div><b>还没有上传图片</b><span>回到「内容」标签上传活动照片后，这里会自动分析画面并推荐用途</span></div></div>`}
-      </div>
-      ${visualCoverHtml(a)}
-      ${visualOutlineHtml(a)}
-    </div>`;
-  }
-
-  /* 出行前清单：按活动类型给差异化条目（基础 5 条 + 场景补充，最多 8 条） */
   function editorialPrepItems(a) {
     a = a || {};
     var t = String(a.type || "") + " " + String(a.season || "");
@@ -2004,19 +1910,6 @@ function channelMeta(ch) {
     </div>`;
   }
 
-  function pastePanelHtml(a) {
-    return `<div class="panel" style="margin-bottom:18px">
-      <div class="panel-head"><h3>粘贴真实行程</h3><span class="tiny muted">微信/Word 旧文案直接粘贴，AI 只分段整理不编造</span></div>
-      <div class="panel-body">
-        <textarea id="itinPaste" class="input" style="min-height:96px;width:100%;font-size:13px" placeholder="例如：\n第一天\n08:00 集合签到\n10:30 抵达起点\n12:00 午餐\n第二天\n09:00 自然探索\n15:00 返程"></textarea>
-        <div class="row gap-8" style="margin-top:8px">
-          <button class="btn btn-primary btn-sm" data-action="parsePaste">解析并填入行程</button>
-          <button class="btn btn-ghost btn-sm" data-action="clearPaste">清空</button>
-          <button class="btn btn-soft btn-sm" data-action="openHistory">${ICON("history")} 从历史复用</button>
-        </div>
-      </div>
-    </div>`;
-  }
   function historyModalHtml() {
     const H = state.history || [];
     if (!H.length) return `<div class="modal"><div class="modal-head"><h3>历史活动库</h3><button class="icon-btn" data-action="closeModal" aria-label="关闭">${ICON("x")}</button></div><div class="modal-body"><div class="empty">还没有已发布的活动。发布活动后，会自动进入历史库，下次可一键沿用行程与文案。</div></div></div>`;
@@ -2042,33 +1935,7 @@ function channelMeta(ch) {
     m.addEventListener("click", (e) => { if (e.target === m) m.remove(); });
   }
   // 地点风景图编辑面板：展示自动搜索结果，老板可挑选 / 移除 / 手动替换
-  function placePhotoPanelHtml(a) {
-    const ph = a.placePhotos || [];
-    const chosen = a.whyGoPhoto || "";
-    const searching = !!a._searchingPlacePhotos;
-    const emptyMsg = searching
-      ? `<div class="pp-status"><span class="pp-spinner"></span>正在搜索「${esc(a.place || "活动地点")}」的风景图…</div>`
-      : (ph.length ? "" : `<div class="pp-status pp-empty">还没有找到公开风景图。点击下方按钮联网搜索，或粘贴图片链接手动替换。</div>`);
-    const thumbs = ph.length
-      ? `<div class="place-photos">${ph.map((p, i) => `<div class="pp-thumb ${chosen === p.src ? "on" : ""}" data-action="pickPlacePhoto" data-id="${i}"><img src="${esc(p.src)}" alt="" loading="lazy"><button class="pp-x" data-action="rmPlacePhoto" data-id="${i}" aria-label="移除">${ICON("x")}</button>${chosen === p.src ? `<span class="pp-pick">已选用</span>` : ""}</div>`).join("")}</div>`
-      : emptyMsg;
-    return `<div class="panel" style="margin-bottom:18px">
-      <div class="panel-head"><h3>地点风景图 · 为什么值得来</h3><span class="tiny muted">联网自动搜索，老板可手动更换</span></div>
-      <div class="panel-body">
-        ${chosen ? `<div class="pp-chosen"><span class="tiny muted">当前用于「为什么值得去」区块：</span><img src="${esc(chosen)}" alt=""></div>` : ""}
-        ${thumbs}
-        <div class="row gap-8" style="margin-top:10px">
-          <button class="btn btn-soft btn-sm" data-action="searchPlacePhotos" type="button" ${searching ? "disabled" : ""}>${ICON("search")} ${searching ? "搜索中…" : "搜索该地点风景图"}</button>
-        </div>
-        <div class="row gap-8" style="margin-top:10px">
-          <input class="input" id="whyGoPhotoUrl" placeholder="或粘贴一张图片链接手动替换">
-          <button class="btn btn-ghost btn-sm" data-action="setWhyGoPhotoUrl" type="button">使用此图</button>
-        </div>
-        ${chosen ? `<button class="btn btn-ghost btn-sm" data-action="clearWhyGoPhoto" type="button" style="margin-top:8px">移除当前配图</button>` : ""}
-      </div>
-    </div>`;
-  }
-
+  /* ===== v240 编辑器瘦身：只保留 价格与团期 / 智能推装备 / 领队管理 ===== */
   function renderEditor() {
     const a = state.draft;
     if (!a) { showView("create"); return ""; }
@@ -2077,8 +1944,7 @@ function channelMeta(ch) {
       const _d = inferDifficulty(a);
       if (_d) { a.difficulty = _d; a.difficultyInferred = true; }
     }
-    const tab = state.editorTab || "content";
-    const servChips = [["includeLeader", "领队"], ["includeMeal", "午餐"], ["includeInsurance", "保险"], ["includeTransport", "交通"], ["includeGear", "装备"]];
+    const tab = state.editorTab || "price";
     return `
       <div class="row between" style="margin-bottom:18px">
         <div><div class="eyebrow">AI 活动工作台</div><h2 class="section-title" style="margin:4px 0 0">确认并微调你的活动</h2></div>
@@ -2089,144 +1955,19 @@ function channelMeta(ch) {
         </div>
       </div>
       <div class="editor-steps" role="tablist">
-        <button type="button" class="estep ${tab==="content"?"on":""}" data-action="switchTab" data-tab="content"><span class="es-no">1</span>确认事实 · 微调内容</button>
-        <button type="button" class="estep ${tab==="price"?"on":""}" data-action="switchTab" data-tab="price"><span class="es-no">2</span>价格与团期</button>
-        <button type="button" class="estep ${tab==="visual"?"on":""}" data-action="switchTab" data-tab="visual"><span class="es-no">3</span>视觉呈现</button>
-        <button type="button" class="estep ${tab==="publish"?"on":""}" data-action="switchTab" data-tab="publish"><span class="es-no">4</span>预览并发布</button>
+        <button type="button" class="estep ${tab==="price"?"on":""}" data-action="switchTab" data-tab="price"><span class="es-no">1</span>价格与团期</button>
+        <button type="button" class="estep ${tab==="gear"?"on":""}" data-action="switchTab" data-tab="gear"><span class="es-no">2</span>智能推装备</button>
+        <button type="button" class="estep ${tab==="leader"?"on":""}" data-action="switchTab" data-tab="leader"><span class="es-no">3</span>领队管理</button>
       </div>
       <div class="editor">
       <div class="editor-main">
-        <div class="etab-panel" data-panel="content" ${tab!=="content"?"hidden":""}>
-          ${factConfirmHtml(a)}
-          <div class="strategy-inline">
-          <div><span class="eyebrow">AI 内容方向 · ${esc(a.contentStrategy ? a.contentStrategy.name : "推荐")}</span><h3>${esc(a.headline || "")}</h3><p>${esc(a.contentStrategy ? a.contentStrategy.reason : "")}</p></div>
-        </div>
-        ${a._similarList && a._similarList.length ? `<div class="similar-banner"><div class="sb-ic">${ICON("history")}</div><div class="sb-txt"><b>找到 ${a._similarList.length} 个相似历史活动</b><br><span class="tiny muted">${a._similarList.map((s)=>esc(s.title)).join("、")} · 可直接沿用行程，仅需改日期与价格</span></div><button class="btn btn-soft btn-sm" data-action="reuseHistory" data-id="${a._similarList[0].id}">沿用上次行程</button></div>` : ""}
-        <div class="panel" style="margin-bottom:18px">
-            <div class="panel-head"><h3>AI 识别结果</h3><span class="tiny muted">点击任意字段即可修改</span></div>
-            <div class="panel-body">
-              <div class="grid-2">
-                <div class="field"><label>活动名称</label><input class="input" data-bind="title" value="${esc(a.title)}"></div>
-                <div class="field"><label>活动类型</label><select class="select" data-bind="type">${TYPE_OPTIONS.map((o)=>`<option value="${esc(o.value)}" ${a.type === o.value ? "selected" : ""}>${esc(o.label)}</option>`).join("")}</select></div>
-                <div class="field"><label>活动日期</label><input class="input" data-bind="date" value="${esc(a.date || a.dateMD)}"></div>
-                <div class="field"><label>集合地点</label><input class="input" data-bind="meeting" value="${esc(a.meeting)}"></div>
-                <div class="field"><label>集合时间</label><input class="input" data-bind="meetTime" value="${esc(a.meetTime)}"></div>
-                <div class="field"><label>适合年龄 <span class="auto-tag">${a.ageManual ? "已手动调整" : "AI 已按类型/风险预填"}</span></label><input class="input" data-bind="ageRange" value="${esc(a.ageRange)}" placeholder="如：18—55岁、22岁以上、6到12岁"><div class="tiny muted" style="margin-top:4px">可直接修改，支持 6—12岁 / 22岁以上 / 6到12岁 等写法；手动修改后切换类型将保留你的值。</div></div>
-                <div class="field"><label>活动价格（元）</label><input class="input" type="number" data-bind="price" value="${a.price || ""}"></div>
-                <div class="field"><label>活动天数</label><input class="input" type="number" min="1" max="7" data-bind="days" value="${a.days || 1}"></div>
-                <div class="field"><label>招募上限</label><div class="limit-field"><input class="input" type="number" data-bind="limit" value="${a.limit || ""}" placeholder="数量"><select class="select" data-bind="limitUnit"><option ${a.limitUnit === "组家庭" ? "selected" : ""}>组家庭</option><option ${a.limitUnit === "人" ? "selected" : ""}>人</option></select></div></div>
-                <div class="field"><label>活动难度 <span class="auto-tag">${a.difficultyManual ? "已手动设置" : "AI 按类型/距离/海拔预填"}</span></label><select class="select" data-bind="difficulty">${["", "轻松", "中等", "挑战", "入门", "进阶", "专业级"].map((d) => `<option value="${esc(d)}" ${(a.difficulty || "") === d ? "selected" : ""}>${d ? esc(d) : "待选择"}</option>`).join("")}</select></div>
-                <div class="field"><label>参与人群 <span class="auto-tag">多个用顿号分隔</span></label><input class="input" data-bind="audience" value="${esc((a.audience || []).join("、"))}" placeholder="如：亲子、成人、团建"></div>
-                <div class="field"><label>路线距离（公里）</label><input class="input" type="number" data-bind="distance" value="${esc(a.distance || "")}" placeholder="如：12"></div>
-                <div class="field"><label>返回时间</label><input class="input" data-bind="returnTime" value="${esc(a.returnTime || "")}" placeholder="如：18:00 返回成都"></div>
-                <div class="field"><label>联系方式 <span class="auto-tag">手机号</span></label><input class="input" data-bind="contact" value="${esc(a.contact || "")}" placeholder="如：13800000000"></div>
-
-              </div>
-
-              <div class="field" style="margin-top:6px"><label>包含服务</label>
-                <div class="quick">
-                  ${servChips.map(([k, l]) => `<button class="${a[k] ? "sel" : ""}" data-action="toggleServ" data-key="${k}">${l}</button>`).join("")}
-                </div>
-              </div>
-              <div class="field" style="margin-top:14px"><label>费用不含 <span class="auto-tag">只显示老板确认的内容</span></label>
-                <textarea class="textarea" data-bind-list="feeExclude" placeholder="每行一项，如：\n往返大交通\n个人消费">${esc((a.feeExclude || []).join("\n"))}</textarea>
-              </div>
-              <div class="field" style="margin-top:6px"><label>主页推荐</label>
-                <div class="quick">
-                  <button class="${a.pinned ? "sel" : ""}" data-action="togglePinned">${a.pinned ? "已设为主推" : "设为主推活动"}</button>
-                  <span class="tiny muted" style="display:flex;align-items:center">开启后该活动将在首页 Bento 轮播中优先展示</span>
-                </div>
-              </div>
-              <div class="field" style="margin-top:6px"><label>活动照片（普通照片即可，自动裁切）</label>
-                <div class="uploader" data-action="upload">${ICON("upload")}<div style="margin-top:6px">点击上传 1—10 张照片</div><div class="tiny">不用裁切，不用调尺寸</div></div>
-                <div class="thumbs" id="thumbsWrap">${thumbsHtml(a)}</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="panel" style="margin-bottom:18px">
-            <div class="panel-head"><h3>详情页文案结构</h3><span class="tiny muted">由 AI 根据活动事实生成 · 可手动修改</span></div>
-            <div class="panel-body">
-              <details class="adv-collapse"><summary>高级编辑 · AI 已生成，需要微调再展开</summary>
-              <div class="grid-2">
-                <div class="field"><label class="fl"><span>故事区小标题</span><button class="mini-regen" data-action="regenField" data-field="editorialTitle" type="button">${ICON("refresh")}换一句</button></label><input class="input" data-bind="editorialTitle" value="${esc(a.editorialTitle || "")}" placeholder="如：在3200米处，看见幺妹峰的另一面"></div>
-                <div class="field"><label class="fl"><span>记忆句 / 金句</span><button class="mini-regen" data-action="regenField" data-field="pullQuote" type="button">${ICON("refresh")}换一句</button></label><input class="input" data-bind="pullQuote" value="${esc(a.pullQuote || "")}" placeholder="如：不是征服海拔，是完整经历一天"></div>
-              </div>
-              <div class="field" style="margin-top:10px"><label class="fl"><span>海报氛围标语 <span class="auto-tag">AI 按季节+时间+地点生成</span></span><button class="mini-regen" data-action="regenField" data-field="posterTagline" type="button">${ICON("refresh")}换一句</button></label><input class="input" data-bind="posterTagline" value="${esc(a.posterTagline || "")}" placeholder="如：九月末的山脊线，把暑气留在成都平原"></div>
-              <div class="field" style="margin-top:10px"><label class="fl"><span>照片故事主题</span><button class="mini-regen" data-action="regenField" data-field="storyPurpose" type="button">${ICON("refresh")}换一句</button></label><input class="input" data-bind="storyPurpose" value="${esc(a.storyPurpose || "")}" placeholder="如：记录队伍在高原上的真实状态"></div>
-              <div class="field" style="margin-top:10px"><label class="fl"><span>照片配文 <span class="auto-tag">每行一条</span></span><button class="mini-regen" data-action="regenField" data-field="photoCaptions" type="button">${ICON("refresh")}换一组</button></label><textarea class="textarea" data-bind-list="photoCaptions" placeholder="每行一条照片配文，如：&#10;幺妹峰在清晨光线里&#10;队员在碎石坡上保持节奏">${esc((a.photoCaptions || []).join("\n"))}</textarea></div>
-              <div class="field" style="margin-top:10px"><label class="fl"><span>活动介绍 / 导语</span><button class="mini-regen" data-action="regenField" data-field="intro" type="button">${ICON("refresh")}换一段</button></label><textarea class="textarea" data-bind="intro" rows="4" placeholder="2 个短段落：事实定位→具体画面">${esc(a.intro || "")}</textarea></div>
-              <div class="field" style="margin-top:10px"><label class="fl"><span>开场钩子</span><button class="mini-regen" data-action="regenField" data-field="hook" type="button">${ICON("refresh")}换一句</button></label><input class="input" data-bind="hook" value="${esc(a.hook || "")}" placeholder="详情页正文第一句，用本场才有的事实/悬念开头"></div>
-              <div class="field" style="margin-top:10px"><label class="fl"><span>正文段落 <span class="auto-tag">每段一行</span></span><button class="mini-regen" data-action="regenField" data-field="body" type="button">${ICON("refresh")}换一组</button></label><textarea class="textarea" data-bind-list="body" rows="6" placeholder="每段写一段具体场景或体验，每行一段">${esc((a.body || []).join("\n"))}</textarea></div>
-
-              </details>
-              <div class="panel-subhead" style="margin-top:18px"><h4>消费者价值叙事 <span class="auto-tag">新架构 · 优先渲染</span></h4><span class="tiny muted">按“为什么值得去 → 体验 → 收获 → 适合谁”组织详情页主线</span></div>
-              <div class="field" style="margin-top:10px">
-                <label class="fl narr-title-line"><span>为什么值得去</span><input class="input input-xs" data-bind-section-title="whyGo" value="${esc((a.sectionTitles && a.sectionTitles.whyGo) || "")}" placeholder="章节标题，如：在成都的黄昏里，登一座可以呼吸的山" style="flex:1;margin:0 10px"><button class="mini-regen" data-action="regenField" data-field="whyGo" type="button">${ICON("refresh")}换一段</button></label>
-                <textarea class="textarea" data-bind="whyGo" rows="4" placeholder="回答：这个地方为什么值得去？风景、季节、场景稀缺性、与城市日常的差异。">${esc(a.whyGo || "")}</textarea>
-              </div>
-              <div class="field" style="margin-top:10px">
-                <label class="fl narr-title-line"><span>来了会体验什么</span><input class="input input-xs" data-bind-section-title="experience" value="${esc((a.sectionTitles && a.sectionTitles.experience) || "")}" placeholder="章节标题" style="flex:1;margin:0 10px"><button class="mini-regen" data-action="regenField" data-field="experience" type="button">${ICON("refresh")}换一段</button></label>
-                <textarea class="textarea" data-bind="experience" rows="4" placeholder="回答：参加这次活动到底有什么意思？运动、探索、挑战、互动、拍照、社交、亲子等真实体验。">${esc(a.experience || "")}</textarea>
-              </div>
-              <div class="field" style="margin-top:10px">
-                <label class="fl narr-title-line"><span>参加完能得到什么</span><input class="input input-xs" data-bind-section-title="gain" value="${esc((a.sectionTitles && a.sectionTitles.gain) || "")}" placeholder="章节标题" style="flex:1;margin:0 10px"><button class="mini-regen" data-action="regenField" data-field="gain" type="button">${ICON("refresh")}换一段</button></label>
-                <textarea class="textarea" data-bind="gain" rows="4" placeholder="回答：身体、心理、成长、社交、户外能力等方面，用户完成这次活动后可能带走什么。">${esc(a.gain || "")}</textarea>
-              </div>
-              <div class="grid-2" style="margin-top:10px">
-                <div class="field"><label>适合谁</label><textarea class="textarea" data-bind="fitFor" rows="3" placeholder="推荐人群、经验、年龄、体能等">${esc(a.fitFor || "")}</textarea></div>
-                <div class="field"><label>不建议谁</label><textarea class="textarea" data-bind="notFitFor" rows="3" placeholder="不建议参加的人群或身体状况">${esc(a.notFitFor || "")}</textarea></div>
-              </div>
-
-              <div class="field" style="margin-top:12px"><label>核心卖点 <span class="auto-tag">可增删</span></label><div class="sp-edit-list">${((a.sellingPoints && a.sellingPoints.length) ? a.sellingPoints : [{title:"",desc:""}]).map((s, i) => `<div class="sp-edit-row" data-sp-idx="${i}"><div class="sp-edit-head"><input class="input sp-title" data-bind-sp="${i}" data-sub="title" value="${esc(s.title || "")}" placeholder="卖点（事实点）"><button class="mini-regen" data-action="regenSP" data-id="${i}" type="button">${ICON("refresh")}换一个</button><button class="icon-btn" data-action="delSP" data-id="${i}">${ICON("x")}</button></div><textarea class="textarea sp-desc" data-bind-sp="${i}" data-sub="desc" rows="2" placeholder="一句话支撑，为什么重要">${esc(s.desc || "")}</textarea></div>`).join("")}<button class="btn btn-soft btn-sm" data-action="addSP">+ 添加卖点</button></div></div>
-            </div>
-          </div>
-
-          ${placePhotoPanelHtml(a)}
-
-          <div class="panel" style="margin-bottom:18px">
-            <div class="panel-head"><h3>装备建议</h3><button class="btn btn-soft btn-sm" data-action="autoRecommendGear" type="button">${ICON("sparkles")} 一键智能推荐</button></div>
-            <div class="tiny muted" style="margin:0 0 10px">按活动类型 / 地点 / 季节 / 天气自动生成清单并匹配商城装备 · 可手动增减</div>
-            <div class="panel-body">
-              <div class="gear-edit-group"><div class="tiny muted" style="margin-bottom:8px">必备</div>
-                <div class="gear-edit-list" id="gearMandatory">${gearChipsHtml(a, true)}</div></div>
-              <div class="gear-edit-group"><div class="tiny muted" style="margin-bottom:8px">建议携带</div>
-                <div class="gear-edit-list" id="gearRecommended">${gearChipsHtml(a, false)}</div></div>
-              <div class="row gap-8" style="margin-top:10px">
-                <input class="input" id="gearAdd" placeholder="可粘贴整段装备建议，系统自动识别拆分">
-                <button class="btn btn-soft btn-sm" data-action="addGear">添加</button>
-              </div>
-            </div>
-          </div>
-
-          ${customFieldEditorHtml(a)}
-          ${leaderEditHtml(a)}
-          ${itineraryEditHtml(a)}
-          ${pastePanelHtml(a)}
-
-          <div class="panel">
-            <div class="panel-head"><h3>用 AI 改一改</h3><span class="tiny muted">像聊天一样下指令</span></div>
-            <div class="panel-body">
-              <div class="ai-cmd">
-                <input class="input" id="aiCmd" placeholder="例如：把价格改成 269 元 / 强调安全保障">
-                <button class="btn btn-primary" data-action="aiCmd">应用</button>
-              </div>
-              <div class="cmd-chips">
-                <button class="chip" data-action="aiCmdPreset" data-cmd="标题更吸引人">标题更吸引人</button>
-                <button class="chip" data-action="aiCmdPreset" data-cmd="文案更简洁">文案更简洁</button>
-                <button class="chip" data-action="aiCmdPreset" data-cmd="强调安全保障">强调安全保障</button>
-                <button class="chip" data-action="aiCmdPreset" data-cmd="更适合朋友圈传播">更适合朋友圈</button>
-                <button class="chip" data-action="aiCmdPreset" data-cmd="调整为亲子风格">亲子风格</button>
-              </div>
-            </div>
-          </div>
-        </div>
         <div class="etab-panel" data-panel="price" ${tab!=="price"?"hidden":""}>
+          ${keyFactsHtml(a)}
           ${departuresEditHtml(a)}
           ${memberMarketingEditHtml(a)}
         </div>
-        <div class="etab-panel" data-panel="visual" ${tab!=="visual"?"hidden":""}>${visualTabHtml(a)}</div>
-        <div class="etab-panel" data-panel="publish" ${tab!=="publish"?"hidden":""}>${publishTabHtml(a)}</div>
+        <div class="etab-panel" data-panel="gear" ${tab!=="gear"?"hidden":""}>${gearPanelHtml(a)}</div>
+        <div class="etab-panel" data-panel="leader" ${tab!=="leader"?"hidden":""}>${leaderEditHtml(a)}</div>
       </div>
 
         <div class="editor-right">
@@ -2240,87 +1981,52 @@ function channelMeta(ch) {
       </div>`;
   }
 
-  function factConfirmHtml(a) {
-    const reg = factRegistry(a);
-    const confirmed = reg.filter((f) => f.status === "confirmed");
-    const inferred = reg.filter((f) => f.status === "inferred");
-    const missing = reg.filter((f) => f.status === "missing");
-    if (!confirmed.length && !inferred.length && !missing.length) return "";
-    const total = reg.length;
-    const progress = total ? Math.round((confirmed.length / total) * 100) : 0;
-    const progressColor = progress === 100 ? "#10b981" : missing.length ? "#ef4444" : "#f59e0b";
-    let hint;
-    if (missing.length) hint = `还有 <b>${missing.length}</b> 项必填信息待补充，补全后即可发布`;
-    else if (inferred.length) hint = `AI 已预填 <b>${inferred.length}</b> 项，核对无误后点「全部确认」`;
-    else hint = `全部事实已确认，可直接发布`;
-    return `<div class="fact-confirm">
-      <div class="fc-header">
-        <div class="fc-head-main">
-          <div class="fc-title">事实确认</div>
-          <div class="fc-sub">${confirmed.length}/${total} 已核对${inferred.length ? ` · ${inferred.length} 项待确认` : ""}</div>
-        </div>
-        <div class="fc-progress" aria-label="事实完整度 ${progress}%">
-          <div class="fc-progress-ring" style="--p:${progress}"><span class="fc-progress-num">${progress}%</span></div>
-        </div>
-      </div>
-      <div class="fc-bar"><span style="width:${progress}%;background:${progressColor}"></span></div>
-      <div class="fc-hint ${missing.length ? "warn" : inferred.length ? "wait" : "ok"}">${hint}</div>
-      ${inferred.length ? `<div class="fc-section fc-inferred">
-        <div class="fc-sec-head">
-          <div><span class="fc-dot" style="background:#f59e0b"></span><b>AI 推断 · 待确认</b><span class="fc-count">${inferred.length}</span></div>
-          <button class="fc-confirm-all" data-action="confirmAllInferred">全部确认 ${ICON("check")}</button>
-        </div>
-        <div class="fc-list">
-          ${inferred.map((f) => `<div class="fc-row" data-action="confirmInfer" data-key="${f.key}">
-            <div class="fc-meta">
-              <span class="fc-label">${esc(f.label)}</span>
-              <span class="fc-value">${esc(f.value || "—")}</span>
-            </div>
-            <button class="fc-check" data-action="confirmInfer" data-key="${f.key}" aria-label="确认 ${esc(f.label)}">${ICON("check")}</button>
-          </div>`).join("")}
-        </div>
-        <div class="fc-tip">核对无误后点右侧的「✓」，或一键全部确认</div>
-      </div>` : ""}
-      ${missing.length ? `<div class="fc-section fc-missing">
-        <div class="fc-sec-head"><span class="fc-dot" style="background:#ef4444"></span><b>缺失信息 · 发布前补充</b><span class="fc-count">${missing.length}</span></div>
-        <div class="fc-list">
-          ${missing.map((f) => `<div class="fc-row fc-row-missing"><span class="fc-label">${esc(f.label)}</span><button class="fc-edit" data-action="focusField" data-key="${f.key}">去填写 ${ICON("arrow-right")}</button></div>`).join("")}
-        </div>
-        <div class="fc-tip">点「去填写」直接跳到对应输入框</div>
-      </div>` : ""}
-      ${confirmed.length ? `<div class="fc-section fc-confirmed">
-        <div class="fc-sec-head"><span class="fc-dot" style="background:#10b981"></span><b>已确认事实</b><span class="fc-count">${confirmed.length}</span></div>
-        <div class="fc-chips">${confirmed.map((f) => `<span class="fc-chip">${esc(f.label)}：${esc(f.value || "")}</span>`).join("")}</div>
-      </div>` : ""}
-    </div>`;
-  }
-  function publishTabHtml(a) {
-    const chk = runPublishCheck(a);
-    const channels = [["wechat", "微信群招募文案"], ["moments", "朋友圈文案"], ["xhs", "小红书文案"], ["gzh", "公众号摘要"], ["voice", "口播文案"]];
-    return `<div class="pub-tab">
-      <div class="vis-sec">
-        <h4>发布前事实检查</h4>
-        ${chk.blocking.length ? `<div class="pub-box pub-err"><b>⛔ 关键问题（禁止发布）</b>${chk.blocking.map((t) => `<div class="pub-line">· ${esc(t)}</div>`).join("")}<button class="btn btn-soft btn-sm" data-action="backToEdit" style="margin-top:10px">去完善信息 ${ICON("arrow-left")}</button></div>` : ""}
-        ${chk.warnings.length ? `<div class="pub-box pub-warn"><b>⚠ 待确认（可隐藏对应模块后发布）</b>${chk.warnings.map((t) => `<div class="pub-line">· ${esc(t)}</div>`).join("")}</div>` : ""}
-        ${!chk.blocking.length && !chk.warnings.length ? `<div class="pub-box pub-ok">✓ 未发现问题，可直接发布</div>` : ""}
-      </div>
-      <div class="vis-sec">
-        <h4>活动详情页</h4>
-        <div class="tiny muted">右侧为手机端实时预览，下方为各平台发布文案。</div>
-      </div>
-      <div class="vis-sec">
-        <h4>多平台发布文案<span class="sim-tag">演示生成</span></h4>
-        <div class="share-grid">
-          ${channels.map(([t, l]) => `<div class="share-block"><div class="row between"><b>${l}</b><button class="copy-btn" data-action="copyDraft" data-type="${t}">复制</button></div><div class="share-card share-card-sm">${esc(a["share" + t.charAt(0).toUpperCase() + t.slice(1)] || "（生成中…）")}</div></div>`).join("")}
-        </div>
-      </div>
-      <div class="vis-sec">
-        <h4>海报</h4>
-        <button class="btn btn-primary btn-sm" data-action="share" data-id="${a.id}">生成分享海报</button>
+  /* 极简关键信息补全：只渲染缺失/待确认的必填事实，补全即消失（v240 替代旧「确认事实」大卡） */
+  function keyFactsHtml(a) {
+    const reg = (typeof factRegistry === "function") ? factRegistry(a) : [];
+    const missingReq = reg.filter((f) => f.required && f.status === "missing");
+    const inferredReq = reg.filter((f) => f.required && f.status === "inferred");
+    if (!missingReq.length && !inferredReq.length) return "";
+    const NUM = { price: 1, days: 1, limit: 1, distance: 1 };
+    const SEL = { difficulty: ["轻松", "中等", "挑战", "入门", "进阶", "专业级"] };
+    const rows = missingReq.map((f) => {
+      if (SEL[f.key]) return `<div class="field"><label>${esc(f.label)}</label><select class="select" data-bind="${f.key}"><option value="" ${(a[f.key] || "") === "" ? "selected" : ""}>待选择</option>${SEL[f.key].map((o) => `<option value="${esc(o)}" ${a[f.key] === o ? "selected" : ""}>${esc(o)}</option>`).join("")}</select></div>`;
+      const t = NUM[f.key] ? ` type="number"` : "";
+      const v = a[f.key] != null ? esc(String(a[f.key])) : "";
+      return `<div class="field"><label>${esc(f.label)}</label><input class="input"${t} data-bind="${f.key}" value="${v}"></div>`;
+    }).join("");
+    const servChips = [["includeLeader", "领队"], ["includeMeal", "午餐"], ["includeInsurance", "保险"], ["includeTransport", "交通"], ["includeGear", "装备"]];
+    const needServ = missingReq.some((f) => f.key === "services") || inferredReq.some((f) => f.key === "services");
+    const servRow = needServ
+      ? `<div class="field" style="margin-top:6px"><label>费用包含</label><div class="quick">${servChips.map(([k, l]) => `<button class="${a[k] ? "sel" : ""}" data-action="toggleServ" data-key="${k}">${l}</button>`).join("")}</div></div>`
+      : "";
+    return `<div class="panel" style="margin-bottom:18px;border-left:3px solid #f59e0b">
+      <div class="panel-head"><h3>待补充的关键信息</h3><span class="tiny muted">补全后即可发布</span></div>
+      <div class="panel-body">
+        <div class="grid-2">${rows}</div>
+        ${servRow}
+        ${inferredReq.length ? `<div class="row gap-8" style="margin-top:10px;align-items:center"><span class="tiny muted">系统推断待确认：${inferredReq.map((f) => esc(f.label)).join("、")}</span><button class="btn btn-soft btn-sm" data-action="confirmAllInferred" type="button">${ICON("check")} 确认无误</button></div>` : ""}
       </div>
     </div>`;
   }
 
+  /* 装备建议：一键智能推荐并匹配商城装备（与商城联动，保留） */
+  function gearPanelHtml(a) {
+    return `<div class="panel">
+      <div class="panel-head"><h3>装备建议</h3><button class="btn btn-soft btn-sm" data-action="autoRecommendGear" type="button">${ICON("sparkles")} 一键智能推荐</button></div>
+      <div class="tiny muted" style="margin:0 0 10px">按活动类型 / 地点 / 季节 / 天气自动生成清单并匹配商城装备 · 可手动增减</div>
+      <div class="panel-body">
+        <div class="gear-edit-group"><div class="tiny muted" style="margin-bottom:8px">必备</div>
+          <div class="gear-edit-list" id="gearMandatory">${gearChipsHtml(a, true)}</div></div>
+        <div class="gear-edit-group"><div class="tiny muted" style="margin-bottom:8px">建议携带</div>
+          <div class="gear-edit-list" id="gearRecommended">${gearChipsHtml(a, false)}</div></div>
+        <div class="row gap-8" style="margin-top:10px">
+          <input class="input" id="gearAdd" placeholder="可粘贴整段装备建议，系统自动识别拆分">
+          <button class="btn btn-soft btn-sm" data-action="addGear">添加</button>
+        </div>
+      </div>
+    </div>`;
+  }
   function thumbsHtml(a) {
     if (!a.photos || !a.photos.length) return "";
     const cover = a.coverIndex || 0;
@@ -2356,17 +2062,6 @@ function channelMeta(ch) {
       </div>`;
     }).join("");
   }
-  function missingHtml(a) {
-    return `<div class="missing-card"><h4>还差 ${a.missing.length} 项即可发布（已为你预填推荐值）</h4>
-      ${a.missing.map((m) => `<div class="q-item">
-        <div class="q">${esc(m.q)}</div>
-        ${m.type === "bool"
-        ? `<div class="quick"><button class="sel" data-action="pickMissing" data-key="${m.key}" data-val="1">包含</button><button data-action="pickMissing" data-key="${m.key}" data-val="0">不包含</button><button data-action="pickMissing" data-key="${m.key}" data-val="2">暂不确定</button></div>`
-        : `<div class="row gap-8"><input class="input" data-bind="${m.key}" value="${esc(a[m.key] || "")}" style="flex:1"><div class="quick">${(m.suggest || []).map((s) => `<button data-action="pickMissing" data-key="${m.key}" data-val="${esc(s)}">${esc(s)}</button>`).join("")}</div></div>`}
-      </div>`).join("")}
-    </div>`;
-  }
-
   function renderList() {
     const tabs = [["all", "全部"], ["recruiting", "招募中"], ["draft", "草稿"], ["full", "已满员"], ["ended", "已结束"], ["down", "已下架"]];
     const f = state.listFilter || "all";

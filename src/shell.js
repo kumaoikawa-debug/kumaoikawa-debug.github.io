@@ -295,9 +295,9 @@ function showView(view, params) {
     const d = el.dataset;
     switch (action) {
       case "backToEdit": {
-        // 发布被阻止时，返回应回到可编辑的内容页，而不是跳过到工作台
-        if (state.draft && state.editorTab === "publish" && state.draft._publishCheck && state.draft._publishCheck.blocking.length) {
-          state.editorTab = "content"; rerenderEditor();
+        // 发布被阻止时，返回应回到「价格与团期」补全，而不是跳过到工作台
+        if (state.draft && state.draft._publishCheck && state.draft._publishCheck.blocking.length) {
+          state.editorTab = "price"; rerenderEditor();
         } else {
           showView("dashboard"); window.scrollTo(0, 0);
         }
@@ -663,11 +663,11 @@ function showView(view, params) {
         state.draft._publishCheck = chk;
         if (chk.blocking.length) {
           toast("发布被阻止：" + chk.blocking[0]);
-          state.editorTab = "publish";
+          state.editorTab = "price";
           rerenderEditor();
           break;
         }
-        if (chk.warnings.length) toast("有 " + chk.warnings.length + " 项待确认，详见发布 Tab");
+        if (chk.warnings.length) toast("有 " + chk.warnings.length + " 项待确认，可在「价格与团期」内补充");
         state.draft.status = "recruiting";
         if (state.draft.pinned) state.draft.pinnedAt = Date.now();
         const snap = JSON.parse(JSON.stringify(state.draft));
@@ -1483,7 +1483,7 @@ function showView(view, params) {
       case "switchTab": { state.editorTab = d.tab; rerenderEditor(); if (state.draft && (state.draft.photos || []).length) state.draft.photos.forEach((s) => scheduleSmartFocus(s)); break; }
       case "confirmInfer": { if (state.draft) { confirmFact(state.draft, d.key); rerenderEditor(); } break; }
       case "confirmAllInferred": { if (state.draft) { inferredFacts(state.draft).forEach((f) => confirmFact(state.draft, f.key)); rerenderEditor(); toast("已确认全部推断事实"); } break; }
-      case "focusField": { if (state.draft) { state.editorTab = "content"; state.draft._focusField = d.key; rerenderEditor(); setTimeout(() => { const el = document.querySelector(`[data-bind="${d.key}"]`) || document.querySelector(`[data-bind-list="${d.key}"]`) || document.querySelector(`[data-bind-section-title="${d.key}"]`); if (el) { const det = el.closest("details"); if (det) det.open = true; el.scrollIntoView({ behavior: "smooth", block: "center" }); el.focus(); if (typeof el.select === "function" && el.tagName === "INPUT") el.select(); } else { toast("该字段可能在「价格与团期」或「视觉」步骤里，请切换对应步骤查看"); } }, 60); } break; }
+      case "focusField": { if (state.draft) { state.editorTab = "price"; state.draft._focusField = d.key; rerenderEditor(); setTimeout(() => { const el = document.querySelector(`[data-bind="${d.key}"]`) || document.querySelector(`[data-bind-list="${d.key}"]`) || document.querySelector(`[data-bind-section-title="${d.key}"]`); if (el) { const det = el.closest("details"); if (det) det.open = true; el.scrollIntoView({ behavior: "smooth", block: "center" }); el.focus(); if (typeof el.select === "function" && el.tagName === "INPUT") el.select(); } else { toast("该字段可能在「价格与团期」或「视觉」步骤里，请切换对应步骤查看"); } }, 60); } break; }
       case "setCover": { if (state.draft) { state.draft.coverIndex = +d.i; state.draft._coverManual = true; rerenderEditor(); } break; }
       case "copyDraft": { const t = d.type; const key = "share" + t.charAt(0).toUpperCase() + t.slice(1); const txt = (state.draft && state.draft[key]) || ""; if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(() => toast("已复制" + t + "文案"), () => toast("复制失败")); else toast("当前环境不支持复制"); break; }
       case "mySignups": showView("mySignups"); window.scrollTo(0, 0); break;
@@ -1919,13 +1919,7 @@ function showView(view, params) {
         break;
       }
       case "copyText": { xbCopy(d.text || ""); break; }
-      /* v228：6 积木块预览编辑的动作派发 */
-      case "blockApplyEdits": { await applyBlockEdits(d.id); break; }
-      case "blockRewrite": { await blockRewrite(d.type, d.id); break; }
-      case "blockCoverPick": { await blockCoverPick(d.input, d.id); break; }
-      case "blockToCardset": { blockToCardset(d.id); break; }
-      case "blockToDetail": { blockToDetail(d.id); break; }
-      case "blockExport": { blockExport(d.id); break; }
+      /* v240：6 积木块预览（blocks.js）已删，对应派发 case 一并清除 */
       default: break;
     }
   }
@@ -3329,7 +3323,7 @@ function showView(view, params) {
       }
       state.draft[key] = el.value;
       if (key === "difficulty") { state.draft.difficultyManual = true; state.draft.difficultyInferred = false; }
-      const factKey = ({ date: "date", meeting: "meeting", meetTime: "meetTime", ageRange: "age", price: "price", days: "days", limit: "limit", type: "type", leaderName: "leaderInfo", distance: "distance", returnTime: "returnTime", contact: "contact", difficulty: "difficulty" })[key];
+      const factKey = ({ date: "date", meeting: "meeting", meetTime: "meetTime", ageRange: "age", price: "price", days: "days", limit: "limit", type: "type", leaderName: "leaderInfo", distance: "distance", returnTime: "returnTime", contact: "contact", difficulty: "difficulty", place: "place", route: "route" })[key];
       if (factKey && String(el.value).trim()) confirmFact(state.draft, factKey);
       if (key === "type") {
         state.draft.type = normalizeType(state.draft.type);

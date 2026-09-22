@@ -5801,6 +5801,19 @@ function buildEditorialOutline(a) {
     const st = a.sectionTitles || {};
     const heads = EDITORIAL_ANGLE_HEADINGS[vAngle] || {};
 
+  /* v240 恢复：v236 误删但仍被 renderActivityEditorial 调用的两个 variant 裁剪函数 */
+  function editorialDensityTrim(density, paras) {
+    const d = EDITORIAL_DENSITY[density] || EDITORIAL_DENSITY.magazine;
+    let out = (paras || []).map(function (p) { return String(p || "").trim(); }).filter(Boolean);
+    if (d.maxPara < 99) out = out.slice(0, d.maxPara);
+    if (d.trunc > 0) out = out.map(function (p) { return p.length > d.trunc ? p.slice(0, d.trunc) + "…" : p; });
+    return out;
+  }
+  function editorialImgCount(imgMode, secKey) {
+    const m = EDITORIAL_IMG[imgMode] || EDITORIAL_IMG["hero-mosaic"];
+    return { count: m.secCount, kind: m.secKind };
+  }
+
     // 各章节先按固定逻辑生成内容，再按 variant 做「角度化标题 / 密度裁剪 / 取图数量」
     const byGroup = {};
     /* v202：make 返回章节对象（被密度裁掉时返回 null）—— 便于在章节定稿后补事实句。 */

@@ -120,6 +120,18 @@ function run() {
   ok(/_lastErrMsg/.test(coreSrc) && /aiErrText/.test(publishSrc), 'AI 失败原因如实透出（_lastErrMsg → toast）');
   ok(/setTimeout\(res, 3000\)/.test(coreSrc), 'clubLLM 后端失败后自动重试一次');
 
+  console.log('— v240：编辑器瘦身（只留 价格与团期 / 智能推装备 / 领队管理）—');
+  const actSrc = read('src/activities.js');
+  ['factConfirmHtml', 'visualTabHtml', 'publishTabHtml', 'placePhotoPanelHtml', 'pastePanelHtml', 'photoAnalysisCard', 'missingHtml', 'visualThemePickerHtml', 'visualCoverHtml', 'visualOutlineHtml'].forEach((fn) => {
+    ok(!new RegExp('function\\s+' + fn + '\\b').test(actSrc), fn + '（旧编辑器模块）已物理删除');
+  });
+  ['确认事实 · 微调内容', '预览并发布', 'AI 识别结果', '详情页文案结构', '用 AI 改一改', '缺失信息 · 发布前补充'].forEach((s) => {
+    ok(!actSrc.includes(s), '旧编辑器文案「' + s + '」已清零');
+  });
+  ok(/data-tab="price"/.test(actSrc) && /data-tab="gear"/.test(actSrc) && /data-tab="leader"/.test(actSrc), '编辑器保留 价格与团期 / 智能推装备 / 领队管理 三个 tab');
+  ok(!/data-tab="content"/.test(actSrc) && !/data-tab="visual"/.test(actSrc) && !/data-tab="publish"/.test(actSrc), '旧四步向导 tab 已清零');
+  ok(/state.editorTab = "price"/.test(shell), '发布拦截跳转已指向「价格与团期」');
+
   console.log('— 回滚点 —');
   let hasTag = false;
   try {
