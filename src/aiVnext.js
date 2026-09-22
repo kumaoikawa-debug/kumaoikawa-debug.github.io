@@ -44,13 +44,26 @@
     }).filter(function (p) { return p.id; }); // 保留无 src 的照片（id 仍在，渲染可回退本地）
   }
 
-  // 活动主记录白名单投影：只发后端真正消费的公共字段，去掉 dataURL 照片 / 旧生成结果 / 内部字段，
-  // 避免整个 activity 对象（可能数 MB）发到后端触发请求体超限 500。
+  // 活动主记录白名单投影：只发后端可能消费的公共字段，去掉 dataURL 照片 / 视频 / 旧生成结果 /
+  // 内部运营字段，避免整个 activity 对象（可能数 MB）发到后端触发请求体超限 500。
   var ACTIVITY_WHITELIST = [
-    'title', 'name', 'destination', 'location', 'place', 'startDate', 'endDate', 'date', 'time',
-    'duration', 'price', 'priceText', 'capacity', 'quota', 'signupRule', 'difficulty',
-    'distance', 'elevation', 'summary', 'description',
-    'itinerary', 'fees', 'checklist', 'services', 'brand',
+    // 文案字段
+    'title', 'subtitle', 'headline', 'heroHook', 'hook', 'intro', 'whyGo', 'experience', 'gain',
+    'fitFor', 'notFitFor', 'highlights', 'sellingPoints', 'body', 'pullQuote', 'editorialTitle',
+    'posterTagline', 'socialCoreMessage', 'storyPurpose',
+    // 事实字段
+    'place', 'destination', 'location', 'date', 'dateMD', 'departures', 'meeting', 'meetTime',
+    'returnTime', 'route', 'distance', 'elevation', 'days', 'duration', 'difficulty', 'tags',
+    'transport', 'contact', 'audience', 'type', 'ageFrom', 'ageTo', 'ageRange',
+    'price', 'originalPrice', 'childPrice', 'deposit', 'limit', 'limitUnit', 'priceNote', 'priceTBD',
+    'feeInclude', 'feeExclude', 'feeSummary', 'itinerary', 'itineraryDays',
+    'includeLeader', 'includeMeal', 'includeInsurance', 'includeTransport', 'includeGear',
+    'gear', 'gearManual', 'checklist', 'services', 'fees', 'safety', 'notes',
+    'leaderName', 'leaderYears', 'leaderCert', 'leaderTrips', 'reviews',
+    'useMemberPrice', 'allowPoints', 'allowCoupons', 'tierPrices', 'brandTone', 'brand',
+    'status',
+    // 兼容后端 PUBLIC_FIELD_MAP 可能读取的旧命名
+    'name', 'time',
   ];
   function projectActivity(a) {
     var out = {};
@@ -60,22 +73,75 @@
     return out;
   }
 
+  // 把活动主记录里的真实文本字段拼成「原始资料」，喂给后端做理解。
+  // ★ 旧版只发 summary/description/sellingPoints，而活动主记录里根本没有 summary/description
+  //   （长文本在 intro / whyGo / body / highlights / sellingPoints…）→ 后端几乎收不到内容 → 文案必然空洞套话。
+  function gatherActivityText(a) {
+    var parts = [];
+    function add(label, v) {
+      if (v === undefined || v === null || v === '') return;
+      var s;
+      if (Array.isArray(v)) {
+        s = v.map(function (x) { return (x && typeof x === 'object') ? JSON.stringify(x) : String(x); }).join('\n');
+      } else if (typeof v === 'object') {
+        s = JSON.stringify(v);
+      } else {
+        s = String(v);
+      }
+      s = s.trim();
+      if (s) parts.push(label + '：' + s);
+    }
+    add('标题', a.title);
+    add('副标题', a.subtitle);
+    add('一句话钩子', a.hook || a.heroHook);
+    add('活动介绍', a.intro);
+    add('为什么值得去', a.whyGo);
+    add('体验', a.experience);
+    add('收获', a.gain);
+    add('适合人群', a.fitFor);
+    add('参与人群', a.audience);
+    add('活动亮点', a.highlights);
+    add('核心卖点', a.sellingPoints);
+    add('正文', a.body);
+    add('金句', a.pullQuote);
+    add('地点', a.place);
+    add('日期', a.date);
+    add('团期', a.departures);
+    add('集合', [a.meeting, a.meetTime].filter(Boolean).join(' '));
+    add('返程', a.returnTime);
+    add('路线', a.route);
+    add('距离/海拔', [a.distance, a.elevation].filter(Boolean).join(' / '));
+    add('天数', a.days);
+    add('难度', a.difficulty);
+    add('活动类型', a.type);
+    add('标签', a.tags);
+    add('价格', [a.price, a.originalPrice].filter(function (x) { return x !== undefined && x !== null && x !== ''; }).join(' / '));
+    add('名额', [a.limit, a.limitUnit].filter(Boolean).join(''));
+    add('费用包含', a.feeInclude);
+    add('费用不含', a.feeExclude);
+    add('费用说明', a.feeSummary);
+    add('装备建议', (a.gear || []).map(function (g) { return (g && (g.name || g.title)) || g; }).filter(Boolean).join('、'));
+    add('行程', a.itineraryDays);
+    add('注意事项', a.notes);
+    add('安全保障', a.safety);
+    add('领队', [a.leaderName, a.leaderYears && a.leaderYears + ' 年经验', a.leaderCert].filter(Boolean).join(' '));
+    return parts.join('\n');
+  }
+
   function gatherSources(a) {
     var sourceMaterials = [];
-    var textBits = [a.summary, a.description, a.sellingPoints && JSON.stringify(a.sellingPoints)]
-      .filter(Boolean).join('\n');
-    if (textBits) {
-      sourceMaterials.push({ id: 'src_activity', type: 'text', text: textBits });
+    var actText = gatherActivityText(a);
+    if (actText) {
+      sourceMaterials.push({ id: 'src_activity', type: 'text', text: actText });
     }
     // ★ 完整原始方案全文（PPT / Word / PDF 解析出的原文，未压缩）——模型写出有细节文案的关键素材。
-    //   gatherSources 旧版只发 summary/description/sellingPoints，模型看不到用户真实方案，必然空洞套话。
     var planText = a._planText || a.raw || '';
     if (planText && String(planText).length > 200) {
       sourceMaterials.push({ id: 'src_plan', type: 'ppt', text: String(planText).slice(0, 60000) });
     }
     return {
       activityId: a.id,
-      activity: projectActivity(a), // 白名单投影，去掉 dataURL 照片与旧生成结果
+      activity: projectActivity(a), // 白名单投影，去掉 dataURL 照片 / 视频 / 旧生成结果
       sourceMaterials: sourceMaterials,
       photos: mapPhotos(a), // 不含 dataURL
     };
