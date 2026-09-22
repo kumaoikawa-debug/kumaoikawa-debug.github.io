@@ -675,7 +675,12 @@ function intakePanelHtml() {
       + '<span class="intake-row-n">' + esc(it.busyText || "正在读取方案…") + "</span></div></div>";
   }
   if (!items.length && !it.warn) return "";
-  const warn = it.warn ? '<div class="intake-warn">' + ICON("alert-triangle") + "<span>" + esc(it.warn) + "</span></div>" : "";
+  /* v238：未配置 AI 时警示条直接带「去配置 AI」按钮（跳设置页并高亮 AI 设置区），不再让老板自己找 */
+  let warn = it.warn ? '<div class="intake-warn">' + ICON("alert-triangle") + "<span>" + esc(it.warn) + "</span>" : "";
+  if (warn && typeof aiAuthMode === "function" && !aiAuthMode()) {
+    warn += '<button class="btn btn-soft btn-sm" data-action="nav" data-view="ai" style="margin-left:auto;flex:none;white-space:nowrap">去配置 AI</button>';
+  }
+  if (warn) warn += "</div>";
   /* v237：行程/描述预览卡已删除（旧确认流残留——§30 直接出成品，行程在详情页里看）。
      这里只保留逐文件读取状态与必要的如实警示。 */
   return '<div class="intake-panel" id="intakePanel">' + items.map(intakeRowHtml).join("") + warn + "</div>";
