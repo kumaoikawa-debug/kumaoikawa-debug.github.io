@@ -30,9 +30,23 @@
     'quote', 'divider', 'cta'
   ];
 
-  function mediaMapFrom(photos) {
+  function mediaMapFrom(photos, localPhotos) {
     var m = {};
     (photos || []).forEach(function (p) { m[p.id] = p; });
+    // 本地照片兜底：后端不再接收 dataURL，master.photos 可能缺 src；
+    // 用本地 activity.photos（含 dataURL）按 id 补回，保证图片正常显示。
+    (localPhotos || []).forEach(function (p) {
+      if (!p || !p.id) return;
+      var cur = m[p.id];
+      if (!cur) { m[p.id] = p; return; }
+      if (!cur.src && p.src) cur = Object.assign({}, cur, { src: p.src });
+      if (!cur.caption && p.caption) cur.caption = p.caption;
+      if (!cur.orientation && p.orientation) cur.orientation = p.orientation;
+      if (!cur.subjects && p.subjects) cur.subjects = p.subjects;
+      if (!cur.width && p.width) cur.width = p.width;
+      if (!cur.height && p.height) cur.height = p.height;
+      m[p.id] = cur;
+    });
     return m;
   }
 
@@ -131,7 +145,10 @@
     if (!vnextPromo || !Array.isArray(vnextPromo.blocks) || !vnextPromo.blocks.length) {
       return '';
     }
-    var mediaMap = mediaMapFrom((vnextPromo.activityMaster && vnextPromo.activityMaster.photos) || []);
+    var mediaMap = mediaMapFrom(
+      (vnextPromo.activityMaster && vnextPromo.activityMaster.photos) || [],
+      opts.localPhotos || []
+    );
     var html = vnextPromo.blocks.map(function (b) { return renderBlock(b, mediaMap); }).join('');
     // grounding 报告（§20）：若未通过，给出可见提示，但不篡改内容
     var g = vnextPromo.grounding;

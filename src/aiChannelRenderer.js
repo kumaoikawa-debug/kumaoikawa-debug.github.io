@@ -24,27 +24,50 @@
   // ICON 兜底：真实环境由 core.js 提供；契约测试环境（Node harness）降级为空
   var icon = (typeof ICON === 'function') ? ICON : function () { return ''; };
 
-  function mediaMapFrom(photos) {
+  function mediaMapFrom(photos, localPhotos) {
     var m = {};
     (photos || []).forEach(function (p) { m[p.id] = p; });
+    // 本地照片兜底：后端不再接收 dataURL，master.photos 可能缺 src，按 id 用本地原图补回
+    (localPhotos || []).forEach(function (p) {
+      if (!p || !p.id) return;
+      var cur = m[p.id];
+      if (!cur) { m[p.id] = p; return; }
+      if (!cur.src && p.src) cur = Object.assign({}, cur, { src: p.src });
+      if (!cur.caption && p.caption) cur.caption = p.caption;
+      if (!cur.orientation && p.orientation) cur.orientation = p.orientation;
+      if (!cur.subjects && p.subjects) cur.subjects = p.subjects;
+      m[p.id] = cur;
+    });
     return m;
+  }
+
+  // 公众号 HTML 由后端渲染（文本模型不持有图片字节，只留 data-media-id）；预览时按 id 用本地原图补回 src
+  function injectLocalSrc(html, localPhotos) {
+    if (!html || !localPhotos || !localPhotos.length) return html;
+    var localMap = {};
+    localPhotos.forEach(function (p) { if (p && p.id) localMap[p.id] = p.src; });
+    return html.replace(/<img\b([^>]*?)\bdata-media-id="([^"]+)"([^>]*)>/g, function (_m, pre, id, post) {
+      var src = localMap[id] || '';
+      var attrs = (pre + ' ' + post).replace(/\ssrc="[^"]*"/g, '');
+      return '<img' + attrs + ' data-media-id="' + id + '"' + (src ? ' src="' + esc(src) + '"' : '');
+    });
   }
 
   function copyBtn(channel, label) {
     return '<button class="btn btn-ghost btn-sm" data-action="vnextCopyChannel" data-channel="' + esc(channel) + '">' + icon('copy') + ' ' + label + '</button>';
   }
 
-  function renderWechatPreview(result) {
+  function renderWechatPreview(result, localPhotos) {
     var c = result.content || {};
-    var html = c.html || '';
+    var html = injectLocalSrc(c.html || '', localPhotos);
     return '<div class="ch ch-wechat">' +
       '<div class="ch-bar"><span class="ch-bar-t">微信公众号长文</span>' + copyBtn('wechat', '复制 HTML') + '</div>' +
       '<div class="ch-wechat-preview">' + html + '</div></div>';
   }
 
-  function renderXhsPreview(result) {
+  function renderXhsPreview(result, localPhotos) {
     var c = result.content || {};
-    var mm = mediaMapFrom((result.activityMaster && result.activityMaster.photos) || []);
+    var mm = mediaMapFrom((result.activityMaster && result.activityMaster.photos) || [], localPhotos || []);
     var tags = (c.tags || []).map(function (t) { return '<span class="ch-tag">' + esc(t) + '</span>'; }).join('');
     var imgs = (c.imageOrder || []).map(function (id) {
       var m = mm[id];
@@ -84,12 +107,12 @@
       '<div class="ch-moments-text">' + esc(c.text || '').replace(/\n/g, '<br>') + '</div></div>';
   }
 
-  /** 按渠道渲染预览（供 activities 详情页调用） */
-  function renderChannelResult(result) {
+  /** 按渠道渲染预览（供 activities 详情页调用）；localPhotos 用于按 id 补回本地原图 */
+  function renderChannelResult(result, localPhotos) {
     if (!result || !result.channel) return '';
     switch (result.channel) {
-      case 'wechat': return renderWechatPreview(result);
-      case 'xiaohongshu': return renderXhsPreview(result);
+      case 'wechat': return renderWechatPreview(result, localPhotos);
+      case 'xiaohongshu': return renderXhsPreview(result, localPhotos);
       case 'poster': return renderPosterPreview(result);
       case 'moments': return renderMomentsPreview(result);
       default: return '';

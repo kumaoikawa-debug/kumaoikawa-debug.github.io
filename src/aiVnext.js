@@ -27,9 +27,13 @@
 
   function mapPhotos(a) {
     return (a.photos || []).map(function (p, i) {
+      var src = p.src || p.url || '';
+      // 后端是文本模型，dataURL 巨大且无法被模型理解，发出去只会撑爆请求体 → 去掉；
+      // 渲染时前端按 id 用本地原图补回（见 aiPromoRenderer / aiChannelRenderer 的 localPhotos 兜底）。
+      if (typeof src === 'string' && src.indexOf('data:') === 0) src = '';
       return {
         id: p.id || ('ph_' + i),
-        src: p.src || p.url || '',
+        src: src,
         width: p.width,
         height: p.height,
         caption: p.caption || '',
@@ -37,7 +41,23 @@
         eventFact: p.eventFact,
         subjects: p.subjects,
       };
-    }).filter(function (p) { return p.src; });
+    }).filter(function (p) { return p.id; }); // 保留无 src 的照片（id 仍在，渲染可回退本地）
+  }
+
+  // 活动主记录白名单投影：只发后端真正消费的公共字段，去掉 dataURL 照片 / 旧生成结果 / 内部字段，
+  // 避免整个 activity 对象（可能数 MB）发到后端触发请求体超限 500。
+  var ACTIVITY_WHITELIST = [
+    'title', 'name', 'destination', 'location', 'place', 'startDate', 'endDate', 'date', 'time',
+    'duration', 'price', 'priceText', 'capacity', 'quota', 'signupRule', 'difficulty',
+    'distance', 'elevation', 'summary', 'description',
+    'itinerary', 'fees', 'checklist', 'services', 'brand',
+  ];
+  function projectActivity(a) {
+    var out = {};
+    ACTIVITY_WHITELIST.forEach(function (k) {
+      if (a[k] !== undefined && a[k] !== null && a[k] !== '') out[k] = a[k];
+    });
+    return out;
   }
 
   function gatherSources(a) {
@@ -47,11 +67,17 @@
     if (textBits) {
       sourceMaterials.push({ id: 'src_activity', type: 'text', text: textBits });
     }
+    // ★ 完整原始方案全文（PPT / Word / PDF 解析出的原文，未压缩）——模型写出有细节文案的关键素材。
+    //   gatherSources 旧版只发 summary/description/sellingPoints，模型看不到用户真实方案，必然空洞套话。
+    var planText = a._planText || a.raw || '';
+    if (planText && String(planText).length > 200) {
+      sourceMaterials.push({ id: 'src_plan', type: 'ppt', text: String(planText).slice(0, 60000) });
+    }
     return {
       activityId: a.id,
-      activity: a,
+      activity: projectActivity(a), // 白名单投影，去掉 dataURL 照片与旧生成结果
       sourceMaterials: sourceMaterials,
-      photos: mapPhotos(a),
+      photos: mapPhotos(a), // 不含 dataURL
     };
   }
 
@@ -149,7 +175,7 @@
           '</div>';
       }
     } else {
-      var canvas = (typeof renderPromoCanvas === 'function') ? renderPromoCanvas(a.vnextPromo, {}) : '';
+      var canvas = (typeof renderPromoCanvas === 'function') ? renderPromoCanvas(a.vnextPromo, { localPhotos: a.photos || [] }) : '';
       canvasHtml = '<div class="apc-region">' +
         '<div class="apc-bar">' +
         '<span class="apc-bar-t">AI Promo Canvas（动态策划 · 非模板）</span>' +
@@ -229,7 +255,7 @@
         var n = (g.issues || []).filter(function (i) { return i.severity === 'block'; }).length;
         warn = '<div class="apc-grounding apc-grounding-bad">⚠ 事实校验发现 ' + n + ' 处疑似编造，请复核后再发布。</div>';
       }
-      var preview = (typeof renderChannelResult === 'function') ? renderChannelResult(r) : '';
+      var preview = (typeof renderChannelResult === 'function') ? renderChannelResult(r, a.photos || []) : '';
       return warn + diversityLine(r.diversity) + preview;
     }).join('');
   }
@@ -298,7 +324,7 @@
         '<button class="btn btn-primary btn-sm" data-action="vnextRecapGenerate">' + ICON('sparkles') + ' 生成活动回顾</button>' +
         '</div>';
     }
-    var canvas = (typeof renderPromoCanvas === 'function') ? renderPromoCanvas(r, {}) : '';
+    var canvas = (typeof renderPromoCanvas === 'function') ? renderPromoCanvas(r, { localPhotos: a.photos || [] }) : '';
     return '<div class="rc-region">' +
       '<div class="rc-bar"><span class="rc-bar-t">活动回顾（围绕真实现场重新策划 · 无固定流程）</span>' +
       '<button class="btn btn-ghost btn-sm" data-action="vnextRecapGenerate">' + ICON('refresh') + ' 重新回顾</button></div>' +
