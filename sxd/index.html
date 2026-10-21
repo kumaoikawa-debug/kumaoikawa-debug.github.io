@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#244337">
+<title>三星堆研学 · SANXINGDUI ENIGMA</title>
+<link rel="stylesheet" href="css/style.css?v=18">
+</head>
+<body>
+<div class="phone" id="app">
+  <!-- 氛围粒子 -->
+  <canvas id="bgfx"></canvas>
+  <!-- 顶部导航 -->
+  <header class="navbar" id="navbar">
+    <button class="nav-back" id="navBack" onclick="goBack()" style="visibility:hidden">‹</button>
+    <div class="nav-title" id="navTitle">三星堆研学</div>
+    <button class="nav-action" id="navAction"></button>
+  </header>
+
+  <!-- 页面内容 -->
+  <main class="page" id="page"></main>
+
+  <!-- 底部四栏导航 -->
+  <nav class="tabbar" id="tabbar">
+    <button class="tab" data-tab="home" onclick="switchTab('home')">
+      <svg class="tab-ico" viewBox="0 0 24 24"><path d="M9.2 3.8c-1.3.7-2.2 2-2.4 3.5-.1.9-.3 1.8-.6 2.6-.3.8-.2 1.6.3 2.2.6.8 1.6 1.2 2.6 1.4 1.1.2 2.3.2 3.4 0 1-.2 2-.6 2.6-1.4.5-.6.6-1.4.3-2.2-.3-.8-.5-1.7-.6-2.6-.2-1.5-1.1-2.8-2.4-3.5Z"/><path d="M6.6 9.8H2.6M17.4 9.8h4"/><path d="M7.1 9c.7-.4 1.5-.5 2.3-.3M13.7 9c-.7.4-1.5.5-2.3.3"/><path d="M7.1 10.6c.7.4 1.5.5 2.3.3M13.7 10.6c-.7.4-1.5.5-2.3.3"/><path d="M12 9.2v2.4M10.4 12.6c1 .6 2.2.6 3.2 0"/></svg>
+      <span class="tab-txt">首页</span>
+    </button>
+    <button class="tab" data-tab="courses" onclick="switchTab('courses')">
+      <svg class="tab-ico" viewBox="0 0 24 24"><path d="M12 21.4V8.5"/><path d="M12 12.5 8.4 8.5M12 12.5l3.6-4"/><circle cx="12" cy="4" r="1.6"/><circle cx="6.4" cy="7.4" r="1.1"/><circle cx="17.6" cy="7.4" r="1.1"/><path d="M9.6 16.4H7M14.4 16.4h2.6"/></svg>
+      <span class="tab-txt">课程</span>
+    </button>
+    <button class="tab" data-tab="certs" onclick="switchTab('certs')">
+      <svg class="tab-ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.4"/><circle cx="12" cy="12" r="1.5"/><path d="M12 7.6V3.6M12 20.4v-4M7.6 12H3.6M20.4 12h-4M9.2 9.2 6.4 6.4M17.6 17.6l-2.8-2.8M14.8 9.2l2.8-2.8M6.4 17.6l2.8-2.8"/></svg>
+      <span class="tab-txt">证书</span>
+    </button>
+    <button class="tab" data-tab="mine" onclick="switchTab('mine')">
+      <svg class="tab-ico" viewBox="0 0 24 24"><path d="M10.4 3.2h3.2l-.6 2.2h-2l-.6-2.2z"/><path d="M9.7 5.8h4.6v2.2H9.7z"/><path d="M9.5 8.4v6.6h5V8.4"/><path d="M9.5 10.6 7.8 12.2M14.5 10.6l1.7 1.6"/><path d="M10.5 15.4 9.9 20.8M13.5 15.4l.6 5.4"/></svg>
+      <span class="tab-txt">我的</span>
+    </button>
+  </nav>
+</div>
+
+<!-- 轻提示 -->
+<div id="toast" class="toast"></div>
+
+<script src="js/app.js?v=18"></script>
+</body>
+</html>
